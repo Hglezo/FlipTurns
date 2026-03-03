@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
 import { Waves, User, ClipboardList, ChevronLeft, ChevronRight, CalendarIcon } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type Mode = "coach" | "swimmer";
 
@@ -143,7 +144,9 @@ export default function Home() {
               <Waves className="size-7 text-primary" />
               Swim
             </h1>
-            <TabsList className="h-9 w-fit">
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <TabsList className="h-9 w-fit">
               <TabsTrigger value="swimmer" className="flex items-center gap-1.5 px-3 text-sm">
                 <User className="size-4" />
                 Swimmer
@@ -153,6 +156,7 @@ export default function Home() {
                 Coach
               </TabsTrigger>
             </TabsList>
+            </div>
           </div>
 
           <TabsContent value="swimmer" className="mt-0 flex flex-1 flex-col">
