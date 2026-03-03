@@ -32,6 +32,32 @@ export type Database = {
           updated_at?: string
         }
       }
+      feedback: {
+        Row: {
+          id: string
+          date: string
+          feedback_text: string | null
+          muscle_intensity: number
+          cardio_intensity: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          date: string
+          feedback_text?: string | null
+          muscle_intensity: number
+          cardio_intensity: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          date?: string
+          feedback_text?: string | null
+          muscle_intensity?: number
+          cardio_intensity?: number
+          created_at?: string
+        }
+      }
     }
   }
 }

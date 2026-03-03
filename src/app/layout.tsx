@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Swim - Workout Tracker",
+  title: "FlipTurn - Workout Tracker",
   description: "Coach and swimmer workout calendar",
 };
 
