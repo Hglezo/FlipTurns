@@ -14,6 +14,9 @@ export type Database = {
           id: string
           date: string
           content: string
+          session: string | null
+          workout_type: string | null
+          workout_category: string | null
           created_at: string
           updated_at: string
         }
@@ -21,6 +24,9 @@ export type Database = {
           id?: string
           date: string
           content?: string
+          session?: string | null
+          workout_type?: string | null
+          workout_category?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -28,6 +34,9 @@ export type Database = {
           id?: string
           date?: string
           content?: string
+          session?: string | null
+          workout_type?: string | null
+          workout_category?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -36,6 +45,7 @@ export type Database = {
         Row: {
           id: string
           date: string
+          workout_id: string | null
           feedback_text: string | null
           muscle_intensity: number
           cardio_intensity: number
@@ -44,6 +54,7 @@ export type Database = {
         Insert: {
           id?: string
           date: string
+          workout_id?: string | null
           feedback_text?: string | null
           muscle_intensity: number
           cardio_intensity: number
@@ -52,6 +63,7 @@ export type Database = {
         Update: {
           id?: string
           date?: string
+          workout_id?: string | null
           feedback_text?: string | null
           muscle_intensity?: number
           cardio_intensity?: number

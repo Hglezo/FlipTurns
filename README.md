@@ -25,3 +25,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 - **Swimmer** – Pick a day to view that day’s workout.
 - **Coach** – Pick a day and write or edit the workout.
+
+## Known issues
+
+- **Feedback edit/delete not working** – Swimmers may be unable to edit or remove feedback. Ensure the feedback update and delete RLS policies are applied (see `/setup` for SQL). If the schema cache is stale, run `NOTIFY pgrst, 'reload schema';` in Supabase SQL Editor.

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { PreferencesProvider } from "@/components/preferences-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +28,13 @@ export const viewport: Viewport = {
 
 const themeScript = `
   (function() {
-    const theme = localStorage.getItem('swim-theme');
+    let theme = localStorage.getItem('swim-theme');
+    if (!theme) {
+      try {
+        const prefs = JSON.parse(localStorage.getItem('swim-preferences') || '{}');
+        theme = prefs.defaultTheme === 'light' ? 'light' : 'dark';
+      } catch (_) { theme = 'dark'; }
+    }
     document.documentElement.classList.toggle('dark', theme !== 'light');
   })();
 `;
@@ -43,7 +50,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <PreferencesProvider>{children}</PreferencesProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
