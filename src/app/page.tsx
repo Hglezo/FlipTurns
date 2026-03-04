@@ -163,12 +163,16 @@ export default function Home() {
     setLoading(true);
     setSaved(false);
 
-    await supabase.from("workouts").upsert(
+    const { error } = await supabase.from("workouts").upsert(
       { date: dateKey, content: workoutContent, updated_at: new Date().toISOString() },
       { onConflict: "date" }
     );
 
     setLoading(false);
+    if (error) {
+      console.error("Failed to save workout:", error);
+      return;
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
