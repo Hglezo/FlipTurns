@@ -38,6 +38,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { WorkoutAnalysis } from "@/components/workout-analysis";
 
 type Mode = "coach" | "swimmer";
 type ViewMode = "day" | "week" | "month";
@@ -69,6 +70,7 @@ export default function Home() {
   const [rangeLoading, setRangeLoading] = useState(false);
   const [expandedWeekKey, setExpandedWeekKey] = useState<string | null>(null);
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
+  const [expandedMonthDayKey, setExpandedMonthDayKey] = useState<string | null>(null);
 
   const dateKey = format(selectedDate, "yyyy-MM-dd");
 
@@ -349,9 +351,12 @@ export default function Home() {
                         <p className="text-muted-foreground">Loading...</p>
                       </div>
                     ) : viewWorkout?.content ? (
-                      <pre className="whitespace-pre-wrap font-sans text-[15px] leading-relaxed">
-                        {viewWorkout.content}
-                      </pre>
+                      <>
+                        <pre className="whitespace-pre-wrap font-sans text-[15px] leading-relaxed">
+                          {viewWorkout.content}
+                        </pre>
+                        <WorkoutAnalysis content={viewWorkout.content} className="mt-4" />
+                      </>
                     ) : (
                       <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
                         <p className="text-muted-foreground">
@@ -473,10 +478,11 @@ export default function Home() {
                                 )}
                               </button>
                               {isExpanded && workout?.content && (
-                                <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200">
+                                <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200 space-y-3">
                                   <pre className="whitespace-pre-wrap font-sans text-[14px] leading-relaxed">
                                     {workout.content}
                                   </pre>
+                                  <WorkoutAnalysis content={workout.content} />
                                 </div>
                               )}
                             </div>
@@ -553,6 +559,7 @@ export default function Home() {
                       onMonthChange={(d) => {
                         setSelectedDate(d);
                         setExpandedWeekKey(null);
+                        setExpandedMonthDayKey(null);
                       }}
                       modifiers={{
                         hasWorkout: monthWorkouts.map((w) => new Date(w.date + "T12:00:00")),
@@ -595,9 +602,18 @@ export default function Home() {
                             <button
                               type="button"
                               className="flex w-full items-center justify-between px-4 py-3 text-left"
-                              onClick={() =>
-                                setExpandedWeekKey(isExpanded ? null : key)
-                              }
+                              onClick={() => {
+                                if (isExpanded) {
+                                  setExpandedWeekKey(null);
+                                  setExpandedMonthDayKey(null);
+                                } else {
+                                  setExpandedWeekKey(key);
+                                  const selectedInWeek = isWithinInterval(selectedDate, { start, end });
+                                  const selectedDayKey = format(selectedDate, "yyyy-MM-dd");
+                                  const selectedHasWorkout = weekWorkoutsList.some((w) => w.date === selectedDayKey);
+                                  setExpandedMonthDayKey(selectedInWeek && selectedHasWorkout ? selectedDayKey : null);
+                                }
+                              }}
                             >
                               <span className="text-sm font-medium">
                                 Week {weeks.findIndex((w) => w.key === key) + 1}: {format(start, "MMM d")}–{format(end, "MMM d")}
@@ -612,20 +628,62 @@ export default function Home() {
                               </span>
                             </button>
                             {isExpanded && (
-                              <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 space-y-4 duration-200">
+                              <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 space-y-2 duration-200">
                                 {weekWorkoutsList.length === 0 ? (
                                   <p className="text-sm text-muted-foreground">No workouts this week</p>
                                 ) : (
-                                  weekWorkoutsList.map((w) => (
-                                    <div key={w.id}>
-                                      <p className="mb-1 text-sm font-medium text-muted-foreground">
-                                        {format(new Date(w.date + "T12:00:00"), "EEE, MMM d")}
-                                      </p>
-                                      <pre className="whitespace-pre-wrap font-sans text-[14px] leading-relaxed">
-                                        {w.content}
-                                      </pre>
-                                    </div>
-                                  ))
+                                  (() => {
+                                    const daysInWeek = eachDayOfInterval({ start, end });
+                                    return daysInWeek.map((day) => {
+                                      const dayKey = format(day, "yyyy-MM-dd");
+                                      const workout = weekWorkoutsList.find((w) => w.date === dayKey);
+                                      const isDayExpanded = expandedMonthDayKey === dayKey;
+                                      const preview = workout?.content
+                                        ? workout.content.slice(0, PREVIEW_LENGTH) + (workout.content.length > PREVIEW_LENGTH ? "…" : "")
+                                        : null;
+                                      return (
+                                        <div
+                                          key={dayKey}
+                                          className="rounded-lg border bg-card overflow-hidden"
+                                        >
+                                          <button
+                                            type="button"
+                                            className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-accent/50"
+                                            onClick={() => {
+                                              setExpandedMonthDayKey(isDayExpanded ? null : dayKey);
+                                              setSelectedDate(day);
+                                            }}
+                                          >
+                                            <div className="min-w-0 flex-1">
+                                              <p className="mb-1 text-sm font-medium text-muted-foreground">
+                                                {format(day, "EEE, MMM d")}
+                                              </p>
+                                              {workout?.content ? (
+                                                <p className="line-clamp-2 font-sans text-[14px] text-muted-foreground">
+                                                  {preview}
+                                                </p>
+                                              ) : (
+                                                <p className="text-sm text-muted-foreground">No workout</p>
+                                              )}
+                                            </div>
+                                            {isDayExpanded ? (
+                                              <ChevronUp className="size-4 shrink-0 text-muted-foreground ml-2" />
+                                            ) : (
+                                              <ChevronDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+                                            )}
+                                          </button>
+                                          {isDayExpanded && workout?.content && (
+                                            <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-2">
+                                              <pre className="whitespace-pre-wrap font-sans text-[14px] leading-relaxed">
+                                                {workout.content}
+                                              </pre>
+                                              <WorkoutAnalysis content={workout.content} />
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    });
+                                  })()
                                 )}
                               </div>
                             )}
@@ -648,14 +706,19 @@ export default function Home() {
                     <p className="text-muted-foreground">Loading...</p>
                   </div>
                 ) : (
-                  <Textarea
-                    placeholder="Warm-up: 200 free, 4×50 kick...
+                  <>
+                    <Textarea
+                      placeholder="Warm-up: 200 free, 4×50 kick...
 Main set: 8×100 @ 1:30...
 Cool-down: 200 easy"
-                    value={workoutContent}
-                    onChange={(e) => setWorkoutContent(e.target.value)}
-                    className="min-h-[min(40rem,60dvh)] flex-1 resize-none"
-                  />
+                      value={workoutContent}
+                      onChange={(e) => setWorkoutContent(e.target.value)}
+                      className="min-h-[min(40rem,60dvh)] flex-1 resize-none"
+                    />
+                    {workoutContent && (
+                      <WorkoutAnalysis content={workoutContent} />
+                    )}
+                  </>
                 )}
                 <Button
                   className="w-full"
