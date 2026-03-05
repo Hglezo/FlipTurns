@@ -183,10 +183,6 @@ export default function SettingsPage() {
         {saved && (
           <p className="mt-4 text-center text-sm text-muted-foreground">Saved</p>
         )}
-
-        <Link href="/setup" className="mt-6 block text-center text-sm text-muted-foreground underline">
-          Database setup (feedback edit/delete)
-        </Link>
       </div>
     </div>
   );

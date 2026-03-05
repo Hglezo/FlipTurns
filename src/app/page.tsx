@@ -119,9 +119,6 @@ export default function Home() {
   const dateKey = format(selectedDate, "yyyy-MM-dd");
   const normDate = (d: string | undefined) => (d && typeof d === "string" ? d.slice(0, 10) : d);
 
-  const PREVIEW_LENGTH = 80;
-const preview = (s: string) => s.slice(0, PREVIEW_LENGTH) + (s.length > PREVIEW_LENGTH ? "…" : "");
-
   // Fetch workouts when date changes (swimmer mode) - skip in week view, we have weekWorkouts
   useEffect(() => {
     if (mode !== "swimmer" || viewMode === "week") return;
@@ -458,8 +455,6 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                           const dayKey = format(day, "yyyy-MM-dd");
                           const dayWorkouts = weekWorkouts.filter((w) => normDate(w.date) === dayKey);
                           const isExpanded = expandedDayKey === dayKey;
-                          const firstContent = dayWorkouts[0]?.content;
-                          const display = firstContent ? preview(firstContent) : null;
                           return (
                             <div
                               key={day.toISOString()}
@@ -479,11 +474,7 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                                   </p>
                                   {dayWorkouts.length > 0 ? (
                                     <p className="line-clamp-2 font-sans text-[14px] text-muted-foreground">
-                                      {dayWorkouts.length === 1
-                                        ? (dayWorkouts[0].workout_type || dayWorkouts[0].workout_category
-                                          ? workoutLabel(dayWorkouts[0])
-                                          : display)
-                                        : dayWorkouts.map((w) => workoutLabel(w)).join(" · ")}
+                                      {dayWorkouts.map((w) => workoutLabel(w)).join(" · ")}
                                     </p>
                                   ) : (
                                     <p className="text-sm text-muted-foreground">No workout</p>
@@ -622,8 +613,6 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                                       const dayKey = format(day, "yyyy-MM-dd");
                                       const dayWorkouts = weekWorkoutsList.filter((w) => normDate(w.date) === dayKey);
                                       const isDayExpanded = expandedMonthDayKey === dayKey;
-                                      const firstContent = dayWorkouts[0]?.content;
-                                      const display = firstContent ? preview(firstContent) : null;
                                       return (
                                         <div
                                           key={dayKey}
@@ -643,11 +632,7 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                                               </p>
                                               {dayWorkouts.length > 0 ? (
                                                 <p className="line-clamp-2 font-sans text-[14px] text-muted-foreground">
-                                                  {dayWorkouts.length === 1
-                                                    ? (dayWorkouts[0].workout_type || dayWorkouts[0].workout_category
-                                                      ? workoutLabel(dayWorkouts[0])
-                                                      : display)
-                                                    : dayWorkouts.map((w) => workoutLabel(w)).join(" · ")}
+                                                  {dayWorkouts.map((w) => workoutLabel(w)).join(" · ")}
                                                 </p>
                                               ) : (
                                                 <p className="text-sm text-muted-foreground">No workout</p>
