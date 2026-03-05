@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { analyzeWorkout } from "@/lib/workout-analyzer";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Pencil, Trash2, MessageSquare } from "lucide-react";
@@ -25,6 +26,7 @@ interface WorkoutAnalysisProps {
 }
 
 export function WorkoutAnalysis({ content, date, workoutId, refreshKey, className = "", readOnly, onFeedbackChange }: WorkoutAnalysisProps) {
+  const { user } = useAuth();
   const analysis = analyzeWorkout(content);
   const [feedback, setFeedback] = useState<Feedback[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -47,16 +49,17 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
       return;
     }
     async function fetchFeedback() {
-      const { data } = await supabase
+      let query = supabase
         .from("feedback")
         .select("id, feedback_text, muscle_intensity, cardio_intensity")
         .eq("date", date)
-        .eq("workout_id", workoutId)
-        .order("created_at", { ascending: false });
+        .eq("workout_id", workoutId);
+      if (!readOnly && user?.id) query = query.eq("user_id", user.id);
+      const { data } = await query.order("created_at", { ascending: false });
       setFeedback(data ?? []);
     }
     fetchFeedback();
-  }, [date, workoutId, refreshKey]);
+  }, [date, workoutId, refreshKey, readOnly, user?.id]);
 
   const startEdit = (fb: Feedback) => {
     setError(null);
@@ -118,11 +121,12 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
   };
 
   const submitAdd = async () => {
-    if (!date || addMuscle === null || addCardio === null) return;
+    if (!date || addMuscle === null || addCardio === null || !user?.id) return;
     setAddSaving(true);
     const { error } = await supabase.from("feedback").insert({
       date,
       workout_id: workoutId || null,
+      user_id: user.id,
       feedback_text: addText || null,
       muscle_intensity: addMuscle,
       cardio_intensity: addCardio,
@@ -136,12 +140,14 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     setAddMuscle(null);
     setAddCardio(null);
     setShowAddForm(false);
-    const q = supabase
+    let q = supabase
       .from("feedback")
       .select("id, feedback_text, muscle_intensity, cardio_intensity")
-      .eq("date", date);
-    const { data } = await (workoutId ? q.eq("workout_id", workoutId) : q.is("workout_id", null))
-      .order("created_at", { ascending: false });
+      .eq("date", date)
+      .eq("user_id", user.id);
+    if (workoutId) q = q.eq("workout_id", workoutId);
+    else q = q.is("workout_id", null);
+    const { data } = await q.order("created_at", { ascending: false });
     setFeedback(data ?? []);
     onFeedbackChange?.();
   };
@@ -280,7 +286,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
           )}
         </div>
         )}
-        {!readOnly && !showAddForm && !hasFeedback && (
+        {!readOnly && user?.id && !showAddForm && !hasFeedback && (
           <Button variant="outline" size="sm" className="gap-2 mt-2" onClick={() => { setError(null); setShowAddForm(true); }}>
             <MessageSquare className="size-4" />
             Feedback
@@ -297,7 +303,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
             <IntensityScale label="Muscle intensity (1–5)" value={addMuscle} onChange={setAddMuscle} />
             <IntensityScale label="Cardio intensity (1–5)" value={addCardio} onChange={setAddCardio} />
             <div className="flex gap-2">
-              <Button size="sm" onClick={submitAdd} disabled={addSaving || addMuscle === null || addCardio === null}>
+              <Button size="sm" onClick={submitAdd} disabled={addSaving || !user?.id || addMuscle === null || addCardio === null}>
                 {addSaving ? "Saving…" : "Submit"}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setShowAddForm(false)} disabled={addSaving}>

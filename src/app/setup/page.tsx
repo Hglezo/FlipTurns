@@ -64,6 +64,23 @@ const FEEDBACK_WORKOUT_ID_SQL = `-- Link feedback to specific workout (so each s
 alter table public.feedback
   add column if not exists workout_id uuid references public.workouts(id) on delete cascade;`;
 
+const FEEDBACK_USER_ID_SQL = `-- Link feedback to user so swimmers only see/edit their own
+alter table public.feedback
+  add column if not exists user_id uuid references auth.users(id) on delete cascade;
+
+drop policy if exists "Anyone can insert feedback" on public.feedback;
+create policy "Users can insert own feedback" on public.feedback for insert with check (auth.uid() = user_id);
+
+drop policy if exists "Anyone can read feedback" on public.feedback;
+create policy "Users read own feedback, coaches read all" on public.feedback for select
+  using (auth.uid() = user_id or exists (select 1 from public.profiles where id = auth.uid() and role = 'coach'));
+
+drop policy if exists "Anyone can update feedback" on public.feedback;
+create policy "Users can update own feedback" on public.feedback for update using (auth.uid() = user_id);
+
+drop policy if exists "Anyone can delete feedback" on public.feedback;
+create policy "Users can delete own feedback" on public.feedback for delete using (auth.uid() = user_id);`;
+
 const WORKOUTS_SETUP_SQL = `alter table public.workouts drop constraint if exists workouts_date_key;
 alter table public.workouts add column if not exists session text default '';
 alter table public.workouts add column if not exists workout_type text default '';
@@ -168,6 +185,31 @@ export default function SetupPage() {
               >
                 {copied === FEEDBACK_WORKOUT_ID_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === FEEDBACK_WORKOUT_ID_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Feedback per user</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              If swimmers can see or edit other swimmers&apos; feedback, run this to link feedback to each user.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="max-h-[280px] overflow-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{FEEDBACK_USER_ID_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(FEEDBACK_USER_ID_SQL)}
+              >
+                {copied === FEEDBACK_USER_ID_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === FEEDBACK_USER_ID_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>
