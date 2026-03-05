@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   format,
   addDays,
@@ -116,13 +116,14 @@ export default function Home() {
   const [expandedMonthDayKey, setExpandedMonthDayKey] = useState<string | null>(null);
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
   const [coachEditMode, setCoachEditMode] = useState(false);
+  const addWorkoutForDateRef = useRef<string | null>(null);
 
   const dateKey = format(selectedDate, "yyyy-MM-dd");
   const normDate = (d: string | undefined) => (d && typeof d === "string" ? d.slice(0, 10) : d);
 
-  // Fetch workouts when date changes (swimmer mode) - skip in week view, we have weekWorkouts
+  // Fetch workouts when date changes (swimmer mode) - skip in week/month view
   useEffect(() => {
-    if (mode !== "swimmer" || viewMode === "week") return;
+    if (mode !== "swimmer" || viewMode !== "day") return;
 
     async function fetchWorkouts() {
       setSwimmerLoading(true);
@@ -141,10 +142,11 @@ export default function Home() {
     fetchWorkouts();
   }, [dateKey, mode, viewMode]);
 
-  // Fetch workouts when date changes (coach mode)
+  // Fetch workouts when date changes (coach mode, day view only)
   useEffect(() => {
-    if (!dateKey || mode !== "coach") return;
-    setCoachEditMode(false);
+    if (!dateKey || mode !== "coach" || viewMode !== "day") return;
+    const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
+    if (!isAddingWorkout) setCoachEditMode(false);
 
     async function fetchWorkouts() {
       setCoachLoading(true);
@@ -154,18 +156,26 @@ export default function Home() {
         .eq("date", dateKey)
         .order("created_at", { ascending: true });
 
-      setCoachWorkouts(
-        (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }))
-      );
+      const rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+      if (isAddingWorkout) {
+        addWorkoutForDateRef.current = null;
+        setCoachWorkouts([
+          ...rows,
+          { id: "", date: dateKey, content: "", session: null, workout_type: null, workout_category: null },
+        ]);
+        setCoachEditMode(true);
+      } else {
+        setCoachWorkouts(rows);
+      }
       setCoachLoading(false);
     }
 
     fetchWorkouts();
-  }, [dateKey, mode]);
+  }, [dateKey, mode, viewMode]);
 
   // Fetch workouts for week view
   useEffect(() => {
-    if (mode !== "swimmer" || viewMode !== "week") return;
+    if (viewMode !== "week") return;
 
     async function fetchWeekWorkouts() {
       setRangeLoading(true);
@@ -183,11 +193,11 @@ export default function Home() {
     }
 
     fetchWeekWorkouts();
-  }, [selectedDate, mode, viewMode]);
+  }, [selectedDate, viewMode, weekStartsOn]);
 
   // Fetch workouts for month view
   useEffect(() => {
-    if (mode !== "swimmer" || viewMode !== "month") return;
+    if (viewMode !== "month") return;
 
     async function fetchMonthWorkouts() {
       setRangeLoading(true);
@@ -204,7 +214,7 @@ export default function Home() {
     }
 
     fetchMonthWorkouts();
-  }, [selectedDate, mode, viewMode]);
+  }, [selectedDate, viewMode]);
 
   async function saveWorkouts() {
     if (!dateKey) return;
@@ -300,24 +310,46 @@ export default function Home() {
   }
 
   const changeDate = (delta: number) => {
-    if (mode === "coach" || viewMode === "day") {
+    if (viewMode === "day") {
       setSelectedDate((d) => (delta > 0 ? addDays(d, 1) : subDays(d, 1)));
     } else if (viewMode === "week") {
       setExpandedDayKey(null);
       setSelectedDate((d) => (delta > 0 ? addWeeks(d, 1) : subWeeks(d, 1)));
     } else {
+      setExpandedWeekKey(null);
+      setExpandedMonthDayKey(null);
       setSelectedDate((d) => (delta > 0 ? addMonths(d, 1) : subMonths(d, 1)));
     }
   };
 
   const getDateBarLabel = () => {
-    if (mode === "coach" || viewMode === "day") return format(selectedDate, "EEE, MMM d");
+    if (viewMode === "day") return format(selectedDate, "EEE, MMM d");
     if (viewMode === "week") {
-const wStart = startOfWeek(selectedDate, { weekStartsOn });
-    const wEnd = endOfWeek(selectedDate, { weekStartsOn });
+      const wStart = startOfWeek(selectedDate, { weekStartsOn });
+      const wEnd = endOfWeek(selectedDate, { weekStartsOn });
       return `${format(wStart, "MMM d")} – ${format(wEnd, "MMM d")}`;
     }
     return format(selectedDate, "MMMM yyyy");
+  };
+
+  const goToDayAndEdit = (day: Date) => {
+    setSelectedDate(day);
+    setViewMode("day");
+    setCoachEditMode(true);
+  };
+
+  const goToDayAndAddWorkout = (day: Date) => {
+    addWorkoutForDateRef.current = format(day, "yyyy-MM-dd");
+    setSelectedDate(day);
+    setViewMode("day");
+    setCoachEditMode(true);
+  };
+
+  const handleMonthCalendarSelect = (date: Date) => {
+    if (!date) return;
+    setSelectedDate(date);
+    setExpandedWeekKey(format(startOfWeek(date, { weekStartsOn }), "yyyy-MM-dd"));
+    setExpandedMonthDayKey(format(date, "yyyy-MM-dd"));
   };
 
   const DateToggleBar = () => (
@@ -345,7 +377,7 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
           <Calendar
             mode="single"
             selected={selectedDate}
-            onSelect={(date) => date && setSelectedDate(date)}
+            onSelect={handleMonthCalendarSelect}
             weekStartsOn={weekStartsOn}
           />
         </PopoverContent>
@@ -542,7 +574,7 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                       className="w-full min-w-0"
                       mode="single"
                       selected={selectedDate}
-                      onSelect={(date) => date && setSelectedDate(date)}
+                      onSelect={handleMonthCalendarSelect}
                       month={selectedDate}
                       weekStartsOn={weekStartsOn}
                       onMonthChange={(d) => {
@@ -627,51 +659,49 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                             </button>
                             {isExpanded && (
                               <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 space-y-2 duration-200">
-                                {weekWorkoutsList.length === 0 ? (
-                                  <p className="text-sm text-muted-foreground">No workouts this week</p>
-                                ) : (
-                                  (() => {
-                                    const daysInWeek = eachDayOfInterval({ start, end });
-                                    return daysInWeek.map((day) => {
-                                      const dayKey = format(day, "yyyy-MM-dd");
-                                      const dayWorkouts = weekWorkoutsList.filter((w) => normDate(w.date) === dayKey);
-                                      const isDayExpanded = expandedMonthDayKey === dayKey;
-                                      return (
-                                        <div
-                                          key={dayKey}
-                                          className="rounded-lg border bg-card overflow-hidden"
+                                {(() => {
+                                  const daysInWeek = eachDayOfInterval({ start, end });
+                                  return daysInWeek.map((day) => {
+                                    const dayKey = format(day, "yyyy-MM-dd");
+                                    const dayWorkouts = weekWorkoutsList.filter((w) => normDate(w.date) === dayKey);
+                                    const isDayExpanded = expandedMonthDayKey === dayKey;
+                                    return (
+                                      <div
+                                        key={dayKey}
+                                        className="rounded-lg border bg-card overflow-hidden"
+                                      >
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-accent/50"
+                                          onClick={() => {
+                                            setExpandedMonthDayKey(isDayExpanded ? null : dayKey);
+                                            setSelectedDate(day);
+                                          }}
                                         >
-                                          <button
-                                            type="button"
-                                            className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-accent/50"
-                                            onClick={() => {
-                                              setExpandedMonthDayKey(isDayExpanded ? null : dayKey);
-                                              setSelectedDate(day);
-                                            }}
-                                          >
-                                            <div className="min-w-0 flex-1">
-                                              <p className="mb-1 text-sm font-medium text-muted-foreground">
-                                                {format(day, "EEE, MMM d")}
-                                              </p>
-                                              {dayWorkouts.length > 0 ? (
-                                                <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
-                                                  {dayWorkouts.map((w, wi) => (
-                                                    <p key={wi}>{workoutLabel(w)}</p>
-                                                  ))}
-                                                </div>
-                                              ) : (
-                                                <p className="text-sm text-muted-foreground">No workout</p>
-                                              )}
-                                            </div>
-                                            {isDayExpanded ? (
-                                              <ChevronUp className="size-4 shrink-0 text-muted-foreground ml-2" />
+                                          <div className="min-w-0 flex-1">
+                                            <p className="mb-1 text-sm font-medium text-muted-foreground">
+                                              {format(day, "EEE, MMM d")}
+                                            </p>
+                                            {dayWorkouts.length > 0 ? (
+                                              <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
+                                                {dayWorkouts.map((w, wi) => (
+                                                  <p key={wi}>{workoutLabel(w)}</p>
+                                                ))}
+                                              </div>
                                             ) : (
-                                              <ChevronDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+                                              <p className="text-sm text-muted-foreground">No workout</p>
                                             )}
-                                          </button>
-                                          {isDayExpanded && dayWorkouts.length > 0 && (
-                                            <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
-                                              {dayWorkouts.map((workout, i) => (
+                                          </div>
+                                          {isDayExpanded ? (
+                                            <ChevronUp className="size-4 shrink-0 text-muted-foreground ml-2" />
+                                          ) : (
+                                            <ChevronDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+                                          )}
+                                        </button>
+                                        {isDayExpanded && (
+                                          <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
+                                            {dayWorkouts.length > 0 ? (
+                                              dayWorkouts.map((workout, i) => (
                                                 <WorkoutBlock
                                                   key={workout.id || i}
                                                   workout={workout}
@@ -682,14 +712,16 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                                                   className="mt-2"
                                                   compact
                                                 />
-                                              ))}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    });
-                                  })()
-                                )}
+                                              ))
+                                            ) : (
+                                              <p className="text-sm text-muted-foreground">No workout</p>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  });
+                                })()}
                               </div>
                             )}
                           </div>
@@ -704,6 +736,36 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
 
           <TabsContent value="coach" className="mt-0 flex flex-1 flex-col">
             <DateToggleBar />
+            <div className="mb-4 flex gap-1 rounded-lg border bg-card p-1">
+              <Button
+                variant={viewMode === "day" ? "secondary" : "ghost"}
+                size="sm"
+                className="flex-1 gap-1.5 text-xs"
+                onClick={() => setViewMode("day")}
+              >
+                <CalendarIcon className="size-3.5" />
+                Day
+              </Button>
+              <Button
+                variant={viewMode === "week" ? "secondary" : "ghost"}
+                size="sm"
+                className="flex-1 gap-1.5 text-xs"
+                onClick={() => setViewMode("week")}
+              >
+                <CalendarDays className="size-3.5" />
+                Week
+              </Button>
+              <Button
+                variant={viewMode === "month" ? "secondary" : "ghost"}
+                size="sm"
+                className="flex-1 gap-1.5 text-xs"
+                onClick={() => setViewMode("month")}
+              >
+                <CalendarRange className="size-3.5" />
+                Month
+              </Button>
+            </div>
+            {viewMode === "day" && (
             <Card className="flex flex-1 flex-col">
               <CardContent className="flex flex-1 flex-col gap-4 p-5 pt-4">
                 {coachLoading ? (
@@ -839,6 +901,292 @@ Cool-down: 200 easy"
                 )}
               </CardContent>
             </Card>
+            )}
+
+            {viewMode === "week" && (
+              <Card className="flex flex-1 flex-col">
+                <CardContent className="flex flex-1 flex-col gap-3 p-4">
+                  {rangeLoading ? (
+                    <div className="flex flex-1 items-center justify-center py-12">
+                      <p className="text-muted-foreground">Loading...</p>
+                    </div>
+                  ) : (
+                    (() => {
+                      const weekStart = startOfWeek(selectedDate, { weekStartsOn });
+                      const days = eachDayOfInterval({
+                        start: weekStart,
+                        end: endOfWeek(selectedDate, { weekStartsOn }),
+                      });
+                      return days.map((day) => {
+                        const dayKey = format(day, "yyyy-MM-dd");
+                        const dayWorkouts = weekWorkouts.filter((w) => normDate(w.date) === dayKey);
+                        const isExpanded = expandedDayKey === dayKey;
+                        return (
+                          <div
+                            key={day.toISOString()}
+                            className={`rounded-lg border bg-card overflow-hidden ${format(day, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") ? "bg-primary/5" : ""}`}
+                          >
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-accent/50"
+                              onClick={() => {
+                                setExpandedDayKey(isExpanded ? null : dayKey);
+                                setSelectedDate(day);
+                              }}
+                            >
+                              <div>
+                                <p className="mb-2 text-sm font-medium text-muted-foreground">
+                                  {format(day, "EEE, MMM d")}
+                                </p>
+                                {dayWorkouts.length > 0 ? (
+                                  <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
+                                    {dayWorkouts.map((w, wi) => (
+                                      <p key={wi}>{workoutLabel(w)}</p>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground">No workout</p>
+                                )}
+                              </div>
+                              {isExpanded ? (
+                                <ChevronUp className="size-4 shrink-0 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                              )}
+                            </button>
+                            {isExpanded && (
+                              <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200 space-y-4">
+                                {dayWorkouts.length > 0 ? (
+                                  <>
+                                    {dayWorkouts.map((workout, i) => (
+                                      <WorkoutBlock
+                                        key={workout.id || i}
+                                        workout={workout}
+                                        dateKey={dayKey}
+                                        showLabel={dayWorkouts.length > 1}
+                                        feedbackRefreshKey={feedbackRefreshKey}
+                                        className="mt-2"
+                                        compact
+                                        readOnly
+                                      />
+                                    ))}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="gap-2"
+                                      onClick={() => goToDayAndEdit(day)}
+                                    >
+                                      <Pencil className="size-4" />
+                                      Edit day
+                                    </Button>
+                                  </>
+                                ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="gap-2"
+                                      onClick={() => goToDayAndAddWorkout(day)}
+                                    >
+                                      <Plus className="size-4" />
+                                      Add workout
+                                    </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {viewMode === "month" && (
+              <div className="flex flex-1 flex-col gap-4">
+                <Card className="overflow-hidden w-full">
+                  <CardContent className="p-0 w-full">
+                    <Calendar
+                      className="w-full min-w-0"
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={handleMonthCalendarSelect}
+                      month={selectedDate}
+                      weekStartsOn={weekStartsOn}
+                      onMonthChange={(d) => {
+                        setSelectedDate(d);
+                        setExpandedWeekKey(null);
+                        setExpandedMonthDayKey(null);
+                      }}
+                      modifiers={(() => {
+                        const countByDate: Record<string, number> = {};
+                        for (const w of monthWorkouts) {
+                          const d = normDate(w.date);
+                          if (d) countByDate[d] = (countByDate[d] || 0) + 1;
+                        }
+                        return {
+                          workoutDots1: Object.entries(countByDate).filter(([, c]) => c === 1).map(([d]) => new Date(d + "T12:00:00")),
+                          workoutDots2: Object.entries(countByDate).filter(([, c]) => c >= 2).map(([d]) => new Date(d + "T12:00:00")),
+                        };
+                      })()}
+                      modifiersClassNames={{
+                        workoutDots1: "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:size-1.5 after:rounded-full after:bg-primary",
+                        workoutDots2: "relative before:content-[''] before:absolute before:bottom-1 before:left-[calc(50%-6px)] before:size-1.5 before:rounded-full before:bg-primary after:content-[''] after:absolute after:bottom-1 after:left-[calc(50%+2px)] after:size-1.5 after:rounded-full after:bg-primary",
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+                <div className="flex flex-1 flex-col gap-2">
+                  {rangeLoading ? (
+                    <p className="text-muted-foreground">Loading...</p>
+                  ) : (
+                    (() => {
+                      const monthStart = startOfMonth(selectedDate);
+                      const monthEnd = endOfMonth(selectedDate);
+                      const weeks: { start: Date; end: Date; key: string }[] = [];
+                      let weekStart = startOfWeek(monthStart, { weekStartsOn });
+                      while (weekStart <= monthEnd) {
+                        const weekEnd = endOfWeek(weekStart, { weekStartsOn });
+                        weeks.push({
+                          start: weekStart,
+                          end: weekEnd,
+                          key: format(weekStart, "yyyy-MM-dd"),
+                        });
+                        weekStart = addDays(weekEnd, 1);
+                      }
+                      return weeks.map(({ start, end, key }) => {
+                        const weekWorkoutsList = monthWorkouts.filter((w) =>
+                          isWithinInterval(new Date(w.date + "T12:00:00"), { start, end })
+                        );
+                        const workoutCount = weekWorkoutsList.length;
+                        const isExpanded = expandedWeekKey === key;
+                        return (
+                          <div
+                            key={key}
+                            className="rounded-lg border bg-card overflow-hidden"
+                          >
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between px-4 py-3 text-left"
+                              onClick={() => {
+                                if (isExpanded) {
+                                  setExpandedWeekKey(null);
+                                  setExpandedMonthDayKey(null);
+                                } else {
+                                  setExpandedWeekKey(key);
+                                  const selectedInWeek = isWithinInterval(selectedDate, { start, end });
+                                  const selectedDayKey = format(selectedDate, "yyyy-MM-dd");
+                                  const selectedHasWorkout = weekWorkoutsList.some((w) => normDate(w.date) === selectedDayKey);
+                                  setExpandedMonthDayKey(selectedInWeek && selectedHasWorkout ? selectedDayKey : null);
+                                }
+                              }}
+                            >
+                              <span className="text-sm font-medium">
+                                Week {weeks.findIndex((w) => w.key === key) + 1}: {format(start, "MMM d")}–{format(end, "MMM d")}
+                              </span>
+                              <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                                {workoutCount} workout{workoutCount !== 1 ? "s" : ""}
+                                {isExpanded ? (
+                                  <ChevronUp className="size-4" />
+                                ) : (
+                                  <ChevronDown className="size-4" />
+                                )}
+                              </span>
+                            </button>
+                            {isExpanded && (
+                              <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 space-y-2 duration-200">
+                                {(() => {
+                                  const daysInWeek = eachDayOfInterval({ start, end });
+                                  return daysInWeek.map((day) => {
+                                    const dayKey = format(day, "yyyy-MM-dd");
+                                    const dayWorkouts = weekWorkoutsList.filter((w) => normDate(w.date) === dayKey);
+                                    const isDayExpanded = expandedMonthDayKey === dayKey;
+                                    return (
+                                      <div
+                                        key={dayKey}
+                                        className="rounded-lg border bg-card overflow-hidden"
+                                      >
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-accent/50"
+                                          onClick={() => {
+                                            setExpandedMonthDayKey(isDayExpanded ? null : dayKey);
+                                            setSelectedDate(day);
+                                          }}
+                                        >
+                                          <div className="min-w-0 flex-1">
+                                            <p className="mb-1 text-sm font-medium text-muted-foreground">
+                                              {format(day, "EEE, MMM d")}
+                                            </p>
+                                            {dayWorkouts.length > 0 ? (
+                                              <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
+                                                {dayWorkouts.map((w, wi) => (
+                                                  <p key={wi}>{workoutLabel(w)}</p>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <p className="text-sm text-muted-foreground">No workout</p>
+                                            )}
+                                          </div>
+                                          {isDayExpanded ? (
+                                            <ChevronUp className="size-4 shrink-0 text-muted-foreground ml-2" />
+                                          ) : (
+                                            <ChevronDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+                                          )}
+                                        </button>
+                                        {isDayExpanded && (
+                                          <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
+                                            {dayWorkouts.length > 0 ? (
+                                              <>
+                                                {dayWorkouts.map((workout, i) => (
+                                                  <WorkoutBlock
+                                                    key={workout.id || i}
+                                                    workout={workout}
+                                                    dateKey={dayKey}
+                                                    showLabel={dayWorkouts.length > 1}
+                                                    feedbackRefreshKey={feedbackRefreshKey}
+                                                    className="mt-2"
+                                                    compact
+                                                    readOnly
+                                                  />
+                                                ))}
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  className="gap-2"
+                                                  onClick={() => goToDayAndEdit(day)}
+                                                >
+                                                  <Pencil className="size-4" />
+                                                  Edit day
+                                                </Button>
+                                              </>
+                                            ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="gap-2"
+                                      onClick={() => goToDayAndAddWorkout(day)}
+                                    >
+                                      <Plus className="size-4" />
+                                      Add workout
+                                    </Button>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()
+                  )}
+                </div>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>
