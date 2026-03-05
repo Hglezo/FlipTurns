@@ -192,6 +192,7 @@ export default function Home() {
   // Fetch workouts for swimmer (day view). null = own, "" = all, uuid = that swimmer
   useEffect(() => {
     if (role !== "swimmer" || viewMode !== "day" || !user) return;
+    const userId = user.id;
 
     async function fetchWorkouts() {
       setSwimmerLoading(true);
@@ -200,7 +201,7 @@ export default function Home() {
         .select("*")
         .eq("date", dateKey)
         .order("created_at", { ascending: true });
-      const filterId = selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? user.id);
+      const filterId = selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? userId);
       if (filterId) query = query.eq("assigned_to", filterId);
 
       const { data } = await query;
