@@ -142,7 +142,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
   const hasAnalysis = analysis.totalMeters > 0;
   const hasFeedback = feedback && feedback.length > 0;
   const hasLoadedFeedback = feedback !== null;
-  const showFeedbackSection = date && (hasFeedback || hasLoadedFeedback || !readOnly);
+  const showFeedbackSection = date && (hasFeedback || hasLoadedFeedback || !readOnly) && (!readOnly || !!workoutId);
 
   const IntensityScale = ({
     value,
@@ -197,8 +197,10 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
         </div>
       )}
       {showFeedbackSection && (
+        <div className="space-y-2">
+        {(hasFeedback || !hasLoadedFeedback || readOnly) && (
         <div className="rounded-lg border bg-muted/50 p-3 text-sm space-y-3">
-          <p className="font-medium text-foreground">Feedback</p>
+          {hasFeedback && <p className="font-medium text-foreground">Feedback</p>}
           {hasFeedback ? (
             feedback!.map((fb) => (
               <div key={fb.id} className="space-y-2 rounded-md border border-border/50 p-2">
@@ -255,46 +257,45 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
                 )}
               </div>
             ))
-          ) : hasLoadedFeedback ? (
-            <p className="text-muted-foreground text-sm">No feedback yet.</p>
-          ) : (
+          ) : !hasLoadedFeedback ? (
             <p className="text-muted-foreground text-sm">Loading feedback…</p>
-          )}
+          ) : readOnly ? (
+            <p className="text-muted-foreground text-sm">No feedback yet.</p>
+          ) : null}
           {error && (
             <div className="space-y-1">
               <p className="text-sm text-destructive">{error}</p>
               <a href="/setup" className="text-sm text-primary underline">Fix in Database setup →</a>
             </div>
           )}
-          {!readOnly && (
-            <>
-              {showAddForm ? (
-                <div className="space-y-3 rounded-md border border-border/50 p-2">
-                  <Textarea
-                    placeholder="Your feedback (optional)"
-                    value={addText}
-                    onChange={(e) => setAddText(e.target.value)}
-                    className="min-h-[80px] resize-none text-sm"
-                  />
-                  <IntensityScale label="Muscle intensity (1–5)" value={addMuscle} onChange={setAddMuscle} />
-                  <IntensityScale label="Cardio intensity (1–5)" value={addCardio} onChange={setAddCardio} />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={submitAdd} disabled={addSaving || addMuscle === null || addCardio === null}>
-                      {addSaving ? "Saving…" : "Submit"}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setShowAddForm(false)} disabled={addSaving}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <Button variant="outline" size="sm" className="gap-2" onClick={() => { setError(null); setShowAddForm(true); }}>
-                  <MessageSquare className="size-4" />
-                  Give feedback
-                </Button>
-              )}
-            </>
-          )}
+        </div>
+        )}
+        {!readOnly && !showAddForm && !hasFeedback && (
+          <Button variant="outline" size="sm" className="gap-2 mt-2" onClick={() => { setError(null); setShowAddForm(true); }}>
+            <MessageSquare className="size-4" />
+            Feedback
+          </Button>
+        )}
+        {!readOnly && showAddForm && (
+          <div className="rounded-lg border bg-muted/50 p-3 text-sm space-y-3 mt-2">
+            <Textarea
+              placeholder="Your feedback (optional)"
+              value={addText}
+              onChange={(e) => setAddText(e.target.value)}
+              className="min-h-[80px] resize-none text-sm"
+            />
+            <IntensityScale label="Muscle intensity (1–5)" value={addMuscle} onChange={setAddMuscle} />
+            <IntensityScale label="Cardio intensity (1–5)" value={addCardio} onChange={setAddCardio} />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={submitAdd} disabled={addSaving || addMuscle === null || addCardio === null}>
+                {addSaving ? "Saving…" : "Submit"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowAddForm(false)} disabled={addSaving}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
         </div>
       )}
     </div>

@@ -19,6 +19,7 @@ import {
   type FirstDayOfWeek,
   type Theme,
 } from "@/lib/preferences";
+import { usePreferences } from "@/components/preferences-provider";
 import { ArrowLeft, Waves } from "lucide-react";
 import { format } from "date-fns";
 
@@ -40,6 +41,7 @@ const THEME_OPTIONS: { value: Theme; label: string }[] = [
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const prefsContext = usePreferences();
   const [profile, setProfileState] = useState<Profile>({ name: "", email: "", memberSince: "" });
   const [prefs, setPrefsState] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [saved, setSaved] = useState(false);
@@ -59,6 +61,7 @@ export default function SettingsPage() {
   const handleSavePrefs = (updates: Partial<Preferences>) => {
     const next = savePreferences(updates);
     setPrefsState(next);
+    prefsContext?.setPreferences(updates);
     if (updates.defaultTheme) {
       setTheme(updates.defaultTheme);
     }

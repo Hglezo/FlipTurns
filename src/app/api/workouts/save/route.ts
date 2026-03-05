@@ -3,19 +3,12 @@ import { supabase } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
-    let body: {
+    const body = await request.json() as {
       dateKey: string;
       toUpdate: { id: string; content: string; workout_type: string | null; workout_category: string | null }[];
       toInsert: { content: string; workout_type: string | null; workout_category: string | null }[];
       toDelete: string[];
     };
-
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-    }
-
     const { dateKey, toUpdate, toInsert, toDelete } = body;
     if (!dateKey || !Array.isArray(toUpdate) || !Array.isArray(toInsert) || !Array.isArray(toDelete)) {
       return NextResponse.json({ error: "Missing dateKey, toUpdate, toInsert, or toDelete" }, { status: 400 });
@@ -61,6 +54,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(rows ?? []);
   } catch (err) {
+    if (err instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     console.error("Workouts save error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to save workouts" },
