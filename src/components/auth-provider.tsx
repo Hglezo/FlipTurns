@@ -37,7 +37,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .select("id, full_name, role")
       .eq("id", userId)
       .single();
-    setProfile(data as Profile | null);
+
+    if (data) {
+      setProfile(data as Profile);
+      return;
+    }
+
+    // Profile row is missing (user existed before migration, or trigger failed).
+    // Try to create it from the user's auth metadata.
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const meta = authUser?.user_metadata ?? {};
+    const role = (meta.role === "coach" || meta.role === "swimmer") ? meta.role : "swimmer";
+
+    const { data: created } = await supabase
+      .from("profiles")
+      .upsert({ id: userId, full_name: meta.full_name ?? null, role })
+      .select()
+      .single();
+
+    setProfile(created as Profile | null);
   }
 
   useEffect(() => {

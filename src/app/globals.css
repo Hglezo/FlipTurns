@@ -34,6 +34,7 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-accent-blue: var(--accent-blue);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -49,6 +50,7 @@
 
 :root {
   --radius: 0.625rem;
+  --accent-blue: oklch(0.488 0.243 264);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -83,6 +85,7 @@
 }
 
 .dark {
+  --accent-blue: oklch(0.646 0.2 264);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

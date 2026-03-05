@@ -175,9 +175,12 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
   if (!hasAnalysis && !showFeedbackSection) return null;
 
   return (
-    <div className={`space-y-3 ${className}`}>
+    <div className={`space-y-4 ${className}`}>
       {hasAnalysis && (
-        <div className="rounded-lg border bg-muted/50 p-3 text-sm">
+        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Volume
+          </p>
           <p className="mb-2 font-medium text-foreground">
             Total: {analysis.totalMeters.toLocaleString()} m
           </p>
@@ -199,11 +202,11 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
       {showFeedbackSection && (
         <div className="space-y-2">
         {(hasFeedback || !hasLoadedFeedback || readOnly) && (
-        <div className="rounded-lg border bg-muted/50 p-3 text-sm space-y-3">
-          {hasFeedback && <p className="font-medium text-foreground">Feedback</p>}
+        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-3">
+          {hasFeedback && <p className="text-xs font-semibold uppercase tracking-wide text-accent-blue">Feedback</p>}
           {hasFeedback ? (
             feedback!.map((fb) => (
-              <div key={fb.id} className="space-y-2 rounded-md border border-border/50 p-2">
+              <div key={fb.id} className="space-y-2 rounded-md border border-border/50 p-3">
                 {editingId === fb.id ? (
                   <div className="space-y-3">
                     <Textarea
@@ -277,7 +280,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
           </Button>
         )}
         {!readOnly && showAddForm && (
-          <div className="rounded-lg border bg-muted/50 p-3 text-sm space-y-3 mt-2">
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-3 mt-2">
             <Textarea
               placeholder="Your feedback (optional)"
               value={addText}

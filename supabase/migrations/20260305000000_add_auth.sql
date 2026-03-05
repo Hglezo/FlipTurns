@@ -1,5 +1,5 @@
 -- profiles table
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
   role text not null check (role in ('coach', 'swimmer')),
@@ -8,10 +8,12 @@ create table public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "Authenticated users can view profiles" on public.profiles;
 create policy "Authenticated users can view profiles"
   on public.profiles for select
   using (auth.uid() is not null);
 
+drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
   on public.profiles for update
   using (auth.uid() = id);
@@ -30,6 +32,7 @@ begin
 end;
 $$ language plpgsql security definer;
 
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
@@ -43,10 +46,16 @@ drop policy if exists "Anyone can read workouts" on public.workouts;
 drop policy if exists "Anyone can insert workouts" on public.workouts;
 drop policy if exists "Anyone can update workouts" on public.workouts;
 drop policy if exists "Anyone can delete workouts" on public.workouts;
+drop policy if exists "Coaches can select workouts" on public.workouts;
+drop policy if exists "Swimmers can view own workouts" on public.workouts;
+drop policy if exists "Authenticated users can view all workouts" on public.workouts;
+drop policy if exists "Coaches can insert workouts" on public.workouts;
+drop policy if exists "Coaches can update workouts" on public.workouts;
+drop policy if exists "Coaches can delete workouts" on public.workouts;
 
-create policy "Coaches can select workouts"
+create policy "Authenticated users can view all workouts"
   on public.workouts for select
-  using (exists (select 1 from public.profiles where id = auth.uid() and role = 'coach'));
+  using (auth.uid() is not null);
 
 create policy "Coaches can insert workouts"
   on public.workouts for insert
@@ -59,7 +68,3 @@ create policy "Coaches can update workouts"
 create policy "Coaches can delete workouts"
   on public.workouts for delete
   using (exists (select 1 from public.profiles where id = auth.uid() and role = 'coach'));
-
-create policy "Swimmers can view own workouts"
-  on public.workouts for select
-  using (assigned_to = auth.uid());
