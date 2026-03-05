@@ -14,34 +14,35 @@ const pool = new Pool({
 });
 
 export async function POST(request: Request) {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    return NextResponse.json(
-      { error: "DATABASE_URL not configured. Add it to .env.local from Supabase Dashboard → Database → Connection string." },
-      { status: 500 }
-    );
-  }
-
-  let body: {
-    dateKey: string;
-    toUpdate: { id: string; content: string; workout_type: string | null; workout_category: string | null }[];
-    toInsert: { content: string; workout_type: string | null; workout_category: string | null }[];
-    toDelete: string[];
-  };
-
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+    const url = process.env.DATABASE_URL;
+    if (!url) {
+      return NextResponse.json(
+        { error: "DATABASE_URL not configured. Add it to .env.local from Supabase Dashboard → Database → Connection string." },
+        { status: 500 }
+      );
+    }
 
-  const { dateKey, toUpdate, toInsert, toDelete } = body;
-  if (!dateKey || !Array.isArray(toUpdate) || !Array.isArray(toInsert) || !Array.isArray(toDelete)) {
-    return NextResponse.json({ error: "Missing dateKey, toUpdate, toInsert, or toDelete" }, { status: 400 });
-  }
+    let body: {
+      dateKey: string;
+      toUpdate: { id: string; content: string; workout_type: string | null; workout_category: string | null }[];
+      toInsert: { content: string; workout_type: string | null; workout_category: string | null }[];
+      toDelete: string[];
+    };
 
-  const client = await pool.connect();
-  try {
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    const { dateKey, toUpdate, toInsert, toDelete } = body;
+    if (!dateKey || !Array.isArray(toUpdate) || !Array.isArray(toInsert) || !Array.isArray(toDelete)) {
+      return NextResponse.json({ error: "Missing dateKey, toUpdate, toInsert, or toDelete" }, { status: 400 });
+    }
+
+    const client = await pool.connect();
+    try {
     for (const id of toDelete) {
       await client.query("DELETE FROM public.workouts WHERE id = $1", [id]);
     }
@@ -66,13 +67,20 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json(rows);
+    } catch (err) {
+      console.error("Workouts save error:", err);
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Failed to save workouts" },
+        { status: 500 }
+      );
+    } finally {
+      client.release();
+    }
   } catch (err) {
-    console.error("Workouts save error:", err);
+    console.error("Workouts save error (connection etc):", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to save workouts" },
       { status: 500 }
     );
-  } finally {
-    client.release();
   }
 }

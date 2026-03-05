@@ -204,16 +204,25 @@ export default function Home() {
       }),
     });
 
-    const data = await res.json();
+    let data: unknown;
+    try {
+      const text = await res.text();
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+
     if (!res.ok) {
-      console.error("Failed to save workouts:", data.error);
-      alert(data.error || "Failed to save workouts");
+      const msg = data && typeof data === "object" && "error" in data ? String((data as { error: string }).error) : "Failed to save workouts";
+      console.error("Failed to save workouts:", msg);
+      alert(msg);
       setLoading(false);
       return;
     }
 
+    const rows = Array.isArray(data) ? data : [];
     setCoachWorkouts(
-      (data ?? []).map((w: Workout & { date?: string }) => ({ ...w, date: normDate(w.date) ?? dateKey }))
+      rows.map((w: Workout & { date?: string }) => ({ ...w, date: normDate(w.date) ?? dateKey }))
     );
 
     setLoading(false);
