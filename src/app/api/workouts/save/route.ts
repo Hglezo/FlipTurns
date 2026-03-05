@@ -1,28 +1,8 @@
 import { NextResponse } from "next/server";
-import { Pool } from "pg";
-
-/**
- * Saves workouts via direct PostgreSQL connection.
- * Bypasses PostgREST schema cache issues (e.g. "Could not find column in schema cache").
- *
- * Requires DATABASE_URL in .env.local - get it from Supabase Dashboard:
- * Project Settings → Database → Connection string (URI) → Use "Transaction" mode (port 6543)
- */
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+import { supabase } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
-    const url = process.env.DATABASE_URL;
-    if (!url) {
-      return NextResponse.json(
-        { error: "DATABASE_URL not configured. Add it to .env.local from Supabase Dashboard → Database → Connection string." },
-        { status: 500 }
-      );
-    }
-
     let body: {
       dateKey: string;
       toUpdate: { id: string; content: string; workout_type: string | null; workout_category: string | null }[];
@@ -41,43 +21,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing dateKey, toUpdate, toInsert, or toDelete" }, { status: 400 });
     }
 
-    const client = await pool.connect();
-    try {
-    for (const id of toDelete) {
-      await client.query("DELETE FROM public.workouts WHERE id = $1", [id]);
+    if (toDelete.length > 0) {
+      const { error } = await supabase.from("workouts").delete().in("id", toDelete);
+      if (error) throw error;
     }
 
     for (const w of toUpdate) {
-      await client.query(
-        `UPDATE public.workouts SET content = $1, workout_type = $2, workout_category = $3, updated_at = $4 WHERE id = $5`,
-        [w.content, w.workout_type || null, w.workout_category || null, new Date().toISOString(), w.id]
-      );
+      const { error } = await supabase
+        .from("workouts")
+        .update({
+          content: w.content,
+          workout_type: w.workout_type,
+          workout_category: w.workout_category,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", w.id);
+      if (error) throw error;
     }
 
-    for (const w of toInsert) {
-      await client.query(
-        `INSERT INTO public.workouts (date, content, workout_type, workout_category) VALUES ($1, $2, $3, $4)`,
-        [dateKey, w.content, w.workout_type || null, w.workout_category || null]
+    if (toInsert.length > 0) {
+      const { error } = await supabase.from("workouts").insert(
+        toInsert.map((w) => ({
+          date: dateKey,
+          content: w.content,
+          workout_type: w.workout_type,
+          workout_category: w.workout_category,
+        }))
       );
+      if (error) throw error;
     }
 
-    const { rows } = await client.query(
-      "SELECT * FROM public.workouts WHERE date = $1 ORDER BY created_at ASC",
-      [dateKey]
-    );
+    const { data: rows, error } = await supabase
+      .from("workouts")
+      .select("*")
+      .eq("date", dateKey)
+      .order("created_at", { ascending: true });
 
-    return NextResponse.json(rows);
-    } catch (err) {
-      console.error("Workouts save error:", err);
-      return NextResponse.json(
-        { error: err instanceof Error ? err.message : "Failed to save workouts" },
-        { status: 500 }
-      );
-    } finally {
-      client.release();
-    }
+    if (error) throw error;
+
+    return NextResponse.json(rows ?? []);
   } catch (err) {
-    console.error("Workouts save error (connection etc):", err);
+    console.error("Workouts save error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to save workouts" },
       { status: 500 }

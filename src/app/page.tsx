@@ -59,6 +59,44 @@ function workoutLabel(w: Workout): string {
   return "Workout";
 }
 
+function WorkoutBlock({
+  workout,
+  dateKey,
+  showLabel,
+  feedbackRefreshKey,
+  onFeedbackChange,
+  className = "mt-4",
+  readOnly,
+  compact,
+}: {
+  workout: Workout;
+  dateKey: string;
+  showLabel: boolean;
+  feedbackRefreshKey: number;
+  onFeedbackChange?: () => void;
+  className?: string;
+  readOnly?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <div>
+      {showLabel && (workout.workout_type || workout.workout_category) && (
+        <p className={`text-sm font-medium text-muted-foreground ${compact ? "mb-1" : "mb-2"}`}>{workoutLabel(workout)}</p>
+      )}
+      <pre className={`whitespace-pre-wrap font-sans leading-relaxed ${compact ? "text-[14px]" : "text-[15px]"}`}>{workout.content}</pre>
+      <WorkoutAnalysis
+        content={workout.content}
+        date={dateKey}
+        workoutId={workout.id}
+        refreshKey={feedbackRefreshKey}
+        onFeedbackChange={onFeedbackChange}
+        className={className}
+        readOnly={readOnly}
+      />
+    </div>
+  );
+}
+
 export default function Home() {
   const { weekStartsOn } = usePreferences() ?? { weekStartsOn: 1 as 0 | 1 };
   const [mode, setMode] = useState<Mode>("swimmer");
@@ -82,6 +120,7 @@ export default function Home() {
   const normDate = (d: string | undefined) => (d && typeof d === "string" ? d.slice(0, 10) : d);
 
   const PREVIEW_LENGTH = 80;
+const preview = (s: string) => s.slice(0, PREVIEW_LENGTH) + (s.length > PREVIEW_LENGTH ? "…" : "");
 
   // Fetch workouts when date changes (swimmer mode) - skip in week view, we have weekWorkouts
   useEffect(() => {
@@ -204,16 +243,10 @@ export default function Home() {
       }),
     });
 
-    let data: unknown;
-    try {
-      const text = await res.text();
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = null;
-    }
+    const data = await res.json().catch(() => null);
 
     if (!res.ok) {
-      const msg = data && typeof data === "object" && "error" in data ? String((data as { error: string }).error) : "Failed to save workouts";
+      const msg = (data && typeof data === "object" && "error" in data ? (data as { error: string }).error : "Failed to save workouts") as string;
       console.error("Failed to save workouts:", msg);
       alert(msg);
       setLoading(false);
@@ -381,22 +414,14 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                     ) : viewWorkouts.length > 0 ? (
                       <div className="space-y-6">
                         {viewWorkouts.map((workout, i) => (
-                          <div key={workout.id || i}>
-                            {viewWorkouts.length > 1 && (workout.workout_type || workout.workout_category) && (
-                              <p className="mb-2 text-sm font-medium text-muted-foreground">{workoutLabel(workout)}</p>
-                            )}
-                            <pre className="whitespace-pre-wrap font-sans text-[15px] leading-relaxed">
-                              {workout.content}
-                            </pre>
-                            <WorkoutAnalysis
-                              content={workout.content}
-                              date={dateKey}
-                              workoutId={workout.id}
-                              refreshKey={feedbackRefreshKey}
-                              onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                              className="mt-4"
-                            />
-                          </div>
+                          <WorkoutBlock
+                            key={workout.id || i}
+                            workout={workout}
+                            dateKey={dateKey}
+                            showLabel={viewWorkouts.length > 1}
+                            feedbackRefreshKey={feedbackRefreshKey}
+                            onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -434,9 +459,7 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                           const dayWorkouts = weekWorkouts.filter((w) => normDate(w.date) === dayKey);
                           const isExpanded = expandedDayKey === dayKey;
                           const firstContent = dayWorkouts[0]?.content;
-                          const preview = firstContent
-                            ? firstContent.slice(0, PREVIEW_LENGTH) + (firstContent.length > PREVIEW_LENGTH ? "…" : "")
-                            : null;
+                          const display = firstContent ? preview(firstContent) : null;
                           return (
                             <div
                               key={day.toISOString()}
@@ -459,7 +482,7 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                                       {dayWorkouts.length === 1
                                         ? (dayWorkouts[0].workout_type || dayWorkouts[0].workout_category
                                           ? workoutLabel(dayWorkouts[0])
-                                          : preview)
+                                          : display)
                                         : dayWorkouts.map((w) => workoutLabel(w)).join(" · ")}
                                     </p>
                                   ) : (
@@ -475,22 +498,16 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                               {isExpanded && dayWorkouts.length > 0 && (
                                 <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200 space-y-4">
                                   {dayWorkouts.map((workout, i) => (
-                                    <div key={workout.id || i}>
-                                      {dayWorkouts.length > 1 && (workout.workout_type || workout.workout_category) && (
-                                        <p className="mb-1 text-sm font-medium text-muted-foreground">{workoutLabel(workout)}</p>
-                                      )}
-                                      <pre className="whitespace-pre-wrap font-sans text-[14px] leading-relaxed">
-                                        {workout.content}
-                                      </pre>
-                                      <WorkoutAnalysis
-                                        content={workout.content}
-                                        date={dayKey}
-                                        workoutId={workout.id}
-                                        refreshKey={feedbackRefreshKey}
-                                        onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                                        className="mt-2"
-                                      />
-                                    </div>
+                                    <WorkoutBlock
+                                      key={workout.id || i}
+                                      workout={workout}
+                                      dateKey={dayKey}
+                                      showLabel={dayWorkouts.length > 1}
+                                      feedbackRefreshKey={feedbackRefreshKey}
+                                      onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                                      className="mt-2"
+                                      compact
+                                    />
                                   ))}
                                 </div>
                               )}
@@ -519,28 +536,17 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                         setExpandedWeekKey(null);
                         setExpandedMonthDayKey(null);
                       }}
-                      modifiers={{
-                        workoutDots1: (() => {
-                          const countByDate: Record<string, number> = {};
-                          for (const w of monthWorkouts) {
-                            const d = normDate(w.date);
-                            if (d) countByDate[d] = (countByDate[d] || 0) + 1;
-                          }
-                          return Object.entries(countByDate)
-                            .filter(([, c]) => c === 1)
-                            .map(([d]) => new Date(d + "T12:00:00"));
-                        })(),
-                        workoutDots2: (() => {
-                          const countByDate: Record<string, number> = {};
-                          for (const w of monthWorkouts) {
-                            const d = normDate(w.date);
-                            if (d) countByDate[d] = (countByDate[d] || 0) + 1;
-                          }
-                          return Object.entries(countByDate)
-                            .filter(([, c]) => c >= 2)
-                            .map(([d]) => new Date(d + "T12:00:00"));
-                        })(),
-                      }}
+                      modifiers={(() => {
+                        const countByDate: Record<string, number> = {};
+                        for (const w of monthWorkouts) {
+                          const d = normDate(w.date);
+                          if (d) countByDate[d] = (countByDate[d] || 0) + 1;
+                        }
+                        return {
+                          workoutDots1: Object.entries(countByDate).filter(([, c]) => c === 1).map(([d]) => new Date(d + "T12:00:00")),
+                          workoutDots2: Object.entries(countByDate).filter(([, c]) => c >= 2).map(([d]) => new Date(d + "T12:00:00")),
+                        };
+                      })()}
                       modifiersClassNames={{
                         workoutDots1: "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:size-1.5 after:rounded-full after:bg-primary",
                         workoutDots2: "relative before:content-[''] before:absolute before:bottom-1 before:left-[calc(50%-6px)] before:size-1.5 before:rounded-full before:bg-primary after:content-[''] after:absolute after:bottom-1 after:left-[calc(50%+2px)] after:size-1.5 after:rounded-full after:bg-primary",
@@ -617,9 +623,7 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                                       const dayWorkouts = weekWorkoutsList.filter((w) => normDate(w.date) === dayKey);
                                       const isDayExpanded = expandedMonthDayKey === dayKey;
                                       const firstContent = dayWorkouts[0]?.content;
-                                      const preview = firstContent
-                                        ? firstContent.slice(0, PREVIEW_LENGTH) + (firstContent.length > PREVIEW_LENGTH ? "…" : "")
-                                        : null;
+                                      const display = firstContent ? preview(firstContent) : null;
                                       return (
                                         <div
                                           key={dayKey}
@@ -642,7 +646,7 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                                                   {dayWorkouts.length === 1
                                                     ? (dayWorkouts[0].workout_type || dayWorkouts[0].workout_category
                                                       ? workoutLabel(dayWorkouts[0])
-                                                      : preview)
+                                                      : display)
                                                     : dayWorkouts.map((w) => workoutLabel(w)).join(" · ")}
                                                 </p>
                                               ) : (
@@ -658,22 +662,16 @@ const wStart = startOfWeek(selectedDate, { weekStartsOn });
                                           {isDayExpanded && dayWorkouts.length > 0 && (
                                             <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
                                               {dayWorkouts.map((workout, i) => (
-                                                <div key={workout.id || i}>
-                                                  {dayWorkouts.length > 1 && (workout.workout_type || workout.workout_category) && (
-                                                    <p className="mb-1 text-sm font-medium text-muted-foreground">{workoutLabel(workout)}</p>
-                                                  )}
-                                                  <pre className="whitespace-pre-wrap font-sans text-[14px] leading-relaxed">
-                                                    {workout.content}
-                                                  </pre>
-                                                  <WorkoutAnalysis
-                                                    content={workout.content}
-                                                    date={dayKey}
-                                                    workoutId={workout.id}
-                                                    refreshKey={feedbackRefreshKey}
-                                                    onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                                                    className="mt-2"
-                                                  />
-                                                </div>
+                                                <WorkoutBlock
+                                                  key={workout.id || i}
+                                                  workout={workout}
+                                                  dateKey={dayKey}
+                                                  showLabel={dayWorkouts.length > 1}
+                                                  feedbackRefreshKey={feedbackRefreshKey}
+                                                  onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                                                  className="mt-2"
+                                                  compact
+                                                />
                                               ))}
                                             </div>
                                           )}

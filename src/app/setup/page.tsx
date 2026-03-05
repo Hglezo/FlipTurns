@@ -70,26 +70,11 @@ create policy "Anyone can update workouts" on public.workouts for update using (
 create policy "Anyone can delete workouts" on public.workouts for delete using (true);`;
 
 export default function SetupPage() {
-  const [copied, setCopied] = useState(false);
-  const [copiedWorkouts, setCopiedWorkouts] = useState(false);
-  const [copiedFull, setCopiedFull] = useState(false);
-
-  const copySql = () => {
-    navigator.clipboard.writeText(FEEDBACK_POLICIES_SQL);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const copyWorkoutsSql = () => {
-    navigator.clipboard.writeText(WORKOUTS_SETUP_SQL);
-    setCopiedWorkouts(true);
-    setTimeout(() => setCopiedWorkouts(false), 2000);
-  };
-
-  const copyFullSql = () => {
-    navigator.clipboard.writeText(FULL_SETUP_SQL);
-    setCopiedFull(true);
-    setTimeout(() => setCopiedFull(false), 2000);
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(text);
+    setTimeout(() => setCopied(null), 2000);
   };
 
   return (
@@ -120,10 +105,10 @@ export default function SetupPage() {
                 variant="outline"
                 size="sm"
                 className="absolute right-2 top-2 gap-1"
-                onClick={copyFullSql}
+                onClick={() => copy(FULL_SETUP_SQL)}
               >
-                {copiedFull ? <Check className="size-4" /> : <Copy className="size-4" />}
-                {copiedFull ? "Copied" : "Copy all"}
+                {copied === FULL_SETUP_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === FULL_SETUP_SQL ? "Copied" : "Copy all"}
               </Button>
             </div>
           </CardContent>
@@ -145,10 +130,10 @@ export default function SetupPage() {
                 variant="outline"
                 size="sm"
                 className="absolute right-2 top-2 gap-1"
-                onClick={copySql}
+                onClick={() => copy(FEEDBACK_POLICIES_SQL)}
               >
-                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                {copied ? "Copied" : "Copy"}
+                {copied === FEEDBACK_POLICIES_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === FEEDBACK_POLICIES_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
             <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
@@ -175,10 +160,10 @@ export default function SetupPage() {
                 variant="outline"
                 size="sm"
                 className="absolute right-2 top-2 gap-1"
-                onClick={copyWorkoutsSql}
+                onClick={() => copy(WORKOUTS_SETUP_SQL)}
               >
-                {copiedWorkouts ? <Check className="size-4" /> : <Copy className="size-4" />}
-                {copiedWorkouts ? "Copied" : "Copy"}
+                {copied === WORKOUTS_SETUP_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === WORKOUTS_SETUP_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>
@@ -188,16 +173,9 @@ export default function SetupPage() {
           <CardHeader>
             <CardTitle className="text-base">Coach save: &quot;Could not find column in schema cache&quot;</CardTitle>
             <p className="text-sm text-muted-foreground">
-              If coach save fails with a schema cache error, add <code className="rounded bg-muted px-1 py-0.5 text-xs">DATABASE_URL</code> to your <code className="rounded bg-muted px-1 py-0.5 text-xs">.env.local</code> file. The app will then save workouts via a direct database connection.
+              If coach save fails with a schema cache error, run <code className="rounded bg-muted px-1 py-0.5 text-xs">NOTIFY pgrst, &apos;reload schema&apos;;</code> in Supabase SQL Editor to refresh the schema cache.
             </p>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p>1. In Supabase Dashboard → Project Settings → Database</p>
-            <p>2. Copy the &quot;Connection string&quot; (URI) — use <strong>Transaction</strong> mode (port 6543)</p>
-            <p>3. In your project root, create or edit <code className="rounded bg-muted px-1 py-0.5 text-xs">.env.local</code> and add:</p>
-            <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-3 text-xs">DATABASE_URL=&quot;postgresql://postgres.[ref]:[password]@...pooler.supabase.com:6543/postgres&quot;</pre>
-            <p>4. Restart the dev server (<code className="rounded bg-muted px-1 py-0.5 text-xs">npm run dev</code>)</p>
-          </CardContent>
         </Card>
 
         <p className="mt-6 text-center text-sm text-muted-foreground">

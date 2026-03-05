@@ -139,10 +139,7 @@ export default function SettingsPage() {
                       key={opt.value}
                       variant={prefs?.poolSize === opt.value ? "default" : "outline"}
                       size="sm"
-                      onClick={() => {
-                        handleSavePrefs({ poolSize: opt.value });
-                        setPrefsState((p) => ({ ...p, poolSize: opt.value }));
-                      }}
+                      onClick={() => handleSavePrefs({ poolSize: opt.value })}
                     >
                       {opt.label}
                     </Button>
@@ -157,10 +154,7 @@ export default function SettingsPage() {
                       key={opt.value}
                       variant={prefs?.firstDayOfWeek === opt.value ? "default" : "outline"}
                       size="sm"
-                      onClick={() => {
-                        handleSavePrefs({ firstDayOfWeek: opt.value });
-                        setPrefsState((p) => ({ ...p, firstDayOfWeek: opt.value }));
-                      }}
+                      onClick={() => handleSavePrefs({ firstDayOfWeek: opt.value })}
                     >
                       {opt.label}
                     </Button>
@@ -175,11 +169,7 @@ export default function SettingsPage() {
                       key={opt.value}
                       variant={prefs?.defaultTheme === opt.value ? "default" : "outline"}
                       size="sm"
-                      onClick={() => {
-                        handleSavePrefs({ defaultTheme: opt.value });
-                        setTheme(opt.value);
-                        setPrefsState((p) => ({ ...p, defaultTheme: opt.value }));
-                      }}
+                      onClick={() => handleSavePrefs({ defaultTheme: opt.value })}
                     >
                       {opt.label}
                     </Button>

@@ -255,8 +255,6 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
                 )}
               </div>
             ))
-          ) : hasLoadedFeedback && !readOnly ? (
-            <p className="text-muted-foreground text-sm">No feedback yet.</p>
           ) : hasLoadedFeedback ? (
             <p className="text-muted-foreground text-sm">No feedback yet.</p>
           ) : (
