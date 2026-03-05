@@ -60,6 +60,10 @@ drop policy if exists "Anyone can delete feedback" on public.feedback;
 create policy "Anyone can update feedback" on public.feedback for update using (true);
 create policy "Anyone can delete feedback" on public.feedback for delete using (true);`;
 
+const FEEDBACK_WORKOUT_ID_SQL = `-- Link feedback to specific workout (so each swimmer's feedback stays with their workout)
+alter table public.feedback
+  add column if not exists workout_id uuid references public.workouts(id) on delete cascade;`;
+
 const WORKOUTS_SETUP_SQL = `alter table public.workouts drop constraint if exists workouts_date_key;
 alter table public.workouts add column if not exists session text default '';
 alter table public.workouts add column if not exists workout_type text default '';
@@ -141,6 +145,31 @@ export default function SetupPage() {
               <li>Select your project → SQL Editor</li>
               <li>Paste the SQL above and run it</li>
             </ol>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Feedback per workout</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              If feedback from one swimmer appears on other swimmers&apos; workouts on the same day, run this to link feedback to each workout.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{FEEDBACK_WORKOUT_ID_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(FEEDBACK_WORKOUT_ID_SQL)}
+              >
+                {copied === FEEDBACK_WORKOUT_ID_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === FEEDBACK_WORKOUT_ID_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

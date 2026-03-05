@@ -176,12 +176,7 @@ export default function Home() {
     }
   }, [authLoading, user, router]);
 
-  // Default swimmer picker to own profile
-  useEffect(() => {
-    if (role === "swimmer" && user) {
-      setSelectedViewSwimmerId(user.id);
-    }
-  }, [role, user?.id]);
+  // Swimmers default to own workouts (selectedViewSwimmerId null = "my workouts")
 
   // Fetch swimmer list (coaches need it for assignment; swimmers need it to show names)
   useEffect(() => {
@@ -194,7 +189,7 @@ export default function Home() {
       .then(({ data }) => setSwimmers((data as SwimmerProfile[]) ?? []));
   }, [role]);
 
-  // Fetch workouts for swimmer (day view)
+  // Fetch workouts for swimmer (day view). null = own, "" = all, uuid = that swimmer
   useEffect(() => {
     if (role !== "swimmer" || viewMode !== "day" || !user) return;
 
@@ -205,7 +200,8 @@ export default function Home() {
         .select("*")
         .eq("date", dateKey)
         .order("created_at", { ascending: true });
-      if (selectedViewSwimmerId) query = query.eq("assigned_to", selectedViewSwimmerId);
+      const filterId = selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? user.id);
+      if (filterId) query = query.eq("assigned_to", filterId);
 
       const { data } = await query;
       setViewWorkouts(
@@ -262,7 +258,8 @@ export default function Home() {
         .gte("date", format(weekStart, "yyyy-MM-dd"))
         .lte("date", format(weekEnd, "yyyy-MM-dd"))
         .order("date", { ascending: true });
-      if (role === "swimmer" && selectedViewSwimmerId) query = query.eq("assigned_to", selectedViewSwimmerId);
+      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? user?.id)) : null;
+      if (role === "swimmer" && swimmerFilterId) query = query.eq("assigned_to", swimmerFilterId);
       if (role === "coach" && selectedCoachSwimmerId) query = query.eq("assigned_to", selectedCoachSwimmerId);
 
       const { data } = await query;
@@ -286,7 +283,8 @@ export default function Home() {
         .select("*")
         .gte("date", format(monthStart, "yyyy-MM-dd"))
         .lte("date", format(monthEnd, "yyyy-MM-dd"));
-      if (role === "swimmer" && selectedViewSwimmerId) query = query.eq("assigned_to", selectedViewSwimmerId);
+      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? user?.id)) : null;
+      if (role === "swimmer" && swimmerFilterId) query = query.eq("assigned_to", swimmerFilterId);
       if (role === "coach" && selectedCoachSwimmerId) query = query.eq("assigned_to", selectedCoachSwimmerId);
 
       const { data } = await query;
@@ -619,13 +617,14 @@ export default function Home() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2 text-xs font-medium">
-                    {selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? "Swimmer" : "All swimmers"}
+                    {selectedViewSwimmerId === "" ? "All swimmers" : (selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? "Swimmer" : (profile?.full_name ?? "My workouts"))}
                     <ChevronDown className="size-3.5 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[10rem]">
-                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(null)}>All swimmers</DropdownMenuItem>
-                  {swimmers.map((s) => (
+                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(null)}>{profile?.full_name ?? "My workouts"}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId("")}>All swimmers</DropdownMenuItem>
+                  {swimmers.filter((s) => s.id !== user?.id).map((s) => (
                     <DropdownMenuItem key={s.id} onClick={() => setSelectedViewSwimmerId(s.id)}>
                       {s.full_name ?? s.id}
                     </DropdownMenuItem>
@@ -691,7 +690,7 @@ export default function Home() {
                               showLabel
                               feedbackRefreshKey={feedbackRefreshKey}
                               onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                              assigneeBadge={assignee && !selectedViewSwimmerId ? (
+                              assigneeBadge={assignee && selectedViewSwimmerId === "" ? (
                                 <span className={assigneeBadgeClass}>{assignee.full_name ?? "Swimmer"}</span>
                               ) : undefined}
                             />
@@ -760,18 +759,24 @@ export default function Home() {
                             </button>
                             {isExpanded && dayWorkouts.length > 0 && (
                               <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200 space-y-4">
-                                {dayWorkouts.map((workout, i) => (
-                                  <WorkoutBlock
-                                    key={workout.id || i}
-                                    workout={workout}
-                                    dateKey={dayKey}
-                                    showLabel
-                                    feedbackRefreshKey={feedbackRefreshKey}
-                                    onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                                    className="mt-2"
-                                    compact
-                                  />
-                                ))}
+                                {dayWorkouts.map((workout, i) => {
+                                  const assignee = swimmers.find((s) => s.id === workout.assigned_to);
+                                  return (
+                                    <WorkoutBlock
+                                      key={workout.id || i}
+                                      workout={workout}
+                                      dateKey={dayKey}
+                                      showLabel
+                                      feedbackRefreshKey={feedbackRefreshKey}
+                                      onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                                      className="mt-2"
+                                      compact
+                                      assigneeBadge={assignee && selectedViewSwimmerId === "" ? (
+                                        <span className={assigneeBadgeClass}>{assignee.full_name ?? "Swimmer"}</span>
+                                      ) : undefined}
+                                    />
+                                  );
+                                })}
                               </div>
                             )}
                           </Card>
@@ -901,18 +906,24 @@ export default function Home() {
                                         {isDayExpanded && (
                                           <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
                                             {dayWorkouts.length > 0 ? (
-                                              dayWorkouts.map((workout, i) => (
-                                                <WorkoutBlock
-                                                  key={workout.id || i}
-                                                  workout={workout}
-                                                  dateKey={dayKey}
-                                                  showLabel
-                                                  feedbackRefreshKey={feedbackRefreshKey}
-                                                  onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                                                  className="mt-2"
-                                                  compact
-                                                />
-                                              ))
+                                              dayWorkouts.map((workout, i) => {
+                                                const assignee = swimmers.find((s) => s.id === workout.assigned_to);
+                                                return (
+                                                  <WorkoutBlock
+                                                    key={workout.id || i}
+                                                    workout={workout}
+                                                    dateKey={dayKey}
+                                                    showLabel
+                                                    feedbackRefreshKey={feedbackRefreshKey}
+                                                    onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                                                    className="mt-2"
+                                                    compact
+                                                    assigneeBadge={assignee && selectedViewSwimmerId === "" ? (
+                                                      <span className={assigneeBadgeClass}>{assignee.full_name ?? "Swimmer"}</span>
+                                                    ) : undefined}
+                                                  />
+                                                );
+                                              })
                                             ) : (
                                               <p className="text-sm text-muted-foreground">No workout</p>
                                             )}

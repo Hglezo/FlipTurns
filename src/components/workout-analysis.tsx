@@ -42,16 +42,21 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
 
   useEffect(() => {
     if (!date) return;
+    if (!workoutId) {
+      setFeedback([]);
+      return;
+    }
     async function fetchFeedback() {
       const { data } = await supabase
         .from("feedback")
         .select("id, feedback_text, muscle_intensity, cardio_intensity")
         .eq("date", date)
+        .eq("workout_id", workoutId)
         .order("created_at", { ascending: false });
       setFeedback(data ?? []);
     }
     fetchFeedback();
-  }, [date, refreshKey]);
+  }, [date, workoutId, refreshKey]);
 
   const startEdit = (fb: Feedback) => {
     setError(null);
@@ -117,6 +122,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     setAddSaving(true);
     const { error } = await supabase.from("feedback").insert({
       date,
+      workout_id: workoutId || null,
       feedback_text: addText || null,
       muscle_intensity: addMuscle,
       cardio_intensity: addCardio,
@@ -130,10 +136,11 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     setAddMuscle(null);
     setAddCardio(null);
     setShowAddForm(false);
-    const { data } = await supabase
+    const q = supabase
       .from("feedback")
       .select("id, feedback_text, muscle_intensity, cardio_intensity")
-      .eq("date", date)
+      .eq("date", date);
+    const { data } = await (workoutId ? q.eq("workout_id", workoutId) : q.is("workout_id", null))
       .order("created_at", { ascending: false });
     setFeedback(data ?? []);
     onFeedbackChange?.();
