@@ -51,36 +51,63 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
+import { SignOutDropdown } from "@/components/sign-out-dropdown";
 import { usePreferences } from "@/components/preferences-provider";
 import { useAuth } from "@/components/auth-provider";
 
 type ViewMode = "day" | "week" | "month";
+
+type SwimmerGroup = "Sprint" | "Middle distance" | "Distance";
 
 interface Workout {
   id: string;
   date: string;
   content: string;
   session?: string | null;
-  workout_type?: string | null;
   workout_category?: string | null;
   assigned_to?: string | null;
+  assigned_to_group?: SwimmerGroup | null;
 }
 
 interface SwimmerProfile {
   id: string;
   full_name: string | null;
+  swimmer_group?: SwimmerGroup | null;
 }
 
-const WORKOUT_TYPES = ["", "Sprint", "Middle distance", "Distance"] as const;
+const SWIMMER_GROUPS: SwimmerGroup[] = ["Sprint", "Middle distance", "Distance"];
 const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Tech suit"] as const;
 
+function orAssignFilter(userId: string, group: string | null | undefined): string {
+  if (!group) return `assigned_to.eq.${userId}`;
+  const escaped = group.includes(" ") ? `"${group}"` : group;
+  return `assigned_to.eq.${userId},assigned_to_group.eq.${escaped}`;
+}
+
 function workoutLabel(w: Workout): string {
-  const type = w.workout_type?.trim();
   const cat = w.workout_category?.trim();
-  if (type && cat) return `${type} · ${cat}`;
-  if (type) return type;
-  if (cat) return cat;
-  return "Workout";
+  return cat || "Workout";
+}
+
+function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): string | null {
+  if (workout.assigned_to_group) return `${workout.assigned_to_group} group`;
+  const assignee = swimmers.find((s) => s.id === workout.assigned_to);
+  return assignee?.full_name ?? (workout.assigned_to ? "Swimmer" : null);
+}
+
+const COACH_GROUP_ORDER = ["Sprint", "Middle distance", "Distance"] as const;
+
+function sortCoachWorkouts(workouts: Workout[], swimmers: SwimmerProfile[]): Workout[] {
+  return [...workouts].sort((a, b) => {
+    const aIdx = a.assigned_to_group ? COACH_GROUP_ORDER.indexOf(a.assigned_to_group as (typeof COACH_GROUP_ORDER)[number]) : -1;
+    const bIdx = b.assigned_to_group ? COACH_GROUP_ORDER.indexOf(b.assigned_to_group as (typeof COACH_GROUP_ORDER)[number]) : -1;
+    if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+    if (aIdx >= 0) return -1;
+    if (bIdx >= 0) return 1;
+    const aName = swimmers.find((s) => s.id === a.assigned_to)?.full_name ?? "";
+    const bName = swimmers.find((s) => s.id === b.assigned_to)?.full_name ?? "";
+    return aName.localeCompare(bName);
+  });
 }
 
 const badgeClass = "inline-flex items-center rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue";
@@ -107,14 +134,18 @@ function WorkoutBlock({
   readOnly?: boolean;
   compact?: boolean;
 }) {
-  const hasTypeCategory = showLabel && (workout.workout_type?.trim() || workout.workout_category?.trim());
+  const hasCategory = showLabel && workout.workout_category?.trim();
+  const hasGroup = showLabel && workout.assigned_to_group?.trim();
+  const hasBadges = hasCategory || hasGroup;
   return (
     <div className="space-y-4">
-      {hasTypeCategory && (
+      {hasBadges && (
         <div className={`flex flex-wrap justify-end gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
-          {workout.workout_type?.trim() && (
-            <span className={badgeClass}>{workout.workout_type.trim()}</span>
-          )}
+          {workout.assigned_to_group?.trim() ? (
+            <span className={badgeClass}>{workout.assigned_to_group.trim()}</span>
+          ) : workout.assigned_to ? (
+            <span className={badgeClass}>Personal</span>
+          ) : null}
           {workout.workout_category?.trim() && (
             <span className={badgeClass}>{workout.workout_category.trim()}</span>
           )}
@@ -143,6 +174,7 @@ function WorkoutBlock({
 export default function Home() {
   const { weekStartsOn } = usePreferences() ?? { weekStartsOn: 1 as 0 | 1 };
   const { user, profile, role, signOut, loading: authLoading } = useAuth();
+  const swimmerGroup = profile?.role === "swimmer" ? profile?.swimmer_group : null;
   const router = useRouter();
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -181,12 +213,24 @@ export default function Home() {
   // Fetch swimmer list (coaches need it for assignment; swimmers need it to show names)
   useEffect(() => {
     if (!role) return;
-    supabase
-      .from("profiles")
-      .select("id, full_name")
-      .eq("role", "swimmer")
-      .order("full_name")
-      .then(({ data }) => setSwimmers((data as SwimmerProfile[]) ?? []));
+    async function loadSwimmers() {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, swimmer_group")
+        .eq("role", "swimmer")
+        .order("full_name");
+      if (!error && data) {
+        setSwimmers((data as SwimmerProfile[]) ?? []);
+        return;
+      }
+      const { data: base } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .eq("role", "swimmer")
+        .order("full_name");
+      setSwimmers(((base ?? []).map((s) => ({ ...s, swimmer_group: null })) as SwimmerProfile[]));
+    }
+    loadSwimmers();
   }, [role]);
 
   // Fetch workouts for swimmer (day view). null = own, "" = all, uuid = that swimmer
@@ -202,7 +246,10 @@ export default function Home() {
         .eq("date", dateKey)
         .order("created_at", { ascending: true });
       const filterId = selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? userId);
-      if (filterId) query = query.eq("assigned_to", filterId);
+      const filterGroup = filterId === userId ? swimmerGroup : swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null;
+      if (filterId) {
+        query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
+      }
 
       const { data } = await query;
       setViewWorkouts(
@@ -212,7 +259,7 @@ export default function Home() {
     }
 
     fetchWorkouts();
-  }, [dateKey, role, viewMode, user?.id, selectedViewSwimmerId]);
+  }, [dateKey, role, viewMode, user?.id, selectedViewSwimmerId, swimmerGroup, swimmers]);
 
   // Fetch workouts for coach (day view)
   useEffect(() => {
@@ -227,13 +274,16 @@ export default function Home() {
         .select("*")
         .eq("date", dateKey)
         .order("created_at", { ascending: true });
-      if (selectedCoachSwimmerId) query = query.eq("assigned_to", selectedCoachSwimmerId);
+      const coachFilterGroup = selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null : null;
+      if (selectedCoachSwimmerId) {
+        query = coachFilterGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachFilterGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+      }
 
       const { data } = await query;
       const rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
-        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_type: null, workout_category: null, assigned_to: selectedCoachSwimmerId ?? null };
+        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, assigned_to: selectedCoachSwimmerId ?? null, assigned_to_group: null };
         setCoachWorkouts([...rows, newWorkout]);
         setEditingWorkoutIndex(rows.length);
       } else {
@@ -243,7 +293,7 @@ export default function Home() {
     }
 
     fetchWorkouts();
-  }, [dateKey, role, viewMode, user?.id, selectedCoachSwimmerId]);
+  }, [dateKey, role, viewMode, user?.id, selectedCoachSwimmerId, swimmers]);
 
   // Fetch workouts for week view
   useEffect(() => {
@@ -260,8 +310,17 @@ export default function Home() {
         .lte("date", format(weekEnd, "yyyy-MM-dd"))
         .order("date", { ascending: true });
       const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? user?.id)) : null;
-      if (role === "swimmer" && swimmerFilterId) query = query.eq("assigned_to", swimmerFilterId);
-      if (role === "coach" && selectedCoachSwimmerId) query = query.eq("assigned_to", selectedCoachSwimmerId);
+      const weekFilterId = role === "swimmer" ? swimmerFilterId : selectedCoachSwimmerId;
+      const weekFilterGroup = role === "swimmer" && swimmerFilterId === user?.id
+        ? swimmerGroup
+        : weekFilterId ? swimmers.find((s) => s.id === weekFilterId)?.swimmer_group ?? null : null;
+      if (role === "swimmer" && swimmerFilterId) {
+        query = weekFilterGroup ? query.or(orAssignFilter(swimmerFilterId, weekFilterGroup)) : query.eq("assigned_to", swimmerFilterId);
+      }
+      if (role === "coach" && selectedCoachSwimmerId) {
+        const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
+        query = coachGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+      }
 
       const { data } = await query;
       setWeekWorkouts(data ?? []);
@@ -269,7 +328,7 @@ export default function Home() {
     }
 
     fetchWeekWorkouts();
-  }, [selectedDate, viewMode, weekStartsOn, user?.id, role, selectedViewSwimmerId, selectedCoachSwimmerId]);
+  }, [selectedDate, viewMode, weekStartsOn, user?.id, role, selectedViewSwimmerId, selectedCoachSwimmerId, swimmerGroup, swimmers]);
 
   // Fetch workouts for month view
   useEffect(() => {
@@ -285,8 +344,17 @@ export default function Home() {
         .gte("date", format(monthStart, "yyyy-MM-dd"))
         .lte("date", format(monthEnd, "yyyy-MM-dd"));
       const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? user?.id)) : null;
-      if (role === "swimmer" && swimmerFilterId) query = query.eq("assigned_to", swimmerFilterId);
-      if (role === "coach" && selectedCoachSwimmerId) query = query.eq("assigned_to", selectedCoachSwimmerId);
+      const monthFilterId = role === "swimmer" ? swimmerFilterId : selectedCoachSwimmerId;
+      const monthFilterGroup = role === "swimmer" && swimmerFilterId === user?.id
+        ? swimmerGroup
+        : monthFilterId ? swimmers.find((s) => s.id === monthFilterId)?.swimmer_group ?? null : null;
+      if (role === "swimmer" && swimmerFilterId) {
+        query = monthFilterGroup ? query.or(orAssignFilter(swimmerFilterId, monthFilterGroup)) : query.eq("assigned_to", swimmerFilterId);
+      }
+      if (role === "coach" && selectedCoachSwimmerId) {
+        const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
+        query = coachGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+      }
 
       const { data } = await query;
       setMonthWorkouts(data ?? []);
@@ -294,7 +362,7 @@ export default function Home() {
     }
 
     fetchMonthWorkouts();
-  }, [selectedDate, viewMode, user?.id, role, selectedViewSwimmerId, selectedCoachSwimmerId]);
+  }, [selectedDate, viewMode, user?.id, role, selectedViewSwimmerId, selectedCoachSwimmerId, swimmerGroup, swimmers]);
 
   async function saveWorkouts() {
     if (!dateKey) return;
@@ -323,9 +391,9 @@ export default function Home() {
         .from("workouts")
         .update({
           content: w.content,
-          workout_type: w.workout_type,
           workout_category: w.workout_category,
           assigned_to: w.assigned_to,
+          assigned_to_group: w.assigned_to_group,
           updated_at: new Date().toISOString(),
         })
         .eq("id", w.id);
@@ -336,10 +404,10 @@ export default function Home() {
       const { error } = await supabase.from("workouts").insert(
         toInsert.map((w) => ({
           date: dateKey,
-          content: w.content,
-          workout_type: w.workout_type,
-          workout_category: w.workout_category,
+          content: w.content ?? "",
+          workout_category: w.workout_category || null,
           assigned_to: w.assigned_to ?? null,
+          assigned_to_group: w.assigned_to_group ?? null,
         }))
       );
       if (error) { alert(error.message); setLoading(false); return; }
@@ -371,9 +439,9 @@ export default function Home() {
         .from("workouts")
         .update({
           content: workout.content,
-          workout_type: workout.workout_type,
           workout_category: workout.workout_category,
           assigned_to: workout.assigned_to,
+          assigned_to_group: workout.assigned_to_group,
           updated_at: new Date().toISOString(),
         })
         .eq("id", workout.id);
@@ -384,9 +452,9 @@ export default function Home() {
         .insert({
           date: dateKey,
           content: workout.content,
-          workout_type: workout.workout_type,
           workout_category: workout.workout_category,
           assigned_to: workout.assigned_to ?? null,
+          assigned_to_group: workout.assigned_to_group ?? null,
         })
         .select()
         .single();
@@ -446,9 +514,9 @@ export default function Home() {
       date: dateKey,
       content: "",
       session: null,
-      workout_type: null,
       workout_category: null,
       assigned_to: selectedCoachSwimmerId ?? null,
+      assigned_to_group: null,
     };
     setCoachWorkouts((prev) => [...prev, newWorkout]);
     setEditingWorkoutIndex(coachWorkouts.length);
@@ -660,9 +728,13 @@ export default function Home() {
                 <Settings className="size-5" />
               </Button>
             </Link>
-            <Button variant="ghost" size="icon" className="size-9" aria-label="Sign out" onClick={signOut}>
-              <LogOut className="size-5" />
-            </Button>
+            <SignOutDropdown
+              trigger={
+                <Button variant="ghost" size="icon" className="size-9" aria-label="Sign out">
+                  <LogOut className="size-5" />
+                </Button>
+              }
+            />
           </div>
         </div>
 
@@ -681,7 +753,7 @@ export default function Home() {
                 ) : viewWorkouts.length > 0 ? (
                   <div className="space-y-4">
                     {viewWorkouts.map((workout, i) => {
-                      const assignee = swimmers.find((s) => s.id === workout.assigned_to);
+                      const label = assignmentLabel(workout, swimmers);
                       return (
                         <Card key={workout.id || i} className="py-4">
                           <CardContent className="px-4 py-0">
@@ -691,8 +763,8 @@ export default function Home() {
                               showLabel
                               feedbackRefreshKey={feedbackRefreshKey}
                               onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                              assigneeBadge={assignee && selectedViewSwimmerId === "" ? (
-                                <span className={assigneeBadgeClass}>{assignee.full_name ?? "Swimmer"}</span>
+                              assigneeBadge={label && selectedViewSwimmerId === "" ? (
+                                <span className={assigneeBadgeClass}>{label}</span>
                               ) : undefined}
                             />
                           </CardContent>
@@ -761,7 +833,7 @@ export default function Home() {
                             {isExpanded && dayWorkouts.length > 0 && (
                               <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200 space-y-4">
                                 {dayWorkouts.map((workout, i) => {
-                                  const assignee = swimmers.find((s) => s.id === workout.assigned_to);
+                                  const label = assignmentLabel(workout, swimmers);
                                   return (
                                     <WorkoutBlock
                                       key={workout.id || i}
@@ -772,8 +844,8 @@ export default function Home() {
                                       onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
                                       className="mt-2"
                                       compact
-                                      assigneeBadge={assignee && selectedViewSwimmerId === "" ? (
-                                        <span className={assigneeBadgeClass}>{assignee.full_name ?? "Swimmer"}</span>
+                                      assigneeBadge={label && selectedViewSwimmerId === "" ? (
+                                        <span className={assigneeBadgeClass}>{label}</span>
                                       ) : undefined}
                                     />
                                   );
@@ -908,7 +980,7 @@ export default function Home() {
                                           <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
                                             {dayWorkouts.length > 0 ? (
                                               dayWorkouts.map((workout, i) => {
-                                                const assignee = swimmers.find((s) => s.id === workout.assigned_to);
+                                                const label = assignmentLabel(workout, swimmers);
                                                 return (
                                                   <WorkoutBlock
                                                     key={workout.id || i}
@@ -919,8 +991,8 @@ export default function Home() {
                                                     onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
                                                     className="mt-2"
                                                     compact
-                                                    assigneeBadge={assignee && selectedViewSwimmerId === "" ? (
-                                                      <span className={assigneeBadgeClass}>{assignee.full_name ?? "Swimmer"}</span>
+                                                    assigneeBadge={label && selectedViewSwimmerId === "" ? (
+                                                      <span className={assigneeBadgeClass}>{label}</span>
                                                     ) : undefined}
                                                   />
                                                 );
@@ -963,38 +1035,54 @@ export default function Home() {
                   ) : (
                     <div className="flex flex-1 flex-col gap-4">
                       {coachWorkouts.length > 0 ? (
-                        coachWorkouts.map((workout, i) => {
-                          const assignedSwimmer = swimmers.find((s) => s.id === workout.assigned_to);
-                          const isEditing = editingWorkoutIndex === i;
+                        sortCoachWorkouts(coachWorkouts, swimmers).map((workout) => {
+                          const originalIdx = coachWorkouts.indexOf(workout);
+                          const label = assignmentLabel(workout, swimmers);
+                          const isEditing = editingWorkoutIndex === originalIdx;
                           return (
-                            <Card key={workout.id || `new-${i}`} className="relative py-4">
+                            <Card key={workout.id || `new-${originalIdx}`} className="relative py-4">
                               {isEditing ? (
                                 <CardContent className="pl-4 pr-4 py-0">
                                   <div className="space-y-2">
                                     <div className="flex flex-wrap gap-2">
                                       <select
                                         className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                        value={workout.assigned_to || ""}
-                                        onChange={(e) => updateCoachWorkout(i, { assigned_to: e.target.value || null })}
+                                        value={
+                                          workout.assigned_to
+                                            ? `swimmer:${workout.assigned_to}`
+                                            : workout.assigned_to_group
+                                              ? `group:${workout.assigned_to_group}`
+                                              : ""
+                                        }
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          if (v.startsWith("swimmer:")) {
+                                            const id = v.slice(8) || null;
+                                            updateCoachWorkout(originalIdx, { assigned_to: id, assigned_to_group: null });
+                                          } else if (v.startsWith("group:")) {
+                                            const g = v.slice(6) as SwimmerGroup;
+                                            updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: g });
+                                          } else {
+                                            updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: null });
+                                          }
+                                        }}
                                       >
-                                        <option value="">Assign to swimmer...</option>
-                                        {swimmers.map((s) => (
-                                          <option key={s.id} value={s.id}>{s.full_name || s.id}</option>
-                                        ))}
-                                      </select>
-                                      <select
-                                        className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                        value={workout.workout_type || ""}
-                                        onChange={(e) => updateCoachWorkout(i, { workout_type: e.target.value || null })}
-                                      >
-                                        {WORKOUT_TYPES.map((v) => (
-                                          <option key={v || "empty"} value={v}>{v || "Type"}</option>
-                                        ))}
+                                        <option value="">Assign to...</option>
+                                        <optgroup label="Swimmer">
+                                          {swimmers.map((s) => (
+                                            <option key={s.id} value={`swimmer:${s.id}`}>{s.full_name || s.id}</option>
+                                          ))}
+                                        </optgroup>
+                                        <optgroup label="Group">
+                                          {SWIMMER_GROUPS.map((g) => (
+                                            <option key={g} value={`group:${g}`}>{g}</option>
+                                          ))}
+                                        </optgroup>
                                       </select>
                                       <select
                                         className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                                         value={workout.workout_category || ""}
-                                        onChange={(e) => updateCoachWorkout(i, { workout_category: e.target.value || null })}
+                                        onChange={(e) => updateCoachWorkout(originalIdx, { workout_category: e.target.value || null })}
                                       >
                                         {WORKOUT_CATEGORIES.map((v) => (
                                           <option key={v || "empty"} value={v}>{v || "Category"}</option>
@@ -1006,7 +1094,7 @@ export default function Home() {
 Main set: 8×100 @ 1:30...
 Cool-down: 200 easy"
                                       value={workout.content}
-                                      onChange={(e) => updateCoachWorkout(i, { content: e.target.value })}
+                                      onChange={(e) => updateCoachWorkout(originalIdx, { content: e.target.value })}
                                       className="min-h-[200px] resize-none"
                                     />
                                     {workout.content && (
@@ -1019,13 +1107,13 @@ Cool-down: 200 easy"
                                       />
                                     )}
                                     <div className="flex gap-2 pt-2">
-                                      <Button size="sm" onClick={() => saveSingleWorkout(i)} disabled={loading || coachLoading}>
+                                      <Button size="sm" onClick={() => saveSingleWorkout(originalIdx)} disabled={loading || coachLoading}>
                                         {saved ? "Saved ✓" : "Save"}
                                       </Button>
                                       <Button variant="outline" size="sm" onClick={() => setEditingWorkoutIndex(null)} disabled={loading}>
                                         Cancel
                                       </Button>
-                                      <Button variant="outline" size="sm" className="text-destructive" onClick={() => deleteSingleWorkout(i)} disabled={loading}>
+                                      <Button variant="outline" size="sm" className="text-destructive" onClick={() => deleteSingleWorkout(originalIdx)} disabled={loading}>
                                         Delete
                                       </Button>
                                     </div>
@@ -1037,7 +1125,7 @@ Cool-down: 200 easy"
                                     variant="ghost"
                                     size="icon"
                                     className="absolute right-2 top-2 size-8 z-10"
-                                    onClick={() => setEditingWorkoutIndex(i)}
+                                    onClick={() => setEditingWorkoutIndex(originalIdx)}
                                     aria-label="Edit workout"
                                   >
                                     <Pencil className="size-4" />
@@ -1047,8 +1135,8 @@ Cool-down: 200 easy"
                                       workout={workout}
                                       dateKey={dateKey}
                                       showLabel={coachWorkouts.length > 1}
-                                      assigneeBadge={!selectedCoachSwimmerId && assignedSwimmer ? (
-                                        <span className={assigneeBadgeClass}>{assignedSwimmer.full_name ?? "Swimmer"}</span>
+                                      assigneeBadge={!selectedCoachSwimmerId && label ? (
+                                        <span className={assigneeBadgeClass}>{label}</span>
                                       ) : undefined}
                                       feedbackRefreshKey={feedbackRefreshKey}
                                       onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
@@ -1090,7 +1178,7 @@ Cool-down: 200 easy"
                     });
                     return days.map((day) => {
                       const dayKey = format(day, "yyyy-MM-dd");
-                      const dayWorkouts = weekWorkouts.filter((w) => normDate(w.date) === dayKey);
+                      const dayWorkouts = sortCoachWorkouts(weekWorkouts.filter((w) => normDate(w.date) === dayKey), swimmers);
                       const isExpanded = expandedDayKey === dayKey;
                       return (
                         <Card
@@ -1127,18 +1215,24 @@ Cool-down: 200 easy"
                               <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200 space-y-4">
                                 {dayWorkouts.length > 0 ? (
                                   <>
-                                    {dayWorkouts.map((workout, i) => (
-                                      <WorkoutBlock
-                                        key={workout.id || i}
-                                        workout={workout}
-                                        dateKey={dayKey}
-                                        showLabel={dayWorkouts.length > 1}
-                                        feedbackRefreshKey={feedbackRefreshKey}
-                                        className="mt-2"
-                                        compact
-                                        readOnly
-                                      />
-                                    ))}
+                                    {dayWorkouts.map((workout, i) => {
+                                      const label = assignmentLabel(workout, swimmers);
+                                      return (
+                                        <WorkoutBlock
+                                          key={workout.id || i}
+                                          workout={workout}
+                                          dateKey={dayKey}
+                                          showLabel={dayWorkouts.length > 1}
+                                          feedbackRefreshKey={feedbackRefreshKey}
+                                          className="mt-2"
+                                          compact
+                                          readOnly
+                                          assigneeBadge={!selectedCoachSwimmerId && label ? (
+                                            <span className={assigneeBadgeClass}>{label}</span>
+                                          ) : undefined}
+                                        />
+                                      );
+                                    })}
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -1256,7 +1350,7 @@ Cool-down: 200 easy"
                                   const daysInWeek = eachDayOfInterval({ start, end });
                                   return daysInWeek.map((day) => {
                                     const dayKey = format(day, "yyyy-MM-dd");
-                                    const dayWorkouts = weekWorkoutsList.filter((w) => normDate(w.date) === dayKey);
+                                    const dayWorkouts = sortCoachWorkouts(weekWorkoutsList.filter((w) => normDate(w.date) === dayKey), swimmers);
                                     const isDayExpanded = expandedMonthDayKey === dayKey;
                                     return (
                                       <div key={dayKey} className="rounded-lg border bg-card overflow-hidden">
@@ -1290,18 +1384,24 @@ Cool-down: 200 easy"
                                           <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
                                             {dayWorkouts.length > 0 ? (
                                               <>
-                                                {dayWorkouts.map((workout, i) => (
-                                                  <WorkoutBlock
-                                                    key={workout.id || i}
-                                                    workout={workout}
-                                                    dateKey={dayKey}
-                                                    showLabel={dayWorkouts.length > 1}
-                                                    feedbackRefreshKey={feedbackRefreshKey}
-                                                    className="mt-2"
-                                                    compact
-                                                    readOnly
-                                                  />
-                                                ))}
+                                                {dayWorkouts.map((workout, i) => {
+                                                  const label = assignmentLabel(workout, swimmers);
+                                                  return (
+                                                    <WorkoutBlock
+                                                      key={workout.id || i}
+                                                      workout={workout}
+                                                      dateKey={dayKey}
+                                                      showLabel={dayWorkouts.length > 1}
+                                                      feedbackRefreshKey={feedbackRefreshKey}
+                                                      className="mt-2"
+                                                      compact
+                                                      readOnly
+                                                      assigneeBadge={!selectedCoachSwimmerId && label ? (
+                                                        <span className={assigneeBadgeClass}>{label}</span>
+                                                      ) : undefined}
+                                                    />
+                                                  );
+                                                })}
                                                 <Button
                                                   variant="outline"
                                                   size="sm"

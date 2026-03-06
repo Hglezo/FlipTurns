@@ -90,6 +90,24 @@ drop policy if exists "Anyone can delete workouts" on public.workouts;
 create policy "Anyone can update workouts" on public.workouts for update using (true);
 create policy "Anyone can delete workouts" on public.workouts for delete using (true);`;
 
+const WORKOUT_GROUPS_SQL = `-- Group-based workout assignment: swimmers choose group in profile; coaches assign to swimmer or group
+alter table public.profiles
+  add column if not exists swimmer_group text check (swimmer_group in ('Sprint', 'Middle distance', 'Distance'));
+
+alter table public.workouts
+  add column if not exists assigned_to_group text check (assigned_to_group in ('Sprint', 'Middle distance', 'Distance'));
+
+alter table public.workouts
+  drop column if exists workout_type;
+
+alter table public.workouts
+  drop constraint if exists workouts_date_key;`;
+
+const FIX_WORKOUT_SAVE_SQL = `-- Run this if coach workout save is broken (e.g. after adding group assignment)
+alter table public.workouts add column if not exists assigned_to_group text check (assigned_to_group in ('Sprint', 'Middle distance', 'Distance'));
+alter table public.workouts drop column if exists workout_type;
+alter table public.workouts drop constraint if exists workouts_date_key;`;
+
 export default function SetupPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const copy = (text: string) => {
@@ -111,6 +129,31 @@ export default function SetupPage() {
         </div>
 
         <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Fix workout save</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              If coaches can&apos;t save workouts, run this in Supabase SQL Editor.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{FIX_WORKOUT_SAVE_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(FIX_WORKOUT_SAVE_SQL)}
+              >
+                {copied === FIX_WORKOUT_SAVE_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === FIX_WORKOUT_SAVE_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
           <CardHeader>
             <CardTitle className="text-base">Full setup (recommended)</CardTitle>
             <p className="text-sm text-muted-foreground">
@@ -235,6 +278,31 @@ export default function SetupPage() {
               >
                 {copied === WORKOUTS_SETUP_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === WORKOUTS_SETUP_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Workout groups (swimmer groups + group assignment)</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Enables assigning workouts to groups (Sprint, Middle distance, Distance). Swimmers choose their group in Settings; coaches assign to a swimmer or a group.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{WORKOUT_GROUPS_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(WORKOUT_GROUPS_SQL)}
+              >
+                {copied === WORKOUT_GROUPS_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === WORKOUT_GROUPS_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>
