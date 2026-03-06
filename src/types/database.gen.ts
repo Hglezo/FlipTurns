@@ -15,18 +15,21 @@ export type Database = {
           full_name: string | null
           role: "coach" | "swimmer"
           created_at: string
+          swimmer_group: "Sprint" | "Middle distance" | "Distance" | null
         }
         Insert: {
           id: string
           full_name?: string | null
           role: "coach" | "swimmer"
           created_at?: string
+          swimmer_group?: "Sprint" | "Middle distance" | "Distance" | null
         }
         Update: {
           id?: string
           full_name?: string | null
           role?: "coach" | "swimmer"
           created_at?: string
+          swimmer_group?: "Sprint" | "Middle distance" | "Distance" | null
         }
       }
       workouts: {
@@ -35,9 +38,9 @@ export type Database = {
           date: string
           content: string
           session: string | null
-          workout_type: string | null
           workout_category: string | null
           assigned_to: string | null
+          assigned_to_group: "Sprint" | "Middle distance" | "Distance" | null
           created_at: string
           updated_at: string
         }
@@ -46,9 +49,9 @@ export type Database = {
           date: string
           content?: string
           session?: string | null
-          workout_type?: string | null
           workout_category?: string | null
           assigned_to?: string | null
+          assigned_to_group?: "Sprint" | "Middle distance" | "Distance" | null
           created_at?: string
           updated_at?: string
         }
@@ -57,9 +60,9 @@ export type Database = {
           date?: string
           content?: string
           session?: string | null
-          workout_type?: string | null
           workout_category?: string | null
           assigned_to?: string | null
+          assigned_to_group?: "Sprint" | "Middle distance" | "Distance" | null
           created_at?: string
           updated_at?: string
         }

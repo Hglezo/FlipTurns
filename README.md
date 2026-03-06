@@ -4,7 +4,7 @@ A mobile-optimized Next.js app for coaches and swimmers. Coaches write workouts 
 
 ## Setup
 
-1. **Supabase** – Credentials are already configured from the Supabase MCP (`.env.local`).
+1. **Supabase** – Credentials are already configured from the Supabase MCP (`.env.local`). For account deletion to work, add `SUPABASE_SERVICE_ROLE_KEY` (from Supabase Dashboard → Settings → API) to your `.env.local`.
 
 2. **Create the database table** – Run the migration in Supabase:
    - **Option A (Dashboard):** Open [Supabase SQL Editor](https://supabase.com/dashboard/project/ankjixmjzjaooeyqbtjr/sql/new) and paste the contents of `supabase/schema.sql`, then run it.

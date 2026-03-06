@@ -4,10 +4,14 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
+export type SwimmerGroup = "Sprint" | "Middle distance" | "Distance";
+
 export interface Profile {
   id: string;
   full_name: string | null;
   role: "coach" | "swimmer";
+  created_at: string;
+  swimmer_group: SwimmerGroup | null;
 }
 
 interface AuthContextType {
@@ -15,6 +19,7 @@ interface AuthContextType {
   profile: Profile | null;
   role: "coach" | "swimmer" | null;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
   loading: boolean;
 }
 
@@ -23,6 +28,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   role: null,
   signOut: async () => {},
+  refreshProfile: async () => {},
   loading: true,
 });
 
@@ -32,14 +38,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   async function fetchProfile(userId: string) {
-    const { data } = await supabase
+    // Try with group first (after workout_groups migration). Fall back to base columns if group doesn't exist yet.
+    let data: Record<string, unknown> | null = null;
+    const { data: withGroup } = await supabase
       .from("profiles")
-      .select("id, full_name, role")
+      .select("id, full_name, role, created_at, swimmer_group")
       .eq("id", userId)
       .single();
 
+    if (withGroup) {
+      data = withGroup as Record<string, unknown>;
+    } else {
+      const { data: base } = await supabase
+        .from("profiles")
+        .select("id, full_name, role, created_at")
+        .eq("id", userId)
+        .single();
+      if (base) data = { ...base, swimmer_group: null };
+    }
+
     if (data) {
-      setProfile(data as Profile);
+      setProfile({ ...data, swimmer_group: data.swimmer_group ?? null } as Profile);
       return;
     }
 
@@ -52,10 +71,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: created } = await supabase
       .from("profiles")
       .upsert({ id: userId, full_name: meta.full_name ?? null, role })
-      .select()
+      .select("id, full_name, role, created_at")
       .single();
 
-    setProfile(created as Profile | null);
+    if (created) {
+      setProfile({ ...created, swimmer_group: null } as Profile);
+    }
   }
 
   useEffect(() => {
@@ -88,9 +109,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }
 
+  async function refreshProfile() {
+    if (user) await fetchProfile(user.id);
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, profile, role: profile?.role ?? null, signOut, loading }}
+      value={{ user, profile, role: profile?.role ?? null, signOut, refreshProfile, loading }}
     >
       {children}
     </AuthContext.Provider>

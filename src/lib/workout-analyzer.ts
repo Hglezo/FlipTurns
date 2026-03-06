@@ -17,6 +17,8 @@ const SET_NAME_PATTERNS = [
   /^(?:warm[- ]?up|warmup)\s*:?/i,
   /^(?:pre[- ]?set\s+activation|pre[- ]?set|pre\s+set|preset)\s*:?/i,
   /^(?:main\s+set)\s*:?/i,
+  /^(?:pull\s+set)\s*:?/i,
+  /^(?:fins\s+set)\s*:?/i,
   /^(?:warm[- ]?down|warmdown)\s*:?/i,
   /^(?:cool[- ]?down|cooldown)\s*:?/i,
   /^(?:drill(?:s)?)\s*:?/i,
