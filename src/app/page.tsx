@@ -76,7 +76,7 @@ interface SwimmerProfile {
 }
 
 const SWIMMER_GROUPS: SwimmerGroup[] = ["Sprint", "Middle distance", "Distance"];
-const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Tech suit"] as const;
+const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Sprint", "Tech suit"] as const;
 
 function orAssignFilter(userId: string, group: string | null | undefined): string {
   if (!group) return `assigned_to.eq.${userId}`;
@@ -90,9 +90,20 @@ function workoutLabel(w: Workout): string {
 }
 
 function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): string | null {
-  if (workout.assigned_to_group) return `${workout.assigned_to_group} group`;
+  if (workout.assigned_to_group) return workout.assigned_to_group;
   const assignee = swimmers.find((s) => s.id === workout.assigned_to);
   return assignee?.full_name ?? (workout.assigned_to ? "Swimmer" : null);
+}
+
+function dayPreviewLabel(workout: Workout, swimmers: SwimmerProfile[], defaultAssignee?: string | null): string {
+  const assignee = assignmentLabel(workout, swimmers) ?? defaultAssignee;
+  const category = workoutLabel(workout);
+  return assignee ? `${assignee} - ${category}` : category;
+}
+
+function swimmerPreviewDefault(selectedViewSwimmerId: string | null, profile: { full_name: string | null } | null, userId: string | undefined, swimmers: SwimmerProfile[]): string | undefined {
+  if (selectedViewSwimmerId === null) return (profile?.full_name ?? swimmers.find((s) => s.id === userId)?.full_name) ?? undefined;
+  return selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name : undefined;
 }
 
 const COACH_GROUP_ORDER = ["Sprint", "Middle distance", "Distance"] as const;
@@ -817,7 +828,7 @@ export default function Home() {
                                 {dayWorkouts.length > 0 ? (
                                   <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
                                     {dayWorkouts.map((w, wi) => (
-                                      <p key={wi}>{workoutLabel(w)}</p>
+                                      <p key={wi}>{dayPreviewLabel(w, swimmers, swimmerPreviewDefault(selectedViewSwimmerId, profile, user?.id, swimmers))}</p>
                                     ))}
                                   </div>
                                 ) : (
@@ -925,10 +936,7 @@ export default function Home() {
                                   setExpandedMonthDayKey(null);
                                 } else {
                                   setExpandedWeekKey(key);
-                                  const selectedInWeek = isWithinInterval(selectedDate, { start, end });
-                                  const selectedDayKey = format(selectedDate, "yyyy-MM-dd");
-                                  const selectedHasWorkout = weekWorkoutsList.some((w) => normDate(w.date) === selectedDayKey);
-                                  setExpandedMonthDayKey(selectedInWeek && selectedHasWorkout ? selectedDayKey : null);
+                                  setExpandedMonthDayKey(null);
                                 }
                               }}
                             >
@@ -964,7 +972,9 @@ export default function Home() {
                                             </p>
                                             {dayWorkouts.length > 0 ? (
                                               <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
-                                                {dayWorkouts.map((w, wi) => <p key={wi}>{workoutLabel(w)}</p>)}
+                                                {dayWorkouts.map((w, wi) => (
+                                                  <p key={wi}>{dayPreviewLabel(w, swimmers, swimmerPreviewDefault(selectedViewSwimmerId, profile, user?.id, swimmers))}</p>
+                                                ))}
                                               </div>
                                             ) : (
                                               <p className="text-sm text-muted-foreground">No workout</p>
@@ -1199,7 +1209,11 @@ Cool-down: 200 easy"
                                 </p>
                                 {dayWorkouts.length > 0 ? (
                                   <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
-                                    {dayWorkouts.map((w, wi) => <p key={wi}>{workoutLabel(w)}</p>)}
+                                    {dayWorkouts.map((w, wi) => (
+                                      <p key={wi}>
+                                        {dayPreviewLabel(w, swimmers, selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined)}
+                                      </p>
+                                    ))}
                                   </div>
                                 ) : (
                                   <p className="text-sm text-muted-foreground">No workout</p>
@@ -1329,10 +1343,7 @@ Cool-down: 200 easy"
                                   setExpandedMonthDayKey(null);
                                 } else {
                                   setExpandedWeekKey(key);
-                                  const selectedInWeek = isWithinInterval(selectedDate, { start, end });
-                                  const selectedDayKey = format(selectedDate, "yyyy-MM-dd");
-                                  const selectedHasWorkout = weekWorkoutsList.some((w) => normDate(w.date) === selectedDayKey);
-                                  setExpandedMonthDayKey(selectedInWeek && selectedHasWorkout ? selectedDayKey : null);
+                                  setExpandedMonthDayKey(null);
                                 }
                               }}
                             >
@@ -1368,7 +1379,11 @@ Cool-down: 200 easy"
                                             </p>
                                             {dayWorkouts.length > 0 ? (
                                               <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
-                                                {dayWorkouts.map((w, wi) => <p key={wi}>{workoutLabel(w)}</p>)}
+                                                {dayWorkouts.map((w, wi) => (
+                                                  <p key={wi}>
+                                                    {dayPreviewLabel(w, swimmers, selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined)}
+                                                  </p>
+                                                ))}
                                               </div>
                                             ) : (
                                               <p className="text-sm text-muted-foreground">No workout</p>

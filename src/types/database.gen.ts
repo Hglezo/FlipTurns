@@ -72,27 +72,33 @@ export type Database = {
           id: string
           date: string
           workout_id: string | null
+          user_id: string | null
           feedback_text: string | null
-          muscle_intensity: number
-          cardio_intensity: number
+          muscle_intensity: number | null
+          cardio_intensity: number | null
+          anonymous?: boolean
           created_at: string
         }
         Insert: {
           id?: string
           date: string
           workout_id?: string | null
+          user_id?: string | null
           feedback_text?: string | null
-          muscle_intensity: number
-          cardio_intensity: number
+          muscle_intensity?: number | null
+          cardio_intensity?: number | null
+          anonymous?: boolean
           created_at?: string
         }
         Update: {
           id?: string
           date?: string
           workout_id?: string | null
+          user_id?: string | null
           feedback_text?: string | null
-          muscle_intensity?: number
-          cardio_intensity?: number
+          muscle_intensity?: number | null
+          cardio_intensity?: number | null
+          anonymous?: boolean
           created_at?: string
         }
       }

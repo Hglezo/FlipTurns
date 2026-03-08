@@ -44,7 +44,7 @@ create policy "Anyone can delete feedback" on public.feedback for delete using (
 -- Remove unique constraint so we can have multiple workouts per day (e.g. morning + afternoon)
 alter table public.workouts drop constraint if exists workouts_date_key;
 
--- Session label (legacy, optional). Type/category for Sprint|Middle|Distance and Recovery|Aerobic|Pace|Tech suit
+-- Session label (legacy, optional). Type/category for Sprint|Middle|Distance and Recovery|Aerobic|Pace|Sprint|Tech suit
 alter table public.workouts add column if not exists session text default '';
 alter table public.workouts add column if not exists workout_type text default '';
 alter table public.workouts add column if not exists workout_category text default '';
@@ -80,6 +80,13 @@ create policy "Users can update own feedback" on public.feedback for update usin
 
 drop policy if exists "Anyone can delete feedback" on public.feedback;
 create policy "Users can delete own feedback" on public.feedback for delete using (auth.uid() = user_id);`;
+
+const FEEDBACK_ANONYMOUS_SQL = `alter table public.feedback add column if not exists anonymous boolean default false;`;
+
+const FEEDBACK_OPTIONAL_INTENSITY_SQL = `-- Make intensity ratings optional (swimmers can add feedback without rating)
+alter table public.feedback
+  alter column muscle_intensity drop not null,
+  alter column cardio_intensity drop not null;`;
 
 const WORKOUTS_SETUP_SQL = `alter table public.workouts drop constraint if exists workouts_date_key;
 alter table public.workouts add column if not exists session text default '';
@@ -253,6 +260,46 @@ export default function SetupPage() {
               >
                 {copied === FEEDBACK_USER_ID_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === FEEDBACK_USER_ID_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Anonymous feedback</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Allows swimmers to submit feedback anonymously. Coaches see &quot;Anonymous&quot; instead of the swimmer&apos;s name.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{FEEDBACK_ANONYMOUS_SQL}</code>
+              </pre>
+              <Button variant="outline" size="sm" className="absolute right-2 top-2 gap-1" onClick={() => copy(FEEDBACK_ANONYMOUS_SQL)}>
+                {copied === FEEDBACK_ANONYMOUS_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === FEEDBACK_ANONYMOUS_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Optional intensity ratings</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Allows swimmers to add feedback without rating muscle/cardio intensity (1–5).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{FEEDBACK_OPTIONAL_INTENSITY_SQL}</code>
+              </pre>
+              <Button variant="outline" size="sm" className="absolute right-2 top-2 gap-1" onClick={() => copy(FEEDBACK_OPTIONAL_INTENSITY_SQL)}>
+                {copied === FEEDBACK_OPTIONAL_INTENSITY_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === FEEDBACK_OPTIONAL_INTENSITY_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>

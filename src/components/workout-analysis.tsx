@@ -11,8 +11,10 @@ import { Pencil, Trash2, MessageSquare } from "lucide-react";
 interface Feedback {
   id: string;
   feedback_text: string | null;
-  muscle_intensity: number;
-  cardio_intensity: number;
+  muscle_intensity: number | null;
+  cardio_intensity: number | null;
+  user_id?: string | null;
+  anonymous?: boolean;
 }
 
 interface WorkoutAnalysisProps {
@@ -39,8 +41,10 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
   const [addText, setAddText] = useState("");
   const [addMuscle, setAddMuscle] = useState<number | null>(null);
   const [addCardio, setAddCardio] = useState<number | null>(null);
+  const [addAnonymous, setAddAnonymous] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!date) return;
@@ -49,14 +53,26 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
       return;
     }
     async function fetchFeedback() {
+      const selectCols = readOnly
+        ? "id, feedback_text, muscle_intensity, cardio_intensity, user_id"
+        : "id, feedback_text, muscle_intensity, cardio_intensity";
       let query = supabase
         .from("feedback")
-        .select("id, feedback_text, muscle_intensity, cardio_intensity")
+        .select(selectCols)
         .eq("date", date)
-        .eq("workout_id", workoutId);
+        .or(`workout_id.eq.${workoutId},workout_id.is.null`);
       if (!readOnly && user?.id) query = query.eq("user_id", user.id);
       const { data } = await query.order("created_at", { ascending: false });
       setFeedback(data ?? []);
+      if (readOnly && data?.length) {
+        const userIds = [...new Set(data.map((d) => d.user_id).filter(Boolean))] as string[];
+        if (userIds.length) {
+          const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", userIds);
+          const map: Record<string, string> = {};
+          for (const p of profiles ?? []) map[p.id] = p.full_name ?? "Unknown";
+          setUserNames(map);
+        } else setUserNames({});
+      } else setUserNames({});
     }
     fetchFeedback();
   }, [date, workoutId, refreshKey, readOnly, user?.id]);
@@ -65,8 +81,8 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     setError(null);
     setEditingId(fb.id);
     setEditText(fb.feedback_text ?? "");
-    setEditMuscle(fb.muscle_intensity);
-    setEditCardio(fb.cardio_intensity);
+    setEditMuscle(fb.muscle_intensity ?? null);
+    setEditCardio(fb.cardio_intensity ?? null);
   };
 
   const cancelEdit = () => {
@@ -77,14 +93,14 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
   };
 
   const saveEdit = async () => {
-    if (!editingId || editMuscle === null || editCardio === null) return;
+    if (!editingId) return;
     setSaving(true);
     const { error } = await supabase
       .from("feedback")
       .update({
         feedback_text: editText || null,
-        muscle_intensity: editMuscle,
-        cardio_intensity: editCardio,
+        muscle_intensity: editMuscle ?? null,
+        cardio_intensity: editCardio ?? null,
       })
       .eq("id", editingId);
     setSaving(false);
@@ -121,15 +137,16 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
   };
 
   const submitAdd = async () => {
-    if (!date || addMuscle === null || addCardio === null || !user?.id) return;
+    if (!date || !user?.id) return;
     setAddSaving(true);
     const { error } = await supabase.from("feedback").insert({
       date,
       workout_id: workoutId || null,
       user_id: user.id,
       feedback_text: addText || null,
-      muscle_intensity: addMuscle,
-      cardio_intensity: addCardio,
+      muscle_intensity: addMuscle ?? null,
+      cardio_intensity: addCardio ?? null,
+      ...(addAnonymous && { anonymous: true }),
     });
     setAddSaving(false);
     if (error) {
@@ -139,6 +156,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     setAddText("");
     setAddMuscle(null);
     setAddCardio(null);
+    setAddAnonymous(false);
     setShowAddForm(false);
     let q = supabase
       .from("feedback")
@@ -220,6 +238,11 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
           {hasFeedback ? (
             feedback!.map((fb) => (
               <div key={fb.id} className="space-y-2 rounded-md border border-border/50 p-3">
+                {readOnly && (fb.anonymous ? (
+                  <p className="text-xs font-medium text-muted-foreground">Anonymous</p>
+                ) : fb.user_id && userNames[fb.user_id] ? (
+                  <p className="text-xs font-medium text-muted-foreground">{userNames[fb.user_id]}</p>
+                ) : null)}
                 {editingId === fb.id ? (
                   <div className="space-y-3">
                     <Textarea
@@ -228,10 +251,10 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
                       onChange={(e) => setEditText(e.target.value)}
                       className="min-h-[80px] resize-none text-sm"
                     />
-                    <IntensityScale label="Muscle intensity (1–5)" value={editMuscle} onChange={setEditMuscle} />
-                    <IntensityScale label="Cardio intensity (1–5)" value={editCardio} onChange={setEditCardio} />
+                    <IntensityScale label="Muscle intensity (1–5, optional)" value={editMuscle} onChange={setEditMuscle} />
+                    <IntensityScale label="Cardio intensity (1–5, optional)" value={editCardio} onChange={setEditCardio} />
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={saveEdit} disabled={saving || editMuscle === null || editCardio === null}>
+                      <Button size="sm" onClick={saveEdit} disabled={saving}>
                         {saving ? "Saving…" : "Save"}
                       </Button>
                       <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saving}>
@@ -246,10 +269,12 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
                         {fb.feedback_text && (
                           <p className="text-muted-foreground whitespace-pre-wrap">{fb.feedback_text}</p>
                         )}
-                        <div className="mt-1 flex gap-4 text-muted-foreground text-xs">
-                          <span>Muscle: {fb.muscle_intensity}/5</span>
-                          <span>Cardio: {fb.cardio_intensity}/5</span>
-                        </div>
+                        {(fb.muscle_intensity != null || fb.cardio_intensity != null) && (
+                          <div className="mt-1 flex gap-4 text-muted-foreground text-xs">
+                            {fb.muscle_intensity != null && <span>Muscle: {fb.muscle_intensity}/5</span>}
+                            {fb.cardio_intensity != null && <span>Cardio: {fb.cardio_intensity}/5</span>}
+                          </div>
+                        )}
                       </div>
                       {!readOnly && (
                         <div className="flex shrink-0 gap-1">
@@ -300,10 +325,14 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
               onChange={(e) => setAddText(e.target.value)}
               className="min-h-[80px] resize-none text-sm"
             />
-            <IntensityScale label="Muscle intensity (1–5)" value={addMuscle} onChange={setAddMuscle} />
-            <IntensityScale label="Cardio intensity (1–5)" value={addCardio} onChange={setAddCardio} />
+            <IntensityScale label="Muscle intensity (1–5, optional)" value={addMuscle} onChange={setAddMuscle} />
+            <IntensityScale label="Cardio intensity (1–5, optional)" value={addCardio} onChange={setAddCardio} />
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={addAnonymous} onChange={(e) => setAddAnonymous(e.target.checked)} className="rounded border-input" />
+              <span className="text-muted-foreground">Submit anonymously (coach won&apos;t see your name)</span>
+            </label>
             <div className="flex gap-2">
-              <Button size="sm" onClick={submitAdd} disabled={addSaving || !user?.id || addMuscle === null || addCardio === null}>
+              <Button size="sm" onClick={submitAdd} disabled={addSaving || !user?.id}>
                 {addSaving ? "Saving…" : "Submit"}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setShowAddForm(false)} disabled={addSaving}>
