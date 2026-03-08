@@ -103,7 +103,7 @@ function dayPreviewLabel(workout: Workout, swimmers: SwimmerProfile[], defaultAs
 
 function swimmerPreviewDefault(selectedViewSwimmerId: string | null, profile: { full_name: string | null } | null, userId: string | undefined, swimmers: SwimmerProfile[]): string | undefined {
   if (selectedViewSwimmerId === null) return (profile?.full_name ?? swimmers.find((s) => s.id === userId)?.full_name) ?? undefined;
-  return selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name : undefined;
+  return selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? undefined : undefined;
 }
 
 const COACH_GROUP_ORDER = ["Sprint", "Middle distance", "Distance"] as const;

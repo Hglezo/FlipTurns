@@ -54,7 +54,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     }
     async function fetchFeedback() {
       const selectCols = readOnly
-        ? "id, feedback_text, muscle_intensity, cardio_intensity, user_id"
+        ? "id, feedback_text, muscle_intensity, cardio_intensity, user_id, anonymous"
         : "id, feedback_text, muscle_intensity, cardio_intensity";
       let query = supabase
         .from("feedback")
@@ -62,10 +62,14 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
         .eq("date", date)
         .or(`workout_id.eq.${workoutId},workout_id.is.null`);
       if (!readOnly && user?.id) query = query.eq("user_id", user.id);
-      const { data } = await query.order("created_at", { ascending: false });
-      setFeedback(data ?? []);
-      if (readOnly && data?.length) {
-        const userIds = [...new Set(data.map((d) => d.user_id).filter(Boolean))] as string[];
+      const { data: initialData, error: fetchError } = await query.order("created_at", { ascending: false });
+      const data = readOnly && fetchError?.message?.includes("anonymous")
+        ? (await supabase.from("feedback").select("id, feedback_text, muscle_intensity, cardio_intensity, user_id").eq("date", date).or(`workout_id.eq.${workoutId},workout_id.is.null`).order("created_at", { ascending: false })).data
+        : initialData;
+      const feedbackList = (data ?? []) as Feedback[];
+      setFeedback(feedbackList);
+      if (readOnly && feedbackList.length) {
+        const userIds = [...new Set(feedbackList.filter((d) => !d.anonymous).map((d) => d.user_id).filter(Boolean))] as string[];
         if (userIds.length) {
           const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", userIds);
           const map: Record<string, string> = {};
