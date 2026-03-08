@@ -139,15 +139,11 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
   const submitAdd = async () => {
     if (!date || !user?.id) return;
     setAddSaving(true);
-    const { error } = await supabase.from("feedback").insert({
-      date,
-      workout_id: workoutId || null,
-      user_id: user.id,
-      feedback_text: addText || null,
-      muscle_intensity: addMuscle ?? null,
-      cardio_intensity: addCardio ?? null,
-      ...(addAnonymous && { anonymous: true }),
-    });
+    const payload = { date, workout_id: workoutId || null, user_id: user.id, feedback_text: addText || null, muscle_intensity: addMuscle ?? null, cardio_intensity: addCardio ?? null };
+    let { error } = await supabase.from("feedback").insert(addAnonymous ? { ...payload, anonymous: true } : payload);
+    if (error?.message?.includes("anonymous")) {
+      ({ error } = await supabase.from("feedback").insert(payload));
+    }
     setAddSaving(false);
     if (error) {
       console.error("Failed to save feedback:", error.message || error.code || error);
