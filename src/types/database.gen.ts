@@ -67,6 +67,11 @@ export type Database = {
           updated_at?: string
         }
       }
+      workout_assignees: {
+        Row: { workout_id: string; user_id: string }
+        Insert: { workout_id: string; user_id: string }
+        Update: { workout_id?: string; user_id?: string }
+      }
       feedback: {
         Row: {
           id: string

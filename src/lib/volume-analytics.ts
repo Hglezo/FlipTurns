@@ -13,6 +13,7 @@ export interface WorkoutRow {
   content: string;
   assigned_to: string | null;
   assigned_to_group: SwimmerGroup | null;
+  assignee_ids?: string[];
 }
 
 export interface SwimmerProfile {
@@ -33,9 +34,12 @@ export function computeSwimmerVolumes(
     const volByDate = new Map<string, number>();
     for (const [date, dayWorkouts] of byDate) {
       const personal = dayWorkouts.filter((w) => w.assigned_to === swimmer.id);
-      const group = swimmer.swimmer_group
-        ? dayWorkouts.filter((w) => w.assigned_to_group === swimmer.swimmer_group)
-        : [];
+      const group = dayWorkouts.filter((w) => {
+        if (!w.assigned_to_group) return false;
+        const inAssignees = Boolean(w.assignee_ids?.length && w.assignee_ids.includes(swimmer.id));
+        const inDefaultGroup = !w.assignee_ids?.length && w.assigned_to_group === swimmer.swimmer_group;
+        return inAssignees || inDefaultGroup;
+      });
 
       const toSum = personal.length > 0 ? personal : group;
       const total = toSum.reduce((acc, w) => acc + analyzeWorkout(w.content).totalMeters, 0);

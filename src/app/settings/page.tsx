@@ -280,8 +280,31 @@ export default function SettingsPage() {
         .gte("date", startStr)
         .lte("date", endStr)
         .order("date", { ascending: true });
-      if (!error) setVolumeWorkouts((data ?? []) as WorkoutRow[]);
-      else setVolumeWorkouts([]);
+      if (error) {
+        setVolumeWorkouts([]);
+        setVolumeLoading(false);
+        return;
+      }
+      let rows = (data ?? []) as WorkoutRow[];
+      const groupIds = rows.filter((w) => w.assigned_to_group).map((w) => w.id);
+      if (groupIds.length > 0) {
+        const { data: assigneeData } = await supabase
+          .from("workout_assignees")
+          .select("workout_id, user_id")
+          .in("workout_id", groupIds);
+        const assigneesByWorkout = new Map<string, string[]>();
+        for (const row of assigneeData ?? []) {
+          const list = assigneesByWorkout.get(row.workout_id) ?? [];
+          list.push(row.user_id);
+          assigneesByWorkout.set(row.workout_id, list);
+        }
+        rows = rows.map((w) => {
+          if (!w.assigned_to_group) return w;
+          const ids = assigneesByWorkout.get(w.id);
+          return { ...w, assignee_ids: ids ?? [] };
+        });
+      }
+      setVolumeWorkouts(rows);
       setVolumeLoading(false);
     }
     loadWorkouts();

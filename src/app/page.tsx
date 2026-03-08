@@ -48,6 +48,8 @@ import {
   Plus,
   Pencil,
   LogOut,
+  RotateCcw,
+  AlertCircle,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
@@ -67,6 +69,7 @@ interface Workout {
   workout_category?: string | null;
   assigned_to?: string | null;
   assigned_to_group?: SwimmerGroup | null;
+  assignee_ids?: string[];
 }
 
 interface SwimmerProfile {
@@ -95,23 +98,30 @@ function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): string |
   return assignee?.full_name ?? (workout.assigned_to ? "Swimmer" : null);
 }
 
-function assignedToNames(workout: Workout, swimmers: SwimmerProfile[]): string | null {
+function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], excludeUserIds?: string[]): string | null {
   if (workout.assigned_to_group) {
-    const names = swimmers
-      .filter((s) => s.swimmer_group === workout.assigned_to_group)
-      .map((s) => s.full_name || s.id.slice(0, 8))
-      .sort((a, b) => a.localeCompare(b));
-    return names.length ? names.join(", ") : null;
+    const defaultGroupIds = swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+    const ids = Array.isArray(workout.assignee_ids) ? workout.assignee_ids : defaultGroupIds;
+    let assignees = swimmers.filter((s) => ids.includes(s.id));
+    if (excludeUserIds?.length) assignees = assignees.filter((s) => !excludeUserIds.includes(s.id));
+    const groupOrder = (g: SwimmerGroup | null | undefined) =>
+      g === workout.assigned_to_group ? 0 : g == null ? 4 : COACH_GROUP_ORDER.indexOf(g as (typeof COACH_GROUP_ORDER)[number]) + 1;
+    const sorted = [...assignees].sort((a, b) => {
+      const ga = groupOrder(a.swimmer_group);
+      const gb = groupOrder(b.swimmer_group);
+      if (ga !== gb) return ga - gb;
+      return (a.full_name ?? "").localeCompare(b.full_name ?? "");
+    });
+    const names = sorted.map((s) => s.full_name || s.id.slice(0, 8));
+    return names.length ? names.join(", ") : "None";
   }
   return assignmentLabel(workout, swimmers);
 }
 
 function teammateNames(workout: Workout, swimmers: SwimmerProfile[], currentUserId: string | undefined): string | null {
   if (!workout.assigned_to_group) return null;
-  const names = swimmers
-    .filter((s) => s.swimmer_group === workout.assigned_to_group && s.id !== currentUserId)
-    .map((s) => s.full_name || s.id.slice(0, 8))
-    .sort((a, b) => a.localeCompare(b));
+  const ids = workout.assignee_ids?.length ? workout.assignee_ids : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+  const names = swimmers.filter((s) => ids.includes(s.id) && s.id !== currentUserId).map((s) => s.full_name || s.id.slice(0, 8)).sort((a, b) => a.localeCompare(b));
   return names.length ? names.join(", ") : "None";
 }
 
@@ -139,6 +149,57 @@ function sortCoachWorkouts(workouts: Workout[], swimmers: SwimmerProfile[]): Wor
     const bName = swimmers.find((s) => s.id === b.assigned_to)?.full_name ?? "";
     return aName.localeCompare(bName);
   });
+}
+
+async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (workoutIds.length === 0) return map;
+  const { data } = await supabase.from("workout_assignees").select("workout_id, user_id").in("workout_id", workoutIds);
+  for (const row of data ?? []) {
+    const list = map.get(row.workout_id) ?? [];
+    list.push(row.user_id);
+    map.set(row.workout_id, list);
+  }
+  return map;
+}
+
+function mergeAssigneesIntoWorkouts(workouts: Workout[], assigneesByWorkout: Map<string, string[]>, swimmers: SwimmerProfile[]): Workout[] {
+  return workouts.map((w) => {
+    const ids = assigneesByWorkout.get(w.id);
+    if (w.assigned_to_group) {
+      const assigneeIds = ids?.length ? ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
+      return { ...w, assignee_ids: assigneeIds };
+    }
+    return w;
+  });
+}
+
+function filterWorkoutsForSwimmerByDate(workouts: Workout[], swimmerId: string, swimmerGroup: SwimmerGroup | null): Workout[] {
+  const norm = (d: string | undefined) => (d && typeof d === "string" ? d.slice(0, 10) : d);
+  const byDate = new Map<string, Workout[]>();
+  for (const w of workouts) {
+    const d = norm(w.date) ?? w.date;
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d)!.push(w);
+  }
+  const out: Workout[] = [];
+  for (const [, dayList] of byDate) {
+    const hasPersonal = dayList.some((w) => w.assigned_to === swimmerId);
+    if (hasPersonal) {
+      dayList.filter((w) => w.assigned_to === swimmerId).forEach((w) => out.push(w));
+    } else if (swimmerGroup) {
+      dayList
+        .filter((w) => {
+          if (!w.assigned_to_group) return false;
+          const inList = (w.assignee_ids ?? []).includes(swimmerId);
+          const noOverride = !(w.assignee_ids && w.assignee_ids.length > 0);
+          const inDefaultGroup = w.assigned_to_group === swimmerGroup;
+          return inList || (noOverride && inDefaultGroup);
+        })
+        .forEach((w) => out.push(w));
+    }
+  }
+  return out;
 }
 
 const badgeClass = "inline-flex items-center rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue";
@@ -223,6 +284,7 @@ export default function Home() {
   const [expandedMonthDayKey, setExpandedMonthDayKey] = useState<string | null>(null);
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
   const [editingWorkoutIndex, setEditingWorkoutIndex] = useState<number | null>(null);
+  const [editingWorkoutSnapshot, setEditingWorkoutSnapshot] = useState<Workout | null>(null);
   const [swimmers, setSwimmers] = useState<SwimmerProfile[]>([]);
   const [selectedViewSwimmerId, setSelectedViewSwimmerId] = useState<string | null>(null);
   const [selectedCoachSwimmerId, setSelectedCoachSwimmerId] = useState<string | null>(null);
@@ -270,21 +332,37 @@ export default function Home() {
 
     async function fetchWorkouts() {
       setSwimmerLoading(true);
+      const filterId = selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? userId);
+      const filterGroup = filterId === userId ? swimmerGroup : swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null;
       let query = supabase
         .from("workouts")
         .select("*")
         .eq("date", dateKey)
         .order("created_at", { ascending: true });
-      const filterId = selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? userId);
-      const filterGroup = filterId === userId ? swimmerGroup : swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null;
       if (filterId) {
         query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
       }
-
       const { data } = await query;
-      setViewWorkouts(
-        (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }))
-      );
+      let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+      const groupWorkoutIds = rows.filter((w) => w.assigned_to_group).map((w) => w.id);
+      if (groupWorkoutIds.length > 0) {
+        const assigneesMap = await fetchAssigneesForWorkouts(groupWorkoutIds);
+        rows = mergeAssigneesIntoWorkouts(rows, assigneesMap, swimmers);
+      }
+      const me = filterId ?? userId;
+      const hasPersonal = rows.some((w) => w.assigned_to === me);
+      if (hasPersonal) {
+        rows = rows.filter((w) => w.assigned_to === me);
+      } else if (filterId && filterGroup) {
+        rows = rows.filter((w) => {
+          if (!w.assigned_to_group) return false;
+          const inList = (w.assignee_ids ?? []).includes(me);
+          const noOverride = !(w.assignee_ids && w.assignee_ids.length > 0);
+          const inDefaultGroup = w.assigned_to_group === filterGroup;
+          return inList || (noOverride && inDefaultGroup);
+        });
+      }
+      setViewWorkouts(rows);
       setSwimmerLoading(false);
     }
 
@@ -295,22 +373,35 @@ export default function Home() {
   useEffect(() => {
     if (!dateKey || role !== "coach" || viewMode !== "day" || !user) return;
     const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
-    if (!isAddingWorkout) setEditingWorkoutIndex(null);
+    if (!isAddingWorkout) {
+      setEditingWorkoutIndex(null);
+      setEditingWorkoutSnapshot(null);
+    }
 
     async function fetchWorkouts() {
       setCoachLoading(true);
-      let query = supabase
+      const { data } = await supabase
         .from("workouts")
         .select("*")
         .eq("date", dateKey)
         .order("created_at", { ascending: true });
-      const coachFilterGroup = selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null : null;
-      if (selectedCoachSwimmerId) {
-        query = coachFilterGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachFilterGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+      let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+      const groupWorkoutIds = rows.filter((w) => w.assigned_to_group).map((w) => w.id);
+      if (groupWorkoutIds.length > 0) {
+        const assigneesMap = await fetchAssigneesForWorkouts(groupWorkoutIds);
+        rows = mergeAssigneesIntoWorkouts(rows, assigneesMap, swimmers);
       }
-
-      const { data } = await query;
-      const rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+      if (selectedCoachSwimmerId) {
+        const coachFilterGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
+        rows = rows.filter((w) => {
+          if (w.assigned_to === selectedCoachSwimmerId) return true;
+          if (w.assigned_to_group && coachFilterGroup) {
+            const ids = Array.isArray(w.assignee_ids) ? w.assignee_ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
+            return ids.includes(selectedCoachSwimmerId);
+          }
+          return false;
+        });
+      }
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
         const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, assigned_to: selectedCoachSwimmerId ?? null, assigned_to_group: null };
@@ -353,7 +444,16 @@ export default function Home() {
       }
 
       const { data } = await query;
-      setWeekWorkouts(data ?? []);
+      let rows = data ?? [];
+      const groupIds = rows.filter((w: Workout) => w.assigned_to_group).map((w: Workout) => w.id);
+      if (groupIds.length > 0) {
+        const assigneesMap = await fetchAssigneesForWorkouts(groupIds);
+        rows = mergeAssigneesIntoWorkouts(rows, assigneesMap, swimmers);
+      }
+      if (role === "swimmer" && swimmerFilterId) {
+        rows = filterWorkoutsForSwimmerByDate(rows, swimmerFilterId, weekFilterGroup ?? null);
+      }
+      setWeekWorkouts(rows);
       setRangeLoading(false);
     }
 
@@ -387,7 +487,16 @@ export default function Home() {
       }
 
       const { data } = await query;
-      setMonthWorkouts(data ?? []);
+      let rows = data ?? [];
+      const groupIds = rows.filter((w: Workout) => w.assigned_to_group).map((w: Workout) => w.id);
+      if (groupIds.length > 0) {
+        const assigneesMap = await fetchAssigneesForWorkouts(groupIds);
+        rows = mergeAssigneesIntoWorkouts(rows, assigneesMap, swimmers);
+      }
+      if (role === "swimmer" && swimmerFilterId) {
+        rows = filterWorkoutsForSwimmerByDate(rows, swimmerFilterId, monthFilterGroup ?? null);
+      }
+      setMonthWorkouts(rows);
       setRangeLoading(false);
     }
 
@@ -431,16 +540,50 @@ export default function Home() {
     }
 
     if (toInsert.length > 0) {
-      const { error } = await supabase.from("workouts").insert(
-        toInsert.map((w) => ({
-          date: dateKey,
-          content: w.content ?? "",
-          workout_category: w.workout_category || null,
-          assigned_to: w.assigned_to ?? null,
-          assigned_to_group: w.assigned_to_group ?? null,
-        }))
-      );
+      const { data: insertedRows, error } = await supabase
+        .from("workouts")
+        .insert(
+          toInsert.map((w) => ({
+            date: dateKey,
+            content: w.content ?? "",
+            workout_category: w.workout_category || null,
+            assigned_to: w.assigned_to ?? null,
+            assigned_to_group: w.assigned_to_group ?? null,
+          }))
+        )
+        .select("id");
       if (error) { alert(error.message); setLoading(false); return; }
+      const newIds = (insertedRows ?? []).map((r) => r.id);
+      const groupWorkoutIdsForDay = [
+        ...coachWorkouts.filter((w) => w.id && w.assigned_to_group).map((w) => w.id!),
+        ...toInsert.filter((w) => w.assigned_to_group).map((_, i) => newIds[i]).filter(Boolean),
+      ];
+      let newIdx = 0;
+      for (const w of coachWorkouts) {
+        if (!w.assigned_to_group) continue;
+        const id = w.id ?? newIds[newIdx++];
+        if (!id) continue;
+        const otherIds = groupWorkoutIdsForDay.filter((x) => x !== id);
+        try {
+          await saveAssigneesForGroupWorkout(id, w.assignee_ids ?? [], otherIds);
+        } catch (e) {
+          alert(e instanceof Error ? e.message : "Failed to save assignees");
+          setLoading(false);
+          return;
+        }
+      }
+    } else {
+      for (const w of coachWorkouts) {
+        if (!w.assigned_to_group || !w.id) continue;
+        const otherIds = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id).map((x) => x.id!);
+        try {
+          await saveAssigneesForGroupWorkout(w.id, w.assignee_ids ?? [], otherIds);
+        } catch (e) {
+          alert(e instanceof Error ? e.message : "Failed to save assignees");
+          setLoading(false);
+          return;
+        }
+      }
     }
 
     const { data: rows } = await supabase
@@ -449,20 +592,42 @@ export default function Home() {
       .eq("date", dateKey)
       .order("created_at", { ascending: true });
 
-    setCoachWorkouts(
-      (rows ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }))
-    );
+    let merged = (rows ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+    const groupIds = merged.filter((w) => w.assigned_to_group).map((w) => w.id);
+    if (groupIds.length > 0) {
+      const assigneesMap = await fetchAssigneesForWorkouts(groupIds);
+      merged = mergeAssigneesIntoWorkouts(merged, assigneesMap, swimmers);
+    }
+    setCoachWorkouts(merged);
     setLoading(false);
     setSaved(true);
     setEditingWorkoutIndex(null);
+    setEditingWorkoutSnapshot(null);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  async function saveAssigneesForGroupWorkout(workoutId: string, assigneeIds: string[], otherGroupWorkoutIdsSameDay: string[]) {
+    const { error: delErr } = await supabase.from("workout_assignees").delete().eq("workout_id", workoutId);
+    if (delErr) throw delErr;
+    if (assigneeIds.length > 0) {
+      const { error: insErr } = await supabase.from("workout_assignees").insert(assigneeIds.map((user_id) => ({ workout_id: workoutId, user_id })));
+      if (insErr) throw insErr;
+    }
+    for (const uid of assigneeIds) {
+      if (otherGroupWorkoutIdsSameDay.length === 0) continue;
+      const { error } = await supabase.from("workout_assignees").delete().in("workout_id", otherGroupWorkoutIdsSameDay).eq("user_id", uid);
+      if (error) throw error;
+    }
   }
 
   async function saveSingleWorkout(index: number) {
     if (!dateKey || index < 0 || index >= coachWorkouts.length) return;
     const workout = coachWorkouts[index];
+    setEditingWorkoutIndex(null);
+    setEditingWorkoutSnapshot(null);
     setLoading(true);
     setSaved(false);
+    let savedId: string | undefined = workout.id;
 
     if (workout.id) {
       const { error } = await supabase
@@ -489,9 +654,32 @@ export default function Home() {
         .select()
         .single();
       if (error) { alert(error.message); setLoading(false); return; }
+      savedId = inserted?.id;
       setCoachWorkouts((prev) =>
-        prev.map((w, i) => (i === index ? { ...inserted, date: normDate(inserted?.date) ?? dateKey } : w))
+        prev.map((w, i) => (i === index ? { ...inserted, date: normDate(inserted?.date) ?? dateKey, assignee_ids: (w as Workout).assignee_ids } : w))
       );
+    }
+
+    if (workout.assigned_to_group && savedId) {
+      const otherIds = coachWorkouts.filter((w) => w.id && w.assigned_to_group && w.id !== workout.id).map((w) => w.id!);
+      try {
+        await saveAssigneesForGroupWorkout(savedId, workout.assignee_ids ?? [], otherIds);
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "Failed to save assignees");
+        setLoading(false);
+        return;
+      }
+      for (const w of coachWorkouts) {
+        if (!w.assigned_to_group || !w.id || w.id === workout.id) continue;
+        const otherIdsForW = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id).map((x) => x.id!);
+        try {
+          await saveAssigneesForGroupWorkout(w.id, w.assignee_ids ?? [], otherIdsForW);
+        } catch (e) {
+          alert(e instanceof Error ? e.message : "Failed to save assignees");
+          setLoading(false);
+          return;
+        }
+      }
     }
 
     const { data: rows } = await supabase
@@ -500,12 +688,15 @@ export default function Home() {
       .eq("date", dateKey)
       .order("created_at", { ascending: true });
 
-    setCoachWorkouts(
-      (rows ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }))
-    );
+    let merged = (rows ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+    const groupIds = merged.filter((w) => w.assigned_to_group).map((w) => w.id);
+    if (groupIds.length > 0) {
+      const assigneesMap = await fetchAssigneesForWorkouts(groupIds);
+      merged = mergeAssigneesIntoWorkouts(merged, assigneesMap, swimmers);
+    }
+    setCoachWorkouts(merged);
     setLoading(false);
     setSaved(true);
-    setEditingWorkoutIndex(null);
     setTimeout(() => setSaved(false), 2000);
   }
 
@@ -522,6 +713,7 @@ export default function Home() {
 
     setCoachWorkouts((prev) => prev.filter((_, i) => i !== index));
     setEditingWorkoutIndex(null);
+    setEditingWorkoutSnapshot(null);
     setLoading(false);
   }
 
@@ -549,17 +741,63 @@ export default function Home() {
       assigned_to_group: null,
     };
     setCoachWorkouts((prev) => [...prev, newWorkout]);
+    setEditingWorkoutSnapshot(null);
     setEditingWorkoutIndex(coachWorkouts.length);
   }
 
   function updateCoachWorkout(index: number, updates: Partial<Workout>) {
+    setCoachWorkouts((prev) => {
+      let next = prev.map((w, i) => (i === index ? { ...w, ...updates } : w));
+      if (updates.assignee_ids && prev[index]?.assigned_to_group) {
+        const addedIds = updates.assignee_ids;
+        next = next.map((w, i) => {
+          if (i === index) return next[index];
+          if (w.assigned_to_group && w.assignee_ids?.length) {
+            return { ...w, assignee_ids: w.assignee_ids.filter((id) => !addedIds.includes(id)) };
+          }
+          return w;
+        });
+      }
+      return next;
+    });
+  }
+
+  function resetAssigneesToGroup(originalIdx: number) {
+    const workout = coachWorkouts[originalIdx];
+    if (!workout?.assigned_to_group) return;
+    const defaultGroupIds = swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
     setCoachWorkouts((prev) =>
-      prev.map((w, i) => (i === index ? { ...w, ...updates } : w))
+      prev.map((w, i) => {
+        if (i === originalIdx) return { ...w, assignee_ids: defaultGroupIds };
+        if (w.assigned_to_group) {
+          const currentIds = Array.isArray(w.assignee_ids) ? w.assignee_ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
+          return { ...w, assignee_ids: currentIds.filter((id) => !defaultGroupIds.includes(id)) };
+        }
+        return w;
+      })
     );
   }
 
   function removeCoachWorkout(index: number) {
     setCoachWorkouts((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function startEditingWorkout(index: number) {
+    const w = coachWorkouts[index];
+    setEditingWorkoutSnapshot(w ? { ...w, assignee_ids: w.assignee_ids ? [...w.assignee_ids] : undefined } : null);
+    setEditingWorkoutIndex(index);
+  }
+
+  function cancelEditingWorkout() {
+    const idx = editingWorkoutIndex;
+    const snap = editingWorkoutSnapshot;
+    setEditingWorkoutIndex(null);
+    setEditingWorkoutSnapshot(null);
+    if (idx !== null && snap != null) {
+      setCoachWorkouts((prev) => prev.map((w, i) => (i === idx ? snap : w)));
+    } else if (idx !== null && coachWorkouts[idx] && !coachWorkouts[idx].id) {
+      setCoachWorkouts((prev) => prev.filter((_, i) => i !== idx));
+    }
   }
 
   const changeDate = (delta: number) => {
@@ -604,7 +842,7 @@ export default function Home() {
   };
 
   const DateToggleBar = () => (
-    <div className="mb-5 flex items-center justify-between gap-2 rounded-lg border bg-card px-4 py-3">
+    <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
       <Button
         variant="ghost"
         size="icon"
@@ -643,7 +881,7 @@ export default function Home() {
   );
 
   const ViewToggle = () => (
-    <div className="mb-4 flex gap-1 rounded-lg border bg-card p-1">
+    <div className="mb-3 flex gap-1 rounded-lg border bg-card p-1">
       <Button
         variant={viewMode === "day" ? "secondary" : "ghost"}
         size="sm"
@@ -810,9 +1048,9 @@ export default function Home() {
             )}
 
             {viewMode === "week" && (
-              <div className="flex flex-1 flex-col gap-1.5">
+              <div className="flex flex-1 flex-col gap-1">
                 {rangeLoading ? (
-                  <div className="flex flex-1 items-center justify-center py-12">
+                  <div className="flex flex-1 items-center justify-center py-8">
                     <p className="text-muted-foreground">Loading...</p>
                   </div>
                 ) : (
@@ -833,7 +1071,7 @@ export default function Home() {
                           >
                             <button
                               type="button"
-                              className="flex w-full items-center justify-between p-2.5 text-left transition-colors hover:bg-accent/50"
+                              className="flex w-full items-center justify-between p-2 text-left transition-colors hover:bg-accent/50"
                               onClick={() => {
                                 setExpandedDayKey(isExpanded ? null : dayKey);
                                 setSelectedDate(day);
@@ -860,7 +1098,7 @@ export default function Home() {
                               )}
                             </button>
                             {isExpanded && dayWorkouts.length > 0 && (
-                              <div className="animate-in slide-in-from-top-2 border-t px-2.5 py-2 duration-200 space-y-2">
+                              <div className="animate-in slide-in-from-top-2 border-t px-2 py-1.5 duration-200 space-y-1.5">
                                 {dayWorkouts.map((workout, i) => {
                                   const label = assignmentLabel(workout, swimmers);
                                   return (
@@ -889,11 +1127,12 @@ export default function Home() {
             )}
 
             {viewMode === "month" && (
-              <div className="flex flex-1 flex-col gap-4">
+              <div className="flex flex-1 flex-col gap-2">
                 <Card className="overflow-hidden w-full">
                   <CardContent className="p-0 w-full">
                     <Calendar
-                      className="w-full min-w-0"
+                      className="w-full min-w-0 p-1 [--cell-size:1.25rem]"
+                      classNames={{ week: "mt-0 flex w-full", month: "flex w-full flex-col gap-0.5" }}
                       mode="single"
                       selected={selectedDate}
                       onSelect={(d) => d && handleMonthCalendarSelect(d)}
@@ -946,7 +1185,7 @@ export default function Home() {
                           <div key={key} className="rounded-lg border bg-card overflow-hidden">
                             <button
                               type="button"
-                              className="flex w-full items-center justify-between px-4 py-3 text-left"
+                              className="flex w-full items-center justify-between px-3 py-2 text-left"
                               onClick={() => {
                                 if (isExpanded) {
                                   setExpandedWeekKey(null);
@@ -957,16 +1196,16 @@ export default function Home() {
                                 }
                               }}
                             >
-                              <span className="text-sm font-medium">
+                              <span className="text-xs font-medium">
                                 Week {weeks.findIndex((w) => w.key === key) + 1}: {format(start, "MMM d")}–{format(end, "MMM d")}
                               </span>
-                              <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-2 text-xs text-muted-foreground">
                                 {workoutCount} workout{workoutCount !== 1 ? "s" : ""}
                                 {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
                               </span>
                             </button>
                             {isExpanded && (
-                              <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 space-y-2 duration-200">
+                              <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 space-y-1.5 duration-200">
                                 {(() => {
                                   const daysInWeek = eachDayOfInterval({ start, end });
                                   return daysInWeek.map((day) => {
@@ -977,24 +1216,24 @@ export default function Home() {
                                       <div key={dayKey} className="rounded-lg border bg-card overflow-hidden">
                                         <button
                                           type="button"
-                                          className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-accent/50"
+                                          className="flex w-full items-center justify-between p-2 text-left transition-colors hover:bg-accent/50"
                                           onClick={() => {
                                             setExpandedMonthDayKey(isDayExpanded ? null : dayKey);
                                             setSelectedDate(day);
                                           }}
                                         >
                                           <div className="min-w-0 flex-1">
-                                            <p className="mb-1 text-sm font-medium text-muted-foreground">
+                                            <p className="mb-0.5 text-xs font-medium text-muted-foreground">
                                               {format(day, "EEE, MMM d")}
                                             </p>
                                             {dayWorkouts.length > 0 ? (
-                                              <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
+                                              <div className="space-y-0.5 font-sans text-xs text-muted-foreground">
                                                 {dayWorkouts.map((w, wi) => (
                                                   <p key={wi}>{dayPreviewLabel(w, swimmers, swimmerPreviewDefault(selectedViewSwimmerId, profile, user?.id, swimmers))}</p>
                                                 ))}
                                               </div>
                                             ) : (
-                                              <p className="text-sm text-muted-foreground">No workout</p>
+                                              <p className="text-xs text-muted-foreground">No workout</p>
                                             )}
                                           </div>
                                           {isDayExpanded ? (
@@ -1004,7 +1243,7 @@ export default function Home() {
                                           )}
                                         </button>
                                         {isDayExpanded && (
-                                          <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
+                                          <div className="animate-in slide-in-from-top-2 border-t px-2 py-1.5 duration-200 space-y-2">
                                             {dayWorkouts.length > 0 ? (
                                               dayWorkouts.map((workout, i) => {
                                                 const label = assignmentLabel(workout, swimmers);
@@ -1061,7 +1300,9 @@ export default function Home() {
                   ) : (
                     <div className="flex flex-1 flex-col gap-4">
                       {coachWorkouts.length > 0 ? (
-                        sortCoachWorkouts(coachWorkouts, swimmers).map((workout) => {
+                        (() => {
+                          const personalWorkoutIds = coachWorkouts.filter((w) => w.assigned_to && !w.assigned_to_group).map((w) => w.assigned_to!);
+                          return sortCoachWorkouts(coachWorkouts, swimmers).map((workout) => {
                           const originalIdx = coachWorkouts.indexOf(workout);
                           const label = assignmentLabel(workout, swimmers);
                           const isEditing = editingWorkoutIndex === originalIdx;
@@ -1084,12 +1325,12 @@ export default function Home() {
                                           const v = e.target.value;
                                           if (v.startsWith("swimmer:")) {
                                             const id = v.slice(8) || null;
-                                            updateCoachWorkout(originalIdx, { assigned_to: id, assigned_to_group: null });
+                                            updateCoachWorkout(originalIdx, { assigned_to: id, assigned_to_group: null, assignee_ids: undefined });
                                           } else if (v.startsWith("group:")) {
                                             const g = v.slice(6) as SwimmerGroup;
-                                            updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: g });
+                                            updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: g, assignee_ids: undefined });
                                           } else {
-                                            updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: null });
+                                            updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: null, assignee_ids: undefined });
                                           }
                                         }}
                                       >
@@ -1115,6 +1356,67 @@ export default function Home() {
                                         ))}
                                       </select>
                                     </div>
+                                    {workout.assigned_to_group && (
+                                      <div className="space-y-1.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <p className="text-xs font-medium text-muted-foreground">Swimmers in this workout</p>
+                                          <button
+                                            type="button"
+                                            onClick={() => resetAssigneesToGroup(originalIdx)}
+                                            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            title="Reset to default group"
+                                            aria-label="Reset swimmers to group default"
+                                          >
+                                            <RotateCcw className="size-3.5" />
+                                          </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {(() => {
+                                            const personalWorkoutUserIds = new Set(personalWorkoutIds);
+                                            return [...swimmers]
+                                            .sort((a, b) => {
+                                              const groupOrder = (g: SwimmerGroup | null | undefined) =>
+                                                g === workout.assigned_to_group ? 0 : g == null ? 4 : COACH_GROUP_ORDER.indexOf(g as (typeof COACH_GROUP_ORDER)[number]) + 1;
+                                              const ga = groupOrder(a.swimmer_group);
+                                              const gb = groupOrder(b.swimmer_group);
+                                              if (ga !== gb) return ga - gb;
+                                              return (a.full_name ?? "").localeCompare(b.full_name ?? "");
+                                            })
+                                            .map((s) => {
+                                            const defaultGroupIds = swimmers.filter((x) => x.swimmer_group === workout.assigned_to_group).map((x) => x.id);
+                                            const currentIds = Array.isArray(workout.assignee_ids) ? workout.assignee_ids : defaultGroupIds;
+                                            const isIn = currentIds.includes(s.id);
+                                            const hasPersonal = personalWorkoutUserIds.has(s.id);
+                                            const canAdd = !hasPersonal || isIn;
+                                            return (
+                                              <button
+                                                key={s.id}
+                                                type="button"
+                                                onClick={() => {
+                                                  if (isIn) {
+                                                    updateCoachWorkout(originalIdx, { assignee_ids: currentIds.filter((id) => id !== s.id) });
+                                                  } else if (canAdd) {
+                                                    updateCoachWorkout(originalIdx, { assignee_ids: [...currentIds, s.id] });
+                                                  }
+                                                }}
+                                                title={hasPersonal ? "This swimmer has a personal workout this day" : undefined}
+                                                className={
+                                                  hasPersonal
+                                                    ? "rounded-md border border-red-400/80 bg-red-400/10 text-red-800 dark:text-red-200 dark:bg-red-500/15 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-red-400/20 hover:border-red-500/90 dark:hover:bg-red-500/25"
+                                                    : isIn
+                                                      ? "rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors inline-flex items-center gap-1 border-primary bg-primary/10 text-primary hover:bg-primary/20"
+                                                      : "rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors inline-flex items-center gap-1 border-input bg-background text-muted-foreground hover:bg-accent disabled:opacity-50"
+                                                }
+                                              >
+                                                {hasPersonal && <AlertCircle className="size-3.5 shrink-0" aria-hidden />}
+                                                {s.full_name || s.id.slice(0, 8)}
+                                              </button>
+                                            );
+                                          });
+                                        })()}
+                                        </div>
+                                      </div>
+                                    )}
                                     <Textarea
                                       placeholder="Warm-up: 200 free, 4×50 kick...
 Main set: 8×100 @ 1:30...
@@ -1133,13 +1435,22 @@ Cool-down: 200 easy"
                                       />
                                     )}
                                     <div className="flex gap-2 pt-2">
-                                      <Button size="sm" onClick={() => saveSingleWorkout(originalIdx)} disabled={loading || coachLoading}>
+                                      <Button type="button" size="sm" onClick={() => saveSingleWorkout(originalIdx)} disabled={loading || coachLoading}>
                                         {saved ? "Saved ✓" : "Save"}
                                       </Button>
-                                      <Button variant="outline" size="sm" onClick={() => setEditingWorkoutIndex(null)} disabled={loading}>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          cancelEditingWorkout();
+                                        }}
+                                        disabled={loading}
+                                        className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                                      >
                                         Cancel
-                                      </Button>
-                                      <Button variant="outline" size="sm" className="text-destructive" onClick={() => deleteSingleWorkout(originalIdx)} disabled={loading}>
+                                      </button>
+                                      <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => deleteSingleWorkout(originalIdx)} disabled={loading}>
                                         Delete
                                       </Button>
                                     </div>
@@ -1151,7 +1462,7 @@ Cool-down: 200 easy"
                                     variant="ghost"
                                     size="icon"
                                     className="absolute right-2 top-2 size-8 z-10"
-                                    onClick={() => setEditingWorkoutIndex(originalIdx)}
+                                    onClick={() => startEditingWorkout(originalIdx)}
                                     aria-label="Edit workout"
                                   >
                                     <Pencil className="size-4" />
@@ -1162,7 +1473,7 @@ Cool-down: 200 easy"
                                       dateKey={dateKey}
                                       showLabel={coachWorkouts.length > 1}
                                       assigneeLabel={label}
-                                      assigneeNames={assignedToNames(workout, swimmers)}
+                                      assigneeNames={assignedToNames(workout, swimmers, personalWorkoutIds)}
                                       feedbackRefreshKey={feedbackRefreshKey}
                                       onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
                                       readOnly
@@ -1172,7 +1483,8 @@ Cool-down: 200 easy"
                               )}
                             </Card>
                           );
-                        })
+                        });
+                        })()
                       ) : null}
                       <div className="flex justify-center pt-2">
                         <Button variant="outline" size="icon" onClick={addCoachWorkout} className="size-10" aria-label="Add workout">
@@ -1189,9 +1501,9 @@ Cool-down: 200 easy"
             )}
 
             {viewMode === "week" && (
-              <div className="flex flex-1 flex-col gap-1.5">
+              <div className="flex flex-1 flex-col gap-1">
                 {rangeLoading ? (
-                  <div className="flex flex-1 items-center justify-center py-12">
+                  <div className="flex flex-1 items-center justify-center py-8">
                     <p className="text-muted-foreground">Loading...</p>
                   </div>
                 ) : (
@@ -1212,7 +1524,7 @@ Cool-down: 200 easy"
                           >
                             <button
                               type="button"
-                              className="flex w-full items-center justify-between p-2.5 text-left transition-colors hover:bg-accent/50"
+                              className="flex w-full items-center justify-between p-2 text-left transition-colors hover:bg-accent/50"
                               onClick={() => {
                                 setExpandedDayKey(isExpanded ? null : dayKey);
                                 setSelectedDate(day);
@@ -1241,7 +1553,7 @@ Cool-down: 200 easy"
                               )}
                             </button>
                             {isExpanded && (
-                              <div className="animate-in slide-in-from-top-2 border-t px-2.5 py-2 duration-200 space-y-2">
+                              <div className="animate-in slide-in-from-top-2 border-t px-2 py-1.5 duration-200 space-y-1.5">
                                 {dayWorkouts.length > 0 ? (
                                   <>
                                     {dayWorkouts.map((workout, i) => {
@@ -1257,7 +1569,7 @@ Cool-down: 200 easy"
                                           compact
                                           readOnly
                                           assigneeLabel={label}
-                                          assigneeNames={assignedToNames(workout, swimmers)}
+                                          assigneeNames={assignedToNames(workout, swimmers, dayWorkouts.filter((w) => w.assigned_to && !w.assigned_to_group).map((w) => w.assigned_to!))}
                                         />
                                       );
                                     })}
@@ -1293,11 +1605,12 @@ Cool-down: 200 easy"
             )}
 
             {viewMode === "month" && (
-              <div className="flex flex-1 flex-col gap-4">
+              <div className="flex flex-1 flex-col gap-2">
                 <Card className="overflow-hidden w-full">
                   <CardContent className="p-0 w-full">
                     <Calendar
-                      className="w-full min-w-0"
+                      className="w-full min-w-0 p-1 [--cell-size:1.25rem]"
+                      classNames={{ week: "mt-0 flex w-full", month: "flex w-full flex-col gap-0.5" }}
                       mode="single"
                       selected={selectedDate}
                       onSelect={(d) => d && handleMonthCalendarSelect(d)}
@@ -1350,7 +1663,7 @@ Cool-down: 200 easy"
                           <div key={key} className="rounded-lg border bg-card overflow-hidden">
                             <button
                               type="button"
-                              className="flex w-full items-center justify-between px-4 py-3 text-left"
+                              className="flex w-full items-center justify-between px-3 py-2 text-left"
                               onClick={() => {
                                 if (isExpanded) {
                                   setExpandedWeekKey(null);
@@ -1361,16 +1674,16 @@ Cool-down: 200 easy"
                                 }
                               }}
                             >
-                              <span className="text-sm font-medium">
+                              <span className="text-xs font-medium">
                                 Week {weeks.findIndex((w) => w.key === key) + 1}: {format(start, "MMM d")}–{format(end, "MMM d")}
                               </span>
-                              <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span className="flex items-center gap-2 text-xs text-muted-foreground">
                                 {workoutCount} workout{workoutCount !== 1 ? "s" : ""}
                                 {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
                               </span>
                             </button>
                             {isExpanded && (
-                              <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 space-y-2 duration-200">
+                              <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 space-y-1.5 duration-200">
                                 {(() => {
                                   const daysInWeek = eachDayOfInterval({ start, end });
                                   return daysInWeek.map((day) => {
@@ -1381,18 +1694,18 @@ Cool-down: 200 easy"
                                       <div key={dayKey} className="rounded-lg border bg-card overflow-hidden">
                                         <button
                                           type="button"
-                                          className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-accent/50"
+                                          className="flex w-full items-center justify-between p-2 text-left transition-colors hover:bg-accent/50"
                                           onClick={() => {
                                             setExpandedMonthDayKey(isDayExpanded ? null : dayKey);
                                             setSelectedDate(day);
                                           }}
                                         >
                                           <div className="min-w-0 flex-1">
-                                            <p className="mb-1 text-sm font-medium text-muted-foreground">
+                                            <p className="mb-0.5 text-xs font-medium text-muted-foreground">
                                               {format(day, "EEE, MMM d")}
                                             </p>
                                             {dayWorkouts.length > 0 ? (
-                                              <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
+                                              <div className="space-y-0.5 font-sans text-xs text-muted-foreground">
                                                 {dayWorkouts.map((w, wi) => (
                                                   <p key={wi}>
                                                     {dayPreviewLabel(w, swimmers, selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined)}
@@ -1400,7 +1713,7 @@ Cool-down: 200 easy"
                                                 ))}
                                               </div>
                                             ) : (
-                                              <p className="text-sm text-muted-foreground">No workout</p>
+                                              <p className="text-xs text-muted-foreground">No workout</p>
                                             )}
                                           </div>
                                           {isDayExpanded ? (
@@ -1410,7 +1723,7 @@ Cool-down: 200 easy"
                                           )}
                                         </button>
                                         {isDayExpanded && (
-                                          <div className="animate-in slide-in-from-top-2 border-t px-3 py-2 duration-200 space-y-3">
+                                          <div className="animate-in slide-in-from-top-2 border-t px-2 py-1.5 duration-200 space-y-2">
                                             {dayWorkouts.length > 0 ? (
                                               <>
                                                 {dayWorkouts.map((workout, i) => {
@@ -1426,7 +1739,7 @@ Cool-down: 200 easy"
                                                       compact
                                                       readOnly
                                                       assigneeLabel={label}
-                                                      assigneeNames={assignedToNames(workout, swimmers)}
+                                                      assigneeNames={assignedToNames(workout, swimmers, dayWorkouts.filter((w) => w.assigned_to && !w.assigned_to_group).map((w) => w.assigned_to!))}
                                                     />
                                                   );
                                                 })}
