@@ -23,18 +23,20 @@ interface WorkoutAnalysisProps {
   workoutId?: string;
   refreshKey?: number;
   className?: string;
-  readOnly?: boolean;
+  viewerRole?: "coach" | "swimmer";
   onFeedbackChange?: () => void;
 }
 
-export function WorkoutAnalysis({ content, date, workoutId, refreshKey, className = "", readOnly, onFeedbackChange }: WorkoutAnalysisProps) {
+export function WorkoutAnalysis({ content, date, workoutId, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange }: WorkoutAnalysisProps) {
   const { user } = useAuth();
+  const readOnly = viewerRole === "coach";
   const analysis = analyzeWorkout(content);
   const [feedback, setFeedback] = useState<Feedback[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editMuscle, setEditMuscle] = useState<number | null>(null);
   const [editCardio, setEditCardio] = useState<number | null>(null);
+  const [editAnonymous, setEditAnonymous] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -53,9 +55,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
       return;
     }
     async function fetchFeedback() {
-      const selectCols = readOnly
-        ? "id, feedback_text, muscle_intensity, cardio_intensity, user_id, anonymous"
-        : "id, feedback_text, muscle_intensity, cardio_intensity";
+      const selectCols = readOnly ? "*" : "id, feedback_text, muscle_intensity, cardio_intensity, anonymous";
       let query = supabase
         .from("feedback")
         .select(selectCols)
@@ -63,9 +63,14 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
         .or(`workout_id.eq.${workoutId},workout_id.is.null`);
       if (!readOnly && user?.id) query = query.eq("user_id", user.id);
       const { data: initialData, error: fetchError } = await query.order("created_at", { ascending: false });
-      const data = readOnly && fetchError?.message?.includes("anonymous")
-        ? (await supabase.from("feedback").select("id, feedback_text, muscle_intensity, cardio_intensity, user_id").eq("date", date).or(`workout_id.eq.${workoutId},workout_id.is.null`).order("created_at", { ascending: false })).data
-        : initialData;
+      let data: unknown = initialData;
+      if (fetchError?.message?.includes("anonymous")) {
+        const fallbackCols = readOnly ? "id, feedback_text, muscle_intensity, cardio_intensity, user_id" : "id, feedback_text, muscle_intensity, cardio_intensity";
+        let fallbackQuery = supabase.from("feedback").select(fallbackCols).eq("date", date).or(`workout_id.eq.${workoutId},workout_id.is.null`);
+        if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id);
+        const { data: fallback } = await fallbackQuery.order("created_at", { ascending: false });
+        data = fallback;
+      }
       const feedbackList = (data ?? []) as Feedback[];
       setFeedback(feedbackList);
       if (readOnly && feedbackList.length) {
@@ -87,6 +92,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     setEditText(fb.feedback_text ?? "");
     setEditMuscle(fb.muscle_intensity ?? null);
     setEditCardio(fb.cardio_intensity ?? null);
+    setEditAnonymous(!!fb.anonymous);
   };
 
   const cancelEdit = () => {
@@ -94,19 +100,18 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     setEditText("");
     setEditMuscle(null);
     setEditCardio(null);
+    setEditAnonymous(false);
   };
 
   const saveEdit = async () => {
     if (!editingId) return;
     setSaving(true);
-    const { error } = await supabase
-      .from("feedback")
-      .update({
-        feedback_text: editText || null,
-        muscle_intensity: editMuscle ?? null,
-        cardio_intensity: editCardio ?? null,
-      })
-      .eq("id", editingId);
+    const { error } = await supabase.from("feedback").update({
+      feedback_text: editText || null,
+      muscle_intensity: editMuscle ?? null,
+      cardio_intensity: editCardio ?? null,
+      anonymous: editAnonymous,
+    }).eq("id", editingId);
     setSaving(false);
     if (error) {
       console.error("Failed to update feedback:", error);
@@ -117,7 +122,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     setFeedback((prev) =>
       prev?.map((fb) =>
         fb.id === editingId
-          ? { ...fb, feedback_text: editText || null, muscle_intensity: editMuscle, cardio_intensity: editCardio }
+          ? { ...fb, feedback_text: editText || null, muscle_intensity: editMuscle, cardio_intensity: editCardio, anonymous: editAnonymous }
           : fb
       ) ?? []
     );
@@ -144,10 +149,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     if (!date || !user?.id) return;
     setAddSaving(true);
     const payload = { date, workout_id: workoutId || null, user_id: user.id, feedback_text: addText || null, muscle_intensity: addMuscle ?? null, cardio_intensity: addCardio ?? null };
-    let { error } = await supabase.from("feedback").insert(addAnonymous ? { ...payload, anonymous: true } : payload);
-    if (error?.message?.includes("anonymous")) {
-      ({ error } = await supabase.from("feedback").insert(payload));
-    }
+    const { error } = await supabase.from("feedback").insert(addAnonymous ? { ...payload, anonymous: true } : payload);
     setAddSaving(false);
     if (error) {
       console.error("Failed to save feedback:", error.message || error.code || error);
@@ -181,7 +183,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
     label,
   }: {
     value: number | null;
-    onChange: (n: number) => void;
+    onChange: (n: number | null) => void;
     label: string;
   }) => (
     <div className="space-y-1.5">
@@ -194,7 +196,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
             variant={value === n ? "default" : "outline"}
             size="icon"
             className="size-8 shrink-0 text-xs"
-            onClick={() => onChange(n)}
+            onClick={() => onChange(value === n ? null : n)}
           >
             {n}
           </Button>
@@ -243,6 +245,9 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
                 ) : fb.user_id && userNames[fb.user_id] ? (
                   <p className="text-xs font-medium text-muted-foreground">{userNames[fb.user_id]}</p>
                 ) : null)}
+                {!readOnly && fb.anonymous && (
+                  <p className="text-xs font-medium text-muted-foreground">Anonymous to coach</p>
+                )}
                 {editingId === fb.id ? (
                   <div className="space-y-3">
                     <Textarea
@@ -253,6 +258,10 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
                     />
                     <IntensityScale label="Muscle intensity (1–5, optional)" value={editMuscle} onChange={setEditMuscle} />
                     <IntensityScale label="Cardio intensity (1–5, optional)" value={editCardio} onChange={setEditCardio} />
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={editAnonymous} onChange={(e) => setEditAnonymous(e.target.checked)} className="rounded border-input" />
+                      <span className="text-muted-foreground">Show as anonymous to coach</span>
+                    </label>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={saveEdit} disabled={saving}>
                         {saving ? "Saving…" : "Save"}

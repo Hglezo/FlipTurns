@@ -44,7 +44,7 @@ create policy "Anyone can delete feedback" on public.feedback for delete using (
 -- Remove unique constraint so we can have multiple workouts per day (e.g. morning + afternoon)
 alter table public.workouts drop constraint if exists workouts_date_key;
 
--- Session label (legacy, optional). Type/category for Sprint|Middle|Distance and Recovery|Aerobic|Pace|Sprint|Tech suit
+-- Session label (legacy, optional). Type/category for Sprint|Middle|Distance and Recovery|Aerobic|Pace|Speed|Tech suit
 alter table public.workouts add column if not exists session text default '';
 alter table public.workouts add column if not exists workout_type text default '';
 alter table public.workouts add column if not exists workout_category text default '';
@@ -114,6 +114,13 @@ const FIX_WORKOUT_SAVE_SQL = `-- Run this if coach workout save is broken (e.g. 
 alter table public.workouts add column if not exists assigned_to_group text check (assigned_to_group in ('Sprint', 'Middle distance', 'Distance'));
 alter table public.workouts drop column if exists workout_type;
 alter table public.workouts drop constraint if exists workouts_date_key;`;
+
+const COACH_UPDATE_SWIMMER_GROUP_SQL = `-- Coaches can assign swimmers to groups in Team management (Settings)
+drop policy if exists "Coaches can update swimmer profiles" on public.profiles;
+create policy "Coaches can update swimmer profiles"
+  on public.profiles for update
+  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'coach'))
+  with check (true);`;
 
 export default function SetupPage() {
   const [copied, setCopied] = useState<string | null>(null);
@@ -269,7 +276,7 @@ export default function SetupPage() {
           <CardHeader>
             <CardTitle className="text-base">Anonymous feedback</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Allows swimmers to submit feedback anonymously. Coaches see &quot;Anonymous&quot; instead of the swimmer&apos;s name.
+              Allows swimmers to submit feedback anonymously. Coaches see &quot;Anonymous&quot; instead of the swimmer&apos;s name. After adding the column, run the schema reload below so coaches see &quot;Anonymous&quot; correctly.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -280,6 +287,16 @@ export default function SetupPage() {
               <Button variant="outline" size="sm" className="absolute right-2 top-2 gap-1" onClick={() => copy(FEEDBACK_ANONYMOUS_SQL)}>
                 {copied === FEEDBACK_ANONYMOUS_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === FEEDBACK_ANONYMOUS_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Then run this to refresh the schema cache (required for anonymous to work):</p>
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>NOTIFY pgrst, &apos;reload schema&apos;;</code>
+              </pre>
+              <Button variant="outline" size="sm" className="absolute right-2 top-2 gap-1" onClick={() => copy("NOTIFY pgrst, 'reload schema';")}>
+                {copied === "NOTIFY pgrst, 'reload schema';" ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === "NOTIFY pgrst, 'reload schema';" ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>
@@ -350,6 +367,31 @@ export default function SetupPage() {
               >
                 {copied === WORKOUT_GROUPS_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === WORKOUT_GROUPS_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Coach team management (assign swimmers to groups)</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              If moving swimmers to groups in Settings doesn&apos;t save, run this in Supabase SQL Editor.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{COACH_UPDATE_SWIMMER_GROUP_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(COACH_UPDATE_SWIMMER_GROUP_SQL)}
+              >
+                {copied === COACH_UPDATE_SWIMMER_GROUP_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === COACH_UPDATE_SWIMMER_GROUP_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>

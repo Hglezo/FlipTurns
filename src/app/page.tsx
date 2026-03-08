@@ -76,7 +76,7 @@ interface SwimmerProfile {
 }
 
 const SWIMMER_GROUPS: SwimmerGroup[] = ["Sprint", "Middle distance", "Distance"];
-const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Sprint", "Tech suit"] as const;
+const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Speed", "Tech suit"] as const;
 
 function orAssignFilter(userId: string, group: string | null | undefined): string {
   if (!group) return `assigned_to.eq.${userId}`;
@@ -90,9 +90,29 @@ function workoutLabel(w: Workout): string {
 }
 
 function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): string | null {
-  if (workout.assigned_to_group) return workout.assigned_to_group;
+  if (workout.assigned_to_group) return `${workout.assigned_to_group} Group`;
   const assignee = swimmers.find((s) => s.id === workout.assigned_to);
   return assignee?.full_name ?? (workout.assigned_to ? "Swimmer" : null);
+}
+
+function assignedToNames(workout: Workout, swimmers: SwimmerProfile[]): string | null {
+  if (workout.assigned_to_group) {
+    const names = swimmers
+      .filter((s) => s.swimmer_group === workout.assigned_to_group)
+      .map((s) => s.full_name || s.id.slice(0, 8))
+      .sort((a, b) => a.localeCompare(b));
+    return names.length ? names.join(", ") : null;
+  }
+  return assignmentLabel(workout, swimmers);
+}
+
+function teammateNames(workout: Workout, swimmers: SwimmerProfile[], currentUserId: string | undefined): string | null {
+  if (!workout.assigned_to_group) return null;
+  const names = swimmers
+    .filter((s) => s.swimmer_group === workout.assigned_to_group && s.id !== currentUserId)
+    .map((s) => s.full_name || s.id.slice(0, 8))
+    .sort((a, b) => a.localeCompare(b));
+  return names.length ? names.join(", ") : "None";
 }
 
 function dayPreviewLabel(workout: Workout, swimmers: SwimmerProfile[], defaultAssignee?: string | null): string {
@@ -122,7 +142,6 @@ function sortCoachWorkouts(workouts: Workout[], swimmers: SwimmerProfile[]): Wor
 }
 
 const badgeClass = "inline-flex items-center rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue";
-const assigneeBadgeClass = "inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground";
 
 function WorkoutBlock({
   workout,
@@ -130,7 +149,9 @@ function WorkoutBlock({
   showLabel,
   feedbackRefreshKey,
   onFeedbackChange,
-  assigneeBadge,
+  assigneeLabel,
+  assigneeNames,
+  teammateNames,
   className = "mt-4",
   readOnly,
   compact,
@@ -140,27 +161,31 @@ function WorkoutBlock({
   showLabel: boolean;
   feedbackRefreshKey: number;
   onFeedbackChange?: () => void;
-  assigneeBadge?: React.ReactNode;
+  assigneeLabel?: string | null;
+  assigneeNames?: string | null;
+  teammateNames?: string | null;
   className?: string;
   readOnly?: boolean;
   compact?: boolean;
 }) {
-  const hasCategory = showLabel && workout.workout_category?.trim();
-  const hasGroup = showLabel && workout.assigned_to_group?.trim();
-  const hasBadges = hasCategory || hasGroup;
+  const hasAssignment = workout.assigned_to_group?.trim() || workout.assigned_to;
+  const hasCategory = workout.workout_category?.trim();
+  const hasBadges = hasAssignment || hasCategory;
+  const namesLine = readOnly ? assigneeNames && `Assigned to ${assigneeNames}` : teammateNames != null && `Teammates: ${teammateNames}`;
   return (
-    <div className="space-y-4">
+    <div className={compact ? "space-y-2" : "space-y-4"}>
       {hasBadges && (
         <div className={`flex flex-wrap justify-end gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
-          {workout.assigned_to_group?.trim() ? (
-            <span className={badgeClass}>{workout.assigned_to_group.trim()}</span>
-          ) : workout.assigned_to ? (
-            <span className={badgeClass}>Personal</span>
-          ) : null}
+          {assigneeLabel && (
+            <span className={badgeClass}>{assigneeLabel}</span>
+          )}
           {workout.workout_category?.trim() && (
             <span className={badgeClass}>{workout.workout_category.trim()}</span>
           )}
         </div>
+      )}
+      {namesLine && (
+        <p className="text-xs text-muted-foreground mb-2 text-right">{namesLine}</p>
       )}
       <pre className={`whitespace-pre-wrap font-sans leading-relaxed text-foreground/90 ${compact ? "text-[14px]" : "text-[15px]"}`}>{workout.content}</pre>
       <WorkoutAnalysis
@@ -170,14 +195,8 @@ function WorkoutBlock({
         refreshKey={feedbackRefreshKey}
         onFeedbackChange={onFeedbackChange}
         className={className}
-        readOnly={readOnly}
+        viewerRole={readOnly ? "coach" : "swimmer"}
       />
-      {assigneeBadge && (
-        <div className="pt-2 border-t border-border/50">
-          <span className="text-xs text-muted-foreground">Assigned to </span>
-          {assigneeBadge}
-        </div>
-      )}
     </div>
   );
 }
@@ -774,9 +793,8 @@ export default function Home() {
                               showLabel
                               feedbackRefreshKey={feedbackRefreshKey}
                               onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                              assigneeBadge={label && selectedViewSwimmerId === "" ? (
-                                <span className={assigneeBadgeClass}>{label}</span>
-                              ) : undefined}
+                              assigneeLabel={label}
+                              teammateNames={teammateNames(workout, swimmers, user?.id)}
                             />
                           </CardContent>
                         </Card>
@@ -792,7 +810,7 @@ export default function Home() {
             )}
 
             {viewMode === "week" && (
-              <div className="flex flex-1 flex-col gap-3">
+              <div className="flex flex-1 flex-col gap-1.5">
                 {rangeLoading ? (
                   <div className="flex flex-1 items-center justify-center py-12">
                     <p className="text-muted-foreground">Loading...</p>
@@ -815,34 +833,34 @@ export default function Home() {
                           >
                             <button
                               type="button"
-                              className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-accent/50"
+                              className="flex w-full items-center justify-between p-2.5 text-left transition-colors hover:bg-accent/50"
                               onClick={() => {
                                 setExpandedDayKey(isExpanded ? null : dayKey);
                                 setSelectedDate(day);
                               }}
                             >
-                              <div>
-                                <p className="mb-2 text-sm font-medium text-muted-foreground">
+                              <div className="min-w-0 flex-1">
+                                <p className="mb-0.5 text-xs font-medium text-muted-foreground">
                                   {format(day, "EEE, MMM d")}
                                 </p>
                                 {dayWorkouts.length > 0 ? (
-                                  <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
+                                  <div className="space-y-0.5 font-sans text-xs text-muted-foreground">
                                     {dayWorkouts.map((w, wi) => (
-                                      <p key={wi}>{dayPreviewLabel(w, swimmers, swimmerPreviewDefault(selectedViewSwimmerId, profile, user?.id, swimmers))}</p>
+                                      <p key={wi} className="truncate">{dayPreviewLabel(w, swimmers, swimmerPreviewDefault(selectedViewSwimmerId, profile, user?.id, swimmers))}</p>
                                     ))}
                                   </div>
                                 ) : (
-                                  <p className="text-sm text-muted-foreground">No workout</p>
+                                  <p className="text-xs text-muted-foreground">No workout</p>
                                 )}
                               </div>
                               {isExpanded ? (
-                                <ChevronUp className="size-4 shrink-0 text-muted-foreground" />
+                                <ChevronUp className="size-3.5 shrink-0 text-muted-foreground ml-1" />
                               ) : (
-                                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                                <ChevronDown className="size-3.5 shrink-0 text-muted-foreground ml-1" />
                               )}
                             </button>
                             {isExpanded && dayWorkouts.length > 0 && (
-                              <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200 space-y-4">
+                              <div className="animate-in slide-in-from-top-2 border-t px-2.5 py-2 duration-200 space-y-2">
                                 {dayWorkouts.map((workout, i) => {
                                   const label = assignmentLabel(workout, swimmers);
                                   return (
@@ -853,11 +871,10 @@ export default function Home() {
                                       showLabel
                                       feedbackRefreshKey={feedbackRefreshKey}
                                       onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
-                                      className="mt-2"
+                                      className="mt-1"
                                       compact
-                                      assigneeBadge={label && selectedViewSwimmerId === "" ? (
-                                        <span className={assigneeBadgeClass}>{label}</span>
-                                      ) : undefined}
+                                      assigneeLabel={label}
+                                      teammateNames={teammateNames(workout, swimmers, user?.id)}
                                     />
                                   );
                                 })}
@@ -1001,9 +1018,8 @@ export default function Home() {
                                                     onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
                                                     className="mt-2"
                                                     compact
-                                                    assigneeBadge={label && selectedViewSwimmerId === "" ? (
-                                                      <span className={assigneeBadgeClass}>{label}</span>
-                                                    ) : undefined}
+                                                    assigneeLabel={label}
+                                                    teammateNames={teammateNames(workout, swimmers, user?.id)}
                                                   />
                                                 );
                                               })
@@ -1113,7 +1129,7 @@ Cool-down: 200 easy"
                                         date={dateKey}
                                         workoutId={workout.id || undefined}
                                         refreshKey={feedbackRefreshKey}
-                                        readOnly
+                                        viewerRole="coach"
                                       />
                                     )}
                                     <div className="flex gap-2 pt-2">
@@ -1145,9 +1161,8 @@ Cool-down: 200 easy"
                                       workout={workout}
                                       dateKey={dateKey}
                                       showLabel={coachWorkouts.length > 1}
-                                      assigneeBadge={!selectedCoachSwimmerId && label ? (
-                                        <span className={assigneeBadgeClass}>{label}</span>
-                                      ) : undefined}
+                                      assigneeLabel={label}
+                                      assigneeNames={assignedToNames(workout, swimmers)}
                                       feedbackRefreshKey={feedbackRefreshKey}
                                       onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
                                       readOnly
@@ -1174,7 +1189,7 @@ Cool-down: 200 easy"
             )}
 
             {viewMode === "week" && (
-              <div className="flex flex-1 flex-col gap-3">
+              <div className="flex flex-1 flex-col gap-1.5">
                 {rangeLoading ? (
                   <div className="flex flex-1 items-center justify-center py-12">
                     <p className="text-muted-foreground">Loading...</p>
@@ -1197,36 +1212,36 @@ Cool-down: 200 easy"
                           >
                             <button
                               type="button"
-                              className="flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-accent/50"
+                              className="flex w-full items-center justify-between p-2.5 text-left transition-colors hover:bg-accent/50"
                               onClick={() => {
                                 setExpandedDayKey(isExpanded ? null : dayKey);
                                 setSelectedDate(day);
                               }}
                             >
-                              <div>
-                                <p className="mb-2 text-sm font-medium text-muted-foreground">
+                              <div className="min-w-0 flex-1">
+                                <p className="mb-0.5 text-xs font-medium text-muted-foreground">
                                   {format(day, "EEE, MMM d")}
                                 </p>
                                 {dayWorkouts.length > 0 ? (
-                                  <div className="space-y-1 font-sans text-[14px] text-muted-foreground">
+                                  <div className="space-y-0.5 font-sans text-xs text-muted-foreground">
                                     {dayWorkouts.map((w, wi) => (
-                                      <p key={wi}>
+                                      <p key={wi} className="truncate">
                                         {dayPreviewLabel(w, swimmers, selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined)}
                                       </p>
                                     ))}
                                   </div>
                                 ) : (
-                                  <p className="text-sm text-muted-foreground">No workout</p>
+                                  <p className="text-xs text-muted-foreground">No workout</p>
                                 )}
                               </div>
                               {isExpanded ? (
-                                <ChevronUp className="size-4 shrink-0 text-muted-foreground" />
+                                <ChevronUp className="size-3.5 shrink-0 text-muted-foreground ml-1" />
                               ) : (
-                                <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                                <ChevronDown className="size-3.5 shrink-0 text-muted-foreground ml-1" />
                               )}
                             </button>
                             {isExpanded && (
-                              <div className="animate-in slide-in-from-top-2 border-t px-4 py-3 duration-200 space-y-4">
+                              <div className="animate-in slide-in-from-top-2 border-t px-2.5 py-2 duration-200 space-y-2">
                                 {dayWorkouts.length > 0 ? (
                                   <>
                                     {dayWorkouts.map((workout, i) => {
@@ -1238,12 +1253,11 @@ Cool-down: 200 easy"
                                           dateKey={dayKey}
                                           showLabel={dayWorkouts.length > 1}
                                           feedbackRefreshKey={feedbackRefreshKey}
-                                          className="mt-2"
+                                          className="mt-1"
                                           compact
                                           readOnly
-                                          assigneeBadge={!selectedCoachSwimmerId && label ? (
-                                            <span className={assigneeBadgeClass}>{label}</span>
-                                          ) : undefined}
+                                          assigneeLabel={label}
+                                          assigneeNames={assignedToNames(workout, swimmers)}
                                         />
                                       );
                                     })}
@@ -1411,9 +1425,8 @@ Cool-down: 200 easy"
                                                       className="mt-2"
                                                       compact
                                                       readOnly
-                                                      assigneeBadge={!selectedCoachSwimmerId && label ? (
-                                                        <span className={assigneeBadgeClass}>{label}</span>
-                                                      ) : undefined}
+                                                      assigneeLabel={label}
+                                                      assigneeNames={assignedToNames(workout, swimmers)}
                                                     />
                                                   );
                                                 })}
