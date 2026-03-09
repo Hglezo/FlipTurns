@@ -1008,7 +1008,7 @@ export default function Home() {
 
         {/* Swimmer view */}
         {role === "swimmer" && (
-          <div className="flex flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">
             <DateToggleBar />
             <ViewToggle />
 
@@ -1127,8 +1127,8 @@ export default function Home() {
             )}
 
             {viewMode === "month" && (
-              <div className="flex flex-1 flex-col gap-2">
-                <Card className="overflow-hidden w-full">
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+                <Card className="shrink-0 w-full overflow-hidden">
                   <CardContent className="p-0 w-full">
                     <Calendar
                       className="w-full min-w-0 p-1 [--cell-size:1.25rem]"
@@ -1286,7 +1286,7 @@ export default function Home() {
 
         {/* Coach view */}
         {role === "coach" && (
-          <div className="flex flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">
             <DateToggleBar />
             <ViewToggle />
 
@@ -1605,8 +1605,8 @@ Cool-down: 200 easy"
             )}
 
             {viewMode === "month" && (
-              <div className="flex flex-1 flex-col gap-2">
-                <Card className="overflow-hidden w-full">
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+                <Card className="shrink-0 w-full overflow-hidden">
                   <CardContent className="p-0 w-full">
                     <Calendar
                       className="w-full min-w-0 p-1 [--cell-size:1.25rem]"
