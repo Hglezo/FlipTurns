@@ -79,8 +79,13 @@ interface SwimmerProfile {
 }
 
 const SWIMMER_GROUPS: SwimmerGroup[] = ["Sprint", "Middle distance", "Distance"];
-const ALL_GROUPS_ID = "__all_groups__" as const; // swimmer view: show all group workouts (Sprint, Middle distance, Distance)
+const ALL_GROUPS_ID = "__all_groups__" as const;
 const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Speed", "Tech suit"] as const;
+const SESSION_OPTIONS = ["", "AM", "PM"] as const; // "" = Anytime
+
+function getTimeframe(w: { session?: string | null }): string {
+  return (w.session?.trim() || "Anytime");
+}
 
 function orAssignFilter(userId: string, group: string | null | undefined): string {
   if (!group) return `assigned_to.eq.${userId}`;
@@ -189,19 +194,27 @@ function filterWorkoutsForSwimmerByDate(workouts: Workout[], swimmerId: string, 
   }
   const out: Workout[] = [];
   for (const [, dayList] of byDate) {
-    const hasPersonal = dayList.some((w) => w.assigned_to === swimmerId);
-    if (hasPersonal) {
-      dayList.filter((w) => w.assigned_to === swimmerId).forEach((w) => out.push(w));
-    } else if (swimmerGroup) {
-      dayList
-        .filter((w) => {
-          if (!w.assigned_to_group) return false;
-          const inList = (w.assignee_ids ?? []).includes(swimmerId);
-          const noOverride = !(w.assignee_ids && w.assignee_ids.length > 0);
-          const inDefaultGroup = w.assigned_to_group === swimmerGroup;
-          return inList || (noOverride && inDefaultGroup);
-        })
-        .forEach((w) => out.push(w));
+    const byTf = new Map<string, Workout[]>();
+    for (const w of dayList) {
+      const tf = getTimeframe(w);
+      if (!byTf.has(tf)) byTf.set(tf, []);
+      byTf.get(tf)!.push(w);
+    }
+    for (const [, tfList] of byTf) {
+      const hasPersonal = tfList.some((w) => w.assigned_to === swimmerId);
+      if (hasPersonal) {
+        tfList.filter((w) => w.assigned_to === swimmerId).forEach((w) => out.push(w));
+      } else if (swimmerGroup) {
+        tfList
+          .filter((w) => {
+            if (!w.assigned_to_group) return false;
+            const inList = (w.assignee_ids ?? []).includes(swimmerId);
+            const noOverride = !(w.assignee_ids && w.assignee_ids.length > 0);
+            const inDefaultGroup = w.assigned_to_group === swimmerGroup;
+            return inList || (noOverride && inDefaultGroup);
+          })
+          .forEach((w) => out.push(w));
+      }
     }
   }
   return out;
@@ -236,22 +249,32 @@ function WorkoutBlock({
 }) {
   const hasAssignment = workout.assigned_to_group?.trim() || workout.assigned_to;
   const hasCategory = workout.workout_category?.trim();
+  const sessionLabel = workout.session?.trim() === "AM" || workout.session?.trim() === "PM" ? workout.session.trim() : "Anytime";
   const hasBadges = hasAssignment || hasCategory;
   const namesLine = readOnly ? assigneeNames && `Assigned to ${assigneeNames}` : teammateNames != null && `Teammates: ${teammateNames}`;
   return (
     <div className={compact ? "space-y-2" : "space-y-4"}>
-      {hasBadges && (
-        <div className={`flex flex-wrap justify-end gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
-          {assigneeLabel && (
-            <span className={badgeClass}>{assigneeLabel}</span>
-          )}
-          {workout.workout_category?.trim() && (
-            <span className={badgeClass}>{workout.workout_category.trim()}</span>
-          )}
-        </div>
-      )}
+      <div className="flex items-start justify-between gap-2">
+        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase ${
+          sessionLabel === "AM"
+            ? "bg-amber-400/15 text-amber-600 dark:text-amber-400"
+            : sessionLabel === "PM"
+              ? "bg-indigo-400/15 text-indigo-600 dark:text-indigo-400"
+              : "bg-muted text-muted-foreground"
+        }`}>{sessionLabel}</span>
+        {hasBadges && (
+          <div className={`flex flex-wrap justify-end gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
+            {assigneeLabel && (
+              <span className={badgeClass}>{assigneeLabel}</span>
+            )}
+            {workout.workout_category?.trim() && (
+              <span className={badgeClass}>{workout.workout_category.trim()}</span>
+            )}
+          </div>
+        )}
+      </div>
       {namesLine && (
-        <p className="text-xs text-muted-foreground mb-2 text-right">{namesLine}</p>
+        <p className="text-xs text-muted-foreground -mt-1 mb-2 text-right">{namesLine}</p>
       )}
       <pre className={`whitespace-pre-wrap font-sans leading-relaxed text-foreground/90 ${compact ? "text-[14px]" : "text-[15px]"}`}>{workout.content}</pre>
       <WorkoutAnalysis
@@ -358,17 +381,28 @@ export default function Home() {
         rows = mergeAssigneesIntoWorkouts(rows, assigneesMap, swimmers);
       }
       const me = filterId ?? userId;
-      const hasPersonal = rows.some((w) => w.assigned_to === me);
-      if (hasPersonal) {
-        rows = rows.filter((w) => w.assigned_to === me);
-      } else if (filterId && filterGroup) {
-        rows = rows.filter((w) => {
-          if (!w.assigned_to_group) return false;
-          const inList = (w.assignee_ids ?? []).includes(me);
-          const noOverride = !(w.assignee_ids && w.assignee_ids.length > 0);
-          const inDefaultGroup = w.assigned_to_group === filterGroup;
-          return inList || (noOverride && inDefaultGroup);
-        });
+      if (!isAllGroups && (filterId || filterGroup)) {
+        const byTf = new Map<string, Workout[]>();
+        for (const w of rows) {
+          const tf = getTimeframe(w);
+          if (!byTf.has(tf)) byTf.set(tf, []);
+          byTf.get(tf)!.push(w);
+        }
+        rows = [];
+        for (const [, tfList] of byTf) {
+          const hasPersonal = tfList.some((w) => w.assigned_to === me);
+          if (hasPersonal) {
+            rows.push(...tfList.filter((w) => w.assigned_to === me));
+          } else if (filterGroup) {
+            rows.push(...tfList.filter((w) => {
+              if (!w.assigned_to_group) return false;
+              const inList = (w.assignee_ids ?? []).includes(me);
+              const noOverride = !(w.assignee_ids && w.assignee_ids.length > 0);
+              const inDefaultGroup = w.assigned_to_group === filterGroup;
+              return inList || (noOverride && inDefaultGroup);
+            }));
+          }
+        }
       } else if (isAllGroups) {
         rows = rows.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
       }
@@ -548,6 +582,7 @@ export default function Home() {
         .from("workouts")
         .update({
           content: w.content,
+          session: w.session || null,
           workout_category: w.workout_category,
           assigned_to: w.assigned_to,
           assigned_to_group: w.assigned_to_group,
@@ -564,6 +599,7 @@ export default function Home() {
           toInsert.map((w) => ({
             date: dateKey,
             content: w.content ?? "",
+            session: w.session || null,
             workout_category: w.workout_category || null,
             assigned_to: w.assigned_to ?? null,
             assigned_to_group: w.assigned_to_group ?? null,
@@ -572,18 +608,19 @@ export default function Home() {
         .select("id");
       if (error) { alert(error.message); setLoading(false); return; }
       const newIds = (insertedRows ?? []).map((r) => r.id);
-      const groupWorkoutIdsForDay = [
-        ...coachWorkouts.filter((w) => w.id && w.assigned_to_group).map((w) => w.id!),
-        ...toInsert.filter((w) => w.assigned_to_group).map((_, i) => newIds[i]).filter(Boolean),
-      ];
-      let newIdx = 0;
+      const groupWorkoutsWithIds: { id: string; w: Workout }[] = [];
+      let insertIdx = 0;
       for (const w of coachWorkouts) {
         if (!w.assigned_to_group) continue;
-        const id = w.id ?? newIds[newIdx++];
-        if (!id) continue;
-        const otherIds = groupWorkoutIdsForDay.filter((x) => x !== id);
+        const id = w.id ?? newIds[insertIdx++];
+        if (id) groupWorkoutsWithIds.push({ id, w });
+      }
+      for (const w of groupWorkoutsWithIds) {
+        const { id } = w;
+        const tf = getTimeframe(w.w);
+        const otherIds = groupWorkoutsWithIds.filter((o) => o.id !== id && getTimeframe(o.w) === tf).map((o) => o.id);
         try {
-          await saveAssigneesForGroupWorkout(id, w.assignee_ids ?? [], otherIds);
+          await saveAssigneesForGroupWorkout(id, w.w.assignee_ids ?? [], otherIds);
         } catch (e) {
           alert(e instanceof Error ? e.message : "Failed to save assignees");
           setLoading(false);
@@ -593,7 +630,8 @@ export default function Home() {
     } else {
       for (const w of coachWorkouts) {
         if (!w.assigned_to_group || !w.id) continue;
-        const otherIds = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id).map((x) => x.id!);
+        const tf = getTimeframe(w);
+        const otherIds = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === tf).map((x) => x.id!);
         try {
           await saveAssigneesForGroupWorkout(w.id, w.assignee_ids ?? [], otherIds);
         } catch (e) {
@@ -652,6 +690,7 @@ export default function Home() {
         .from("workouts")
         .update({
           content: workout.content,
+          session: workout.session || null,
           workout_category: workout.workout_category,
           assigned_to: workout.assigned_to,
           assigned_to_group: workout.assigned_to_group,
@@ -665,6 +704,7 @@ export default function Home() {
         .insert({
           date: dateKey,
           content: workout.content,
+          session: workout.session || null,
           workout_category: workout.workout_category,
           assigned_to: workout.assigned_to ?? null,
           assigned_to_group: workout.assigned_to_group ?? null,
@@ -679,7 +719,8 @@ export default function Home() {
     }
 
     if (workout.assigned_to_group && savedId) {
-      const otherIds = coachWorkouts.filter((w) => w.id && w.assigned_to_group && w.id !== workout.id).map((w) => w.id!);
+      const tf = getTimeframe(workout);
+      const otherIds = coachWorkouts.filter((w) => w.id && w.assigned_to_group && w.id !== workout.id && getTimeframe(w) === tf).map((w) => w.id!);
       try {
         await saveAssigneesForGroupWorkout(savedId, workout.assignee_ids ?? [], otherIds);
       } catch (e) {
@@ -689,7 +730,8 @@ export default function Home() {
       }
       for (const w of coachWorkouts) {
         if (!w.assigned_to_group || !w.id || w.id === workout.id) continue;
-        const otherIdsForW = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id).map((x) => x.id!);
+        const tfW = getTimeframe(w);
+        const otherIdsForW = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === tfW).map((x) => x.id!);
         try {
           await saveAssigneesForGroupWorkout(w.id, w.assignee_ids ?? [], otherIdsForW);
         } catch (e) {
@@ -768,9 +810,10 @@ export default function Home() {
       let next = prev.map((w, i) => (i === index ? { ...w, ...updates } : w));
       if (updates.assignee_ids && prev[index]?.assigned_to_group) {
         const addedIds = updates.assignee_ids;
+        const currentTf = getTimeframe(prev[index]!);
         next = next.map((w, i) => {
           if (i === index) return next[index];
-          if (w.assigned_to_group && w.assignee_ids?.length) {
+          if (w.assigned_to_group && w.assignee_ids?.length && getTimeframe(w) === currentTf) {
             return { ...w, assignee_ids: w.assignee_ids.filter((id) => !addedIds.includes(id)) };
           }
           return w;
@@ -1319,7 +1362,21 @@ export default function Home() {
                     <div className="flex flex-1 flex-col gap-4">
                       {coachWorkouts.length > 0 ? (
                         (() => {
-                          const personalWorkoutIds = coachWorkouts.filter((w) => w.assigned_to && !w.assigned_to_group).map((w) => w.assigned_to!);
+                          function swimmerIdsInTimeframeExcluding(workoutIdx: number): Set<string> {
+                            const w = coachWorkouts[workoutIdx];
+                            const tf = getTimeframe(w);
+                            const out = new Set<string>();
+                            coachWorkouts.forEach((ow, i) => {
+                              if (i === workoutIdx) return;
+                              if (getTimeframe(ow) !== tf) return;
+                              if (ow.assigned_to && !ow.assigned_to_group) out.add(ow.assigned_to);
+                              else if (ow.assigned_to_group) {
+                                const ids = ow.assignee_ids?.length ? ow.assignee_ids : swimmers.filter((s) => s.swimmer_group === ow.assigned_to_group).map((s) => s.id);
+                                ids.forEach((id) => out.add(id));
+                              }
+                            });
+                            return out;
+                          }
                           return sortCoachWorkouts(coachWorkouts, swimmers).map((workout) => {
                           const originalIdx = coachWorkouts.indexOf(workout);
                           const label = assignmentLabel(workout, swimmers);
@@ -1366,6 +1423,15 @@ export default function Home() {
                                       </select>
                                       <select
                                         className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={workout.session || ""}
+                                        onChange={(e) => updateCoachWorkout(originalIdx, { session: e.target.value || null })}
+                                      >
+                                        {SESSION_OPTIONS.map((v) => (
+                                          <option key={v || "any"} value={v}>{v || "Anytime"}</option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                                         value={workout.workout_category || ""}
                                         onChange={(e) => updateCoachWorkout(originalIdx, { workout_category: e.target.value || null })}
                                       >
@@ -1390,7 +1456,7 @@ export default function Home() {
                                         </div>
                                         <div className="flex flex-wrap gap-1.5">
                                           {(() => {
-                                            const personalWorkoutUserIds = new Set(personalWorkoutIds);
+                                            const conflictIds = swimmerIdsInTimeframeExcluding(originalIdx);
                                             return [...swimmers]
                                             .sort((a, b) => {
                                               const groupOrder = (g: SwimmerGroup | null | undefined) =>
@@ -1404,8 +1470,8 @@ export default function Home() {
                                             const defaultGroupIds = swimmers.filter((x) => x.swimmer_group === workout.assigned_to_group).map((x) => x.id);
                                             const currentIds = Array.isArray(workout.assignee_ids) ? workout.assignee_ids : defaultGroupIds;
                                             const isIn = currentIds.includes(s.id);
-                                            const hasPersonal = personalWorkoutUserIds.has(s.id);
-                                            const canAdd = !hasPersonal || isIn;
+                                            const hasConflict = conflictIds.has(s.id);
+                                            const canAdd = !hasConflict || isIn;
                                             return (
                                               <button
                                                 key={s.id}
@@ -1417,16 +1483,16 @@ export default function Home() {
                                                     updateCoachWorkout(originalIdx, { assignee_ids: [...currentIds, s.id] });
                                                   }
                                                 }}
-                                                title={hasPersonal ? "This swimmer has a personal workout this day" : undefined}
+                                                title={hasConflict ? "This swimmer has another workout in the same timeframe (AM/PM/Anytime)" : undefined}
                                                 className={
-                                                  hasPersonal
+                                                  hasConflict
                                                     ? "rounded-md border border-red-400/80 bg-red-400/10 text-red-800 dark:text-red-200 dark:bg-red-500/15 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-red-400/20 hover:border-red-500/90 dark:hover:bg-red-500/25"
                                                     : isIn
                                                       ? "rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors inline-flex items-center gap-1 border-primary bg-primary/10 text-primary hover:bg-primary/20"
                                                       : "rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors inline-flex items-center gap-1 border-input bg-background text-muted-foreground hover:bg-accent disabled:opacity-50"
                                                 }
                                               >
-                                                {hasPersonal && <AlertCircle className="size-3.5 shrink-0" aria-hidden />}
+                                                {hasConflict && <AlertCircle className="size-3.5 shrink-0" aria-hidden />}
                                                 {s.full_name || s.id.slice(0, 8)}
                                               </button>
                                             );
@@ -1491,7 +1557,7 @@ Cool-down: 200 easy"
                                       dateKey={dateKey}
                                       showLabel={coachWorkouts.length > 1}
                                       assigneeLabel={label}
-                                      assigneeNames={assignedToNames(workout, swimmers, personalWorkoutIds)}
+                                      assigneeNames={assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx)))}
                                       feedbackRefreshKey={feedbackRefreshKey}
                                       onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
                                       readOnly
@@ -1587,7 +1653,7 @@ Cool-down: 200 easy"
                                           compact
                                           readOnly
                                           assigneeLabel={label}
-                                          assigneeNames={assignedToNames(workout, swimmers, dayWorkouts.filter((w) => w.assigned_to && !w.assigned_to_group).map((w) => w.assigned_to!))}
+                                          assigneeNames={assignedToNames(workout, swimmers, [...new Set(dayWorkouts.filter((w) => w.id !== workout.id && getTimeframe(w) === getTimeframe(workout)).flatMap((w) => w.assigned_to && !w.assigned_to_group ? [w.assigned_to] : (w.assignee_ids ?? [])))])}
                                         />
                                       );
                                     })}
@@ -1757,7 +1823,7 @@ Cool-down: 200 easy"
                                                       compact
                                                       readOnly
                                                       assigneeLabel={label}
-                                                      assigneeNames={assignedToNames(workout, swimmers, dayWorkouts.filter((w) => w.assigned_to && !w.assigned_to_group).map((w) => w.assigned_to!))}
+                                                      assigneeNames={assignedToNames(workout, swimmers, [...new Set(dayWorkouts.filter((w) => w.id !== workout.id && getTimeframe(w) === getTimeframe(workout)).flatMap((w) => w.assigned_to && !w.assigned_to_group ? [w.assigned_to] : (w.assignee_ids ?? [])))])}
                                                     />
                                                   );
                                                 })}
