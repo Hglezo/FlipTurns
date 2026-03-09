@@ -79,6 +79,7 @@ interface SwimmerProfile {
 }
 
 const SWIMMER_GROUPS: SwimmerGroup[] = ["Sprint", "Middle distance", "Distance"];
+const ALL_GROUPS_ID = "__all_groups__" as const; // swimmer view: show all group workouts (Sprint, Middle distance, Distance)
 const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Speed", "Tech suit"] as const;
 
 function orAssignFilter(userId: string, group: string | null | undefined): string {
@@ -132,6 +133,7 @@ function dayPreviewLabel(workout: Workout, swimmers: SwimmerProfile[], defaultAs
 }
 
 function swimmerPreviewDefault(selectedViewSwimmerId: string | null, profile: { full_name: string | null } | null, userId: string | undefined, swimmers: SwimmerProfile[]): string | undefined {
+  if (selectedViewSwimmerId === ALL_GROUPS_ID) return "All Groups";
   if (selectedViewSwimmerId === null) return (profile?.full_name ?? swimmers.find((s) => s.id === userId)?.full_name) ?? undefined;
   return selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? undefined : undefined;
 }
@@ -175,6 +177,9 @@ function mergeAssigneesIntoWorkouts(workouts: Workout[], assigneesByWorkout: Map
 }
 
 function filterWorkoutsForSwimmerByDate(workouts: Workout[], swimmerId: string, swimmerGroup: SwimmerGroup | null): Workout[] {
+  if (swimmerId === ALL_GROUPS_ID) {
+    return workouts.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
+  }
   const norm = (d: string | undefined) => (d && typeof d === "string" ? d.slice(0, 10) : d);
   const byDate = new Map<string, Workout[]>();
   for (const w of workouts) {
@@ -325,21 +330,24 @@ export default function Home() {
     loadSwimmers();
   }, [role]);
 
-  // Fetch workouts for swimmer (day view). null = own, "" = all, uuid = that swimmer
+  // Fetch workouts for swimmer (day view). null = own, ALL_GROUPS_ID = all group workouts, uuid = that swimmer
   useEffect(() => {
     if (role !== "swimmer" || viewMode !== "day" || !user) return;
     const userId = user.id;
 
     async function fetchWorkouts() {
       setSwimmerLoading(true);
-      const filterId = selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? userId);
+      const isAllGroups = selectedViewSwimmerId === ALL_GROUPS_ID;
+      const filterId = isAllGroups ? null : (selectedViewSwimmerId ?? userId);
       const filterGroup = filterId === userId ? swimmerGroup : swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null;
       let query = supabase
         .from("workouts")
         .select("*")
         .eq("date", dateKey)
         .order("created_at", { ascending: true });
-      if (filterId) {
+      if (isAllGroups) {
+        query = query.in("assigned_to_group", SWIMMER_GROUPS);
+      } else if (filterId) {
         query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
       }
       const { data } = await query;
@@ -361,6 +369,8 @@ export default function Home() {
           const inDefaultGroup = w.assigned_to_group === filterGroup;
           return inList || (noOverride && inDefaultGroup);
         });
+      } else if (isAllGroups) {
+        rows = rows.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
       }
       setViewWorkouts(rows);
       setSwimmerLoading(false);
@@ -430,13 +440,17 @@ export default function Home() {
         .gte("date", format(weekStart, "yyyy-MM-dd"))
         .lte("date", format(weekEnd, "yyyy-MM-dd"))
         .order("date", { ascending: true });
-      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? user?.id)) : null;
+      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === ALL_GROUPS_ID ? ALL_GROUPS_ID : (selectedViewSwimmerId ?? user?.id)) : null;
       const weekFilterId = role === "swimmer" ? swimmerFilterId : selectedCoachSwimmerId;
       const weekFilterGroup = role === "swimmer" && swimmerFilterId === user?.id
         ? swimmerGroup
-        : weekFilterId ? swimmers.find((s) => s.id === weekFilterId)?.swimmer_group ?? null : null;
+        : weekFilterId && weekFilterId !== ALL_GROUPS_ID ? swimmers.find((s) => s.id === weekFilterId)?.swimmer_group ?? null : null;
       if (role === "swimmer" && swimmerFilterId) {
-        query = weekFilterGroup ? query.or(orAssignFilter(swimmerFilterId, weekFilterGroup)) : query.eq("assigned_to", swimmerFilterId);
+        if (swimmerFilterId === ALL_GROUPS_ID) {
+          query = query.in("assigned_to_group", SWIMMER_GROUPS);
+        } else {
+          query = weekFilterGroup ? query.or(orAssignFilter(swimmerFilterId, weekFilterGroup)) : query.eq("assigned_to", swimmerFilterId);
+        }
       }
       if (role === "coach" && selectedCoachSwimmerId) {
         const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
@@ -473,13 +487,17 @@ export default function Home() {
         .select("*")
         .gte("date", format(monthStart, "yyyy-MM-dd"))
         .lte("date", format(monthEnd, "yyyy-MM-dd"));
-      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === "" ? null : (selectedViewSwimmerId ?? user?.id)) : null;
+      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === ALL_GROUPS_ID ? ALL_GROUPS_ID : (selectedViewSwimmerId ?? user?.id)) : null;
       const monthFilterId = role === "swimmer" ? swimmerFilterId : selectedCoachSwimmerId;
       const monthFilterGroup = role === "swimmer" && swimmerFilterId === user?.id
         ? swimmerGroup
-        : monthFilterId ? swimmers.find((s) => s.id === monthFilterId)?.swimmer_group ?? null : null;
+        : monthFilterId && monthFilterId !== ALL_GROUPS_ID ? swimmers.find((s) => s.id === monthFilterId)?.swimmer_group ?? null : null;
       if (role === "swimmer" && swimmerFilterId) {
-        query = monthFilterGroup ? query.or(orAssignFilter(swimmerFilterId, monthFilterGroup)) : query.eq("assigned_to", swimmerFilterId);
+        if (swimmerFilterId === ALL_GROUPS_ID) {
+          query = query.in("assigned_to_group", SWIMMER_GROUPS);
+        } else {
+          query = monthFilterGroup ? query.or(orAssignFilter(swimmerFilterId, monthFilterGroup)) : query.eq("assigned_to", swimmerFilterId);
+        }
       }
       if (role === "coach" && selectedCoachSwimmerId) {
         const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
@@ -954,13 +972,13 @@ export default function Home() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2 text-xs font-medium">
-                    {selectedViewSwimmerId === "" ? "All swimmers" : (selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? "Swimmer" : (profile?.full_name ?? "My workouts"))}
+                    {selectedViewSwimmerId === ALL_GROUPS_ID ? "All Groups" : (selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? "Swimmer" : (profile?.full_name ?? "My workouts"))}
                     <ChevronDown className="size-3.5 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[10rem]">
                   <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(null)}>{profile?.full_name ?? "My workouts"}</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId("")}>All swimmers</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(ALL_GROUPS_ID)}>All Groups</DropdownMenuItem>
                   {swimmers.filter((s) => s.id !== user?.id).map((s) => (
                     <DropdownMenuItem key={s.id} onClick={() => setSelectedViewSwimmerId(s.id)}>
                       {s.full_name ?? s.id}
@@ -1128,10 +1146,10 @@ export default function Home() {
 
             {viewMode === "month" && (
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-                <Card className="shrink-0 w-full overflow-hidden">
-                  <CardContent className="p-0 w-full">
+                <Card className="shrink-0 w-full overflow-visible">
+                  <CardContent className="p-0 w-full overflow-visible">
                     <Calendar
-                      className="w-full min-w-0 p-1 [--cell-size:1.25rem]"
+                      className="min-h-[11rem] w-full min-w-0 shrink-0 p-1 [--cell-size:1.25rem] sm:min-h-0"
                       classNames={{ week: "mt-0 flex w-full", month: "flex w-full flex-col gap-0.5" }}
                       mode="single"
                       selected={selectedDate}
@@ -1606,10 +1624,10 @@ Cool-down: 200 easy"
 
             {viewMode === "month" && (
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-                <Card className="shrink-0 w-full overflow-hidden">
-                  <CardContent className="p-0 w-full">
+                <Card className="shrink-0 w-full overflow-visible">
+                  <CardContent className="p-0 w-full overflow-visible">
                     <Calendar
-                      className="w-full min-w-0 p-1 [--cell-size:1.25rem]"
+                      className="min-h-[11rem] w-full min-w-0 shrink-0 p-1 [--cell-size:1.25rem] sm:min-h-0"
                       classNames={{ week: "mt-0 flex w-full", month: "flex w-full flex-col gap-0.5" }}
                       mode="single"
                       selected={selectedDate}

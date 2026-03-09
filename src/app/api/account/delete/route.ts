@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "Account deletion is not configured. Add SUPABASE_SERVICE_ROLE_KEY to your .env.local (from Supabase Dashboard → Settings → API).",
+            "Account deletion is not configured. Add SUPABASE_SERVICE_ROLE_KEY to your environment: .env.local for local development, or your hosting provider's environment variables (e.g. Vercel) for production. Get the key from Supabase Dashboard → Settings → API.",
         },
         { status: 500 }
       );
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       {
         error:
           message.includes("SUPABASE_SERVICE_ROLE_KEY")
-            ? "Account deletion is not configured. Add SUPABASE_SERVICE_ROLE_KEY to your .env.local (from Supabase Dashboard → Settings → API)."
+            ? "Account deletion is not configured. Add SUPABASE_SERVICE_ROLE_KEY to your environment: .env.local for local development, or your hosting provider's environment variables (e.g. Vercel) for production. Get the key from Supabase Dashboard → Settings → API."
             : message,
       },
       { status: 500 }

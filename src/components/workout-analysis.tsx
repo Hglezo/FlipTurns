@@ -219,9 +219,9 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
           </p>
           {analysis.sets.length > 0 && (
             <div className="space-y-1">
-              {analysis.sets.map((set) => (
+              {analysis.sets.map((set, i) => (
                 <div
-                  key={set.name}
+                  key={`${set.name}-${i}`}
                   className="flex justify-between text-muted-foreground"
                 >
                   <span className="capitalize">{set.name}</span>
