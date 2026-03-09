@@ -1146,11 +1146,11 @@ export default function Home() {
 
             {viewMode === "month" && (
               <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                <Card className="min-h-[17rem] shrink-0 w-full overflow-hidden">
+                <Card className="min-h-[28rem] shrink-0 w-full overflow-hidden">
                   <CardContent className="p-0 w-full">
                     <Calendar
-                      className="w-full min-w-0 shrink-0 p-1 [--cell-size:1.25rem]"
-                      classNames={{ week: "mt-0 flex w-full h-9", month: "flex w-full flex-col gap-0.5" }}
+                      className="w-full min-w-0 p-1.5 [--cell-size:1.25rem]"
+                      classNames={{ week: "mt-0 flex w-full h-14", month: "flex w-full flex-col gap-2" }}
                       mode="single"
                       selected={selectedDate}
                       onSelect={(d) => d && handleMonthCalendarSelect(d)}
@@ -1173,8 +1173,8 @@ export default function Home() {
                         };
                       })()}
                       modifiersClassNames={{
-                        workoutDots1: "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:size-1.5 after:rounded-full after:bg-primary",
-                        workoutDots2: "relative before:content-[''] before:absolute before:bottom-1 before:left-[calc(50%-6px)] before:size-1.5 before:rounded-full before:bg-primary after:content-[''] after:absolute after:bottom-1 after:left-[calc(50%+2px)] after:size-1.5 after:rounded-full after:bg-primary",
+                        workoutDots1: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:size-1.5 after:rounded-full after:bg-primary",
+                        workoutDots2: "relative before:content-[''] before:absolute before:bottom-0.5 before:left-[calc(50%-6px)] before:size-1.5 before:rounded-full before:bg-primary after:content-[''] after:absolute after:bottom-0.5 after:left-[calc(50%+2px)] after:size-1.5 after:rounded-full after:bg-primary",
                       }}
                     />
                   </CardContent>
@@ -1624,11 +1624,11 @@ Cool-down: 200 easy"
 
             {viewMode === "month" && (
               <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                <Card className="min-h-[17rem] shrink-0 w-full overflow-hidden">
+                <Card className="min-h-[28rem] shrink-0 w-full overflow-hidden">
                   <CardContent className="p-0 w-full">
                     <Calendar
-                      className="w-full min-w-0 shrink-0 p-1 [--cell-size:1.25rem]"
-                      classNames={{ week: "mt-0 flex w-full h-9", month: "flex w-full flex-col gap-0.5" }}
+                      className="w-full min-w-0 p-1.5 [--cell-size:1.25rem]"
+                      classNames={{ week: "mt-0 flex w-full h-14", month: "flex w-full flex-col gap-2" }}
                       mode="single"
                       selected={selectedDate}
                       onSelect={(d) => d && handleMonthCalendarSelect(d)}
@@ -1651,8 +1651,8 @@ Cool-down: 200 easy"
                         };
                       })()}
                       modifiersClassNames={{
-                        workoutDots1: "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:size-1.5 after:rounded-full after:bg-primary",
-                        workoutDots2: "relative before:content-[''] before:absolute before:bottom-1 before:left-[calc(50%-6px)] before:size-1.5 before:rounded-full before:bg-primary after:content-[''] after:absolute after:bottom-1 after:left-[calc(50%+2px)] after:size-1.5 after:rounded-full after:bg-primary",
+                        workoutDots1: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:size-1.5 after:rounded-full after:bg-primary",
+                        workoutDots2: "relative before:content-[''] before:absolute before:bottom-0.5 before:left-[calc(50%-6px)] before:size-1.5 before:rounded-full before:bg-primary after:content-[''] after:absolute after:bottom-0.5 after:left-[calc(50%+2px)] after:size-1.5 after:rounded-full after:bg-primary",
                       }}
                     />
                   </CardContent>
