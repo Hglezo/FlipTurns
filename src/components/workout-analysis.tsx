@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Pencil, Trash2, MessageSquare } from "lucide-react";
 
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m} min`;
+}
+
 interface Feedback {
   id: string;
   feedback_text: string | null;
@@ -229,6 +237,11 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
                 </div>
               ))}
             </div>
+          )}
+          {analysis.estimatedDurationMinutes > 0 && (
+            <p className="mt-2 pt-2 text-muted-foreground text-xs border-t border-border/60">
+              Duration: {formatDuration(analysis.estimatedDurationMinutes)}
+            </p>
           )}
         </div>
       )}

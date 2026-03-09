@@ -11,6 +11,7 @@ export interface WorkoutSet {
 export interface WorkoutAnalysis {
   totalMeters: number;
   sets: WorkoutSet[];
+  estimatedDurationMinutes: number;
 }
 
 const SET_NAME_PATTERNS = [
@@ -162,6 +163,7 @@ export function analyzeWorkout(content: string): WorkoutAnalysis {
   }
 
   const totalMeters = sets.reduce((sum, s) => sum + s.meters, 0);
+  const estimatedDurationMinutes = totalMeters > 0 ? Math.round(totalMeters / 50) : 0;
 
-  return { totalMeters, sets };
+  return { totalMeters, sets, estimatedDurationMinutes };
 }
