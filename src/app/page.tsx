@@ -1145,12 +1145,12 @@ export default function Home() {
             )}
 
             {viewMode === "month" && (
-              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-                <Card className="shrink-0 w-full overflow-visible">
-                  <CardContent className="p-0 w-full overflow-visible">
+              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+                <Card className="min-h-[17rem] shrink-0 w-full overflow-hidden">
+                  <CardContent className="p-0 w-full">
                     <Calendar
-                      className="min-h-[11rem] w-full min-w-0 shrink-0 p-1 [--cell-size:1.25rem] sm:min-h-0"
-                      classNames={{ week: "mt-0 flex w-full", month: "flex w-full flex-col gap-0.5" }}
+                      className="w-full min-w-0 shrink-0 p-1 [--cell-size:1.25rem]"
+                      classNames={{ week: "mt-0 flex w-full h-9", month: "flex w-full flex-col gap-0.5" }}
                       mode="single"
                       selected={selectedDate}
                       onSelect={(d) => d && handleMonthCalendarSelect(d)}
@@ -1623,12 +1623,12 @@ Cool-down: 200 easy"
             )}
 
             {viewMode === "month" && (
-              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-                <Card className="shrink-0 w-full overflow-visible">
-                  <CardContent className="p-0 w-full overflow-visible">
+              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+                <Card className="min-h-[17rem] shrink-0 w-full overflow-hidden">
+                  <CardContent className="p-0 w-full">
                     <Calendar
-                      className="min-h-[11rem] w-full min-w-0 shrink-0 p-1 [--cell-size:1.25rem] sm:min-h-0"
-                      classNames={{ week: "mt-0 flex w-full", month: "flex w-full flex-col gap-0.5" }}
+                      className="w-full min-w-0 shrink-0 p-1 [--cell-size:1.25rem]"
+                      classNames={{ week: "mt-0 flex w-full h-9", month: "flex w-full flex-col gap-0.5" }}
                       mode="single"
                       selected={selectedDate}
                       onSelect={(d) => d && handleMonthCalendarSelect(d)}
