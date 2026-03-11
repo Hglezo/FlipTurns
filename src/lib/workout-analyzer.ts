@@ -31,9 +31,8 @@ const SET_NAME_PATTERNS = [
 ];
 
 const REPEAT_PATTERN = /(\d+)\s*[×xX]\s*(\d+)/g;
-// Matches pool distances, optionally followed by m/meters or stroke (free, fly, back, etc.)
-// Matches pool distances 25–999 and 1000–9999 (e.g. 2500, 1650)
-const STANDALONE_DISTANCE_PATTERN = /\b(25|50|75|100|125|150|175|200|250|300|400|500|800|(?:1[0-9]|2[0-9]|[3-9][0-9])\d{2})\s*(?:m|meters?|free|fr|fly|fl|back|bk|breast|br|uw|kick|drill|pull|easy|im)?\b/gi;
+// Matches pool distances (multiples of 25 from 25–9975), optionally followed by m/meters or stroke
+const STANDALONE_DISTANCE_PATTERN = /\b([1-9]\d{0,2}(?:00|25|50|75)|[1-9]\d{3})\s*(?:m|meters?|free|fr|fly|fl|back|bk|breast|br|uw|kick|drill|pull|easy|im)?\b/gi;
 // Matches "N:" at start of line (e.g. "25: swim @80%") - require 2+ digits to avoid "1:30" time format
 const LEADING_DISTANCE_PATTERN = /^\s*(\d{2,})\s*:/gm;
 

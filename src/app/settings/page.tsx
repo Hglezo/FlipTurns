@@ -32,6 +32,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   BarChart,
   Bar,
   XAxis,
@@ -222,6 +228,9 @@ export default function SettingsPage() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState("");
   const [updatingSwimmerId, setUpdatingSwimmerId] = useState<string | null>(null);
+  const [deleteSwimmerTargetId, setDeleteSwimmerTargetId] = useState<string | null>(null);
+  const [deleteSwimmerLoading, setDeleteSwimmerLoading] = useState(false);
+  const [deleteSwimmerError, setDeleteSwimmerError] = useState("");
 
   const [volumeWorkouts, setVolumeWorkouts] = useState<WorkoutRow[]>([]);
   const [volumeLoading, setVolumeLoading] = useState(false);
@@ -416,6 +425,36 @@ export default function SettingsPage() {
       );
     }
     setUpdatingSwimmerId(null);
+  };
+
+  const handleDeleteSwimmerAccount = async () => {
+    if (!deleteSwimmerTargetId || !user) return;
+    setDeleteSwimmerLoading(true);
+    setDeleteSwimmerError("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        setDeleteSwimmerError("Not signed in");
+        return;
+      }
+      const res = await fetch("/api/account/delete-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ targetUserId: deleteSwimmerTargetId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteSwimmerError(data.error ?? "Failed to delete account");
+        return;
+      }
+      setTeamSwimmers((prev) => prev.filter((s) => s.id !== deleteSwimmerTargetId));
+      setDeleteSwimmerTargetId(null);
+    } catch (e) {
+      setDeleteSwimmerError(e instanceof Error ? e.message : "Failed to delete account");
+    } finally {
+      setDeleteSwimmerLoading(false);
+    }
   };
 
   return (
@@ -799,7 +838,48 @@ export default function SettingsPage() {
           )}
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-6 space-y-4">
+              {isCoach && teamSwimmers.length > 0 && (
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="w-full">
+                        <Users className="size-4 mr-2" />
+                        Remove a swimmer
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="min-w-48" align="start">
+                      {teamSwimmers.map((s) => (
+                        <DropdownMenuItem
+                          key={s.id}
+                          variant="destructive"
+                          onClick={() => setDeleteSwimmerTargetId(s.id)}
+                        >
+                          {s.full_name || s.id.slice(0, 8)}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {deleteSwimmerError && <p className="text-sm text-destructive">{deleteSwimmerError}</p>}
+                  <AlertDialog open={deleteSwimmerTargetId !== null} onOpenChange={(open) => { if (!open) { setDeleteSwimmerTargetId(null); setDeleteSwimmerError(""); } }}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure you want to delete {deleteSwimmerTargetId ? (teamSwimmers.find((x) => x.id === deleteSwimmerTargetId)?.full_name || "this swimmer") : ""}&apos;s account?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This action cannot be undone. All data for this swimmer will be permanently deleted.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={deleteSwimmerLoading}>Cancel</AlertDialogCancel>
+                        <Button variant="destructive" onClick={handleDeleteSwimmerAccount} disabled={deleteSwimmerLoading}>
+                          {deleteSwimmerLoading ? "Deleting…" : "Delete account"}
+                        </Button>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <div className="border-t pt-4" />
+                </>
+              )}
               <AlertDialog open={showDeleteDialog} onOpenChange={handleDeleteDialogOpenChange}>
                 <Button
                   variant="destructive"
