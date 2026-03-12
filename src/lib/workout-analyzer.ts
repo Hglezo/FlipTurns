@@ -18,7 +18,11 @@ const SET_NAME_PATTERNS = [
   /^(?:warm[- ]?up|warmup)\s*:?/i,
   /^(?:pre[- ]?set\s+activation|pre[- ]?set|pre\s+set|preset)\s*:?/i,
   /^(?:main\s+set)\s*:?/i,
+  /^(?:kick\s+set)\s*:?/i,
   /^(?:pull\s+set)\s*:?/i,
+  /^(?:speed\s+set|speed)\s*:?/i,
+  /^(?:technique\s+set|tech(?:nique)?\s+set|technique|tech)\s*:?/i,
+  /^(?:uw\s+set|underwater\s+set)\s*:?/i,
   /^(?:fins\s+set)\s*:?/i,
   /^(?:warm[- ]?down|warmdown)\s*:?/i,
   /^(?:cool[- ]?down|cooldown)\s*:?/i,
@@ -31,8 +35,9 @@ const SET_NAME_PATTERNS = [
 ];
 
 const REPEAT_PATTERN = /(\d+)\s*[×xX]\s*(\d+)/g;
-// Matches pool distances (multiples of 25 from 25–9975), optionally followed by m/meters or stroke
-const STANDALONE_DISTANCE_PATTERN = /\b([1-9]\d{0,2}(?:00|25|50|75)|[1-9]\d{3})\s*(?:m|meters?|free|fr|fly|fl|back|bk|breast|br|uw|kick|drill|pull|easy|im)?\b/gi;
+// Matches pool distances (multiples of 25 from 25–9975), optionally followed by m/meters or stroke.
+// Lookbehind (?<![:\d]) prevents matching numbers inside time formats like "1:25" or "2:50".
+const STANDALONE_DISTANCE_PATTERN = /(?<![:\d])\b(25|50|75|[1-9]\d{0,2}(?:00|25|50|75)|[1-9]\d{3})\s*(?:m|meters?|free|fr|fly|fl|back|bk|breast|br|uw|kick|drill|pull|easy|im)?\b/gi;
 // Matches "N:" at start of line (e.g. "25: swim @80%") - require 2+ digits to avoid "1:30" time format
 const LEADING_DISTANCE_PATTERN = /^\s*(\d{2,})\s*:/gm;
 
@@ -118,9 +123,13 @@ function parseMetersInText(text: string): number {
 function findSetName(line: string): string | null {
   const trimmed = line.trim();
   for (const pattern of SET_NAME_PATTERNS) {
-    const match = trimmed.match(pattern);
-    if (match) {
-      return match[0].replace(/:\s*$/, "").trim();
+    if (pattern.test(trimmed)) {
+      // Return the full label (everything before any colon), not just the regex match,
+      // so "Warm Up #2" is preserved instead of being truncated to "Warm Up".
+      const colonIdx = trimmed.indexOf(":");
+      const fullName = (colonIdx >= 0 ? trimmed.slice(0, colonIdx) : trimmed).trim();
+      // Normalize "UW Set" abbreviation to its full name in the analysis output.
+      return fullName.replace(/\buw\s+set\b/i, "Underwater Set") || null;
     }
   }
   return null;

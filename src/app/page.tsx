@@ -1377,7 +1377,10 @@ export default function Home() {
                             });
                             return out;
                           }
-                          return sortCoachWorkouts(coachWorkouts, swimmers).map((workout) => {
+                          const displayWorkouts = editingWorkoutIndex !== null
+                          ? coachWorkouts
+                          : sortCoachWorkouts(coachWorkouts, swimmers);
+                        return displayWorkouts.map((workout) => {
                           const originalIdx = coachWorkouts.indexOf(workout);
                           const label = assignmentLabel(workout, swimmers);
                           const isEditing = editingWorkoutIndex === originalIdx;
