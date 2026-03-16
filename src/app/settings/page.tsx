@@ -18,7 +18,8 @@ import {
   type FirstDayOfWeek,
 } from "@/lib/preferences";
 import { usePreferences } from "@/components/preferences-provider";
-import { useAuth, type SwimmerGroup } from "@/components/auth-provider";
+import { useAuth } from "@/components/auth-provider";
+import type { SwimmerGroup } from "@/lib/types";
 import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Users, BarChart3, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
@@ -181,10 +182,13 @@ function VolumeChart({
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={displayData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <XAxis dataKey="shortLabel" tick={{ fontSize: 10 }} interval={0} />
-          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(Number(v) / 1000).toFixed(1)}k`} />
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: any) => `${(Number(v) / 1000).toFixed(1)}k`} />
           <Tooltip
-            formatter={(v) => [`${Number(v ?? 0).toLocaleString()} m`, "Meters"]}
-            labelFormatter={(_, payload) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            formatter={(v: any) => [`${Number(v ?? 0).toLocaleString()} m`, "Meters"]}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            labelFormatter={(_: any, payload: any) => {
               const label = payload?.[0]?.payload?.label ?? "";
               if (aggregation === "week" && label) {
                 const start = new Date(label + "T12:00:00");
@@ -438,7 +442,7 @@ export default function SettingsPage() {
         setDeleteSwimmerError("Not signed in");
         return;
       }
-      const res = await fetch("/api/account/delete-user", {
+      const res = await fetch("/api/account/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ targetUserId: deleteSwimmerTargetId }),

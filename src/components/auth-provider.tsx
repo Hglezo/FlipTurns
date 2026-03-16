@@ -3,16 +3,10 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import type { Profile } from "@/lib/types";
 
-export type SwimmerGroup = "Sprint" | "Middle distance" | "Distance";
-
-export interface Profile {
-  id: string;
-  full_name: string | null;
-  role: "coach" | "swimmer";
-  created_at: string;
-  swimmer_group: SwimmerGroup | null;
-}
+export type { Profile };
+export type { SwimmerGroup } from "@/lib/types";
 
 interface AuthContextType {
   user: User | null;
@@ -38,8 +32,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   async function fetchProfile(userId: string) {
-    // Try with group first (after workout_groups migration). Fall back to base columns if group doesn't exist yet.
-    let data: Record<string, unknown> | null = null;
     const { data: withGroup } = await supabase
       .from("profiles")
       .select("id, full_name, role, created_at, swimmer_group")
@@ -47,23 +39,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .single();
 
     if (withGroup) {
-      data = withGroup as Record<string, unknown>;
-    } else {
-      const { data: base } = await supabase
-        .from("profiles")
-        .select("id, full_name, role, created_at")
-        .eq("id", userId)
-        .single();
-      if (base) data = { ...base, swimmer_group: null };
-    }
-
-    if (data) {
-      setProfile({ ...data, swimmer_group: data.swimmer_group ?? null } as Profile);
+      setProfile({ ...withGroup, swimmer_group: withGroup.swimmer_group ?? null } as Profile);
       return;
     }
 
-    // Profile row is missing (user existed before migration, or trigger failed).
-    // Try to create it from the user's auth metadata.
+    const { data: base } = await supabase
+      .from("profiles")
+      .select("id, full_name, role, created_at")
+      .eq("id", userId)
+      .single();
+
+    if (base) {
+      setProfile({ ...base, swimmer_group: null } as Profile);
+      return;
+    }
+
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const meta = authUser?.user_metadata ?? {};
     const role = (meta.role === "coach" || meta.role === "swimmer") ? meta.role : "swimmer";
@@ -90,32 +80,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      if (currentUser) {
-        fetchProfile(currentUser.id);
-      } else {
-        setProfile(null);
-      }
+      if (currentUser) fetchProfile(currentUser.id);
+      else setProfile(null);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  async function signOut() {
-    await supabase.auth.signOut();
-  }
-
-  async function refreshProfile() {
-    if (user) await fetchProfile(user.id);
-  }
-
   return (
     <AuthContext.Provider
-      value={{ user, profile, role: profile?.role ?? null, signOut, refreshProfile, loading }}
+      value={{
+        user,
+        profile,
+        role: profile?.role ?? null,
+        signOut: async () => { await supabase.auth.signOut(); },
+        refreshProfile: async () => { if (user) await fetchProfile(user.id); },
+        loading,
+      }}
     >
       {children}
     </AuthContext.Provider>

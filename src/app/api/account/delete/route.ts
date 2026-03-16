@@ -9,64 +9,55 @@ const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   "";
 
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+async function verifyAuth(request: Request) {
+  const accessToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!accessToken) return { error: "Unauthorized" as const };
+
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+  const { data: { user }, error } = await client.auth.getUser();
+  if (error || !user) return { error: "Unauthorized" as const };
+  return { user };
+}
 
 export async function POST(request: Request) {
   try {
-    if (!supabaseServiceRoleKey) {
-      console.error("Delete account: SUPABASE_SERVICE_ROLE_KEY is not set");
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return NextResponse.json(
-        {
-          error:
-            "Account deletion is not configured. Add SUPABASE_SERVICE_ROLE_KEY to your environment: .env.local for local development, or your hosting provider's environment variables (e.g. Vercel) for production. Get the key from Supabase Dashboard → Settings → API.",
-        },
-        { status: 500 }
+        { error: "Account deletion is not configured. Add SUPABASE_SERVICE_ROLE_KEY to your environment." },
+        { status: 500 },
       );
     }
 
-    const authHeader = request.headers.get("authorization");
-    const accessToken = authHeader?.replace(/^Bearer\s+/i, "");
+    const auth = await verifyAuth(request);
+    if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: 401 });
 
-    if (!accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    });
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAuth.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const body = await request.json().catch(() => ({}));
+    const targetUserId = typeof body.targetUserId === "string" ? body.targetUserId.trim() : null;
 
     const adminClient = createServerSupabaseClient();
-    const { error } = await adminClient.auth.admin.deleteUser(user.id);
 
+    if (targetUserId) {
+      const { data: profile } = await adminClient.from("profiles").select("role").eq("id", auth.user.id).single();
+      if (profile?.role !== "coach") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
+    const deleteId = targetUserId || auth.user.id;
+    const { error } = await adminClient.auth.admin.deleteUser(deleteId);
     if (error) {
       console.error("Delete account error:", error);
-      return NextResponse.json(
-        { error: error.message ?? "Failed to delete account" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: error.message ?? "Failed to delete account" }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
     console.error("Delete account error:", err);
     return NextResponse.json(
-      {
-        error:
-          message.includes("SUPABASE_SERVICE_ROLE_KEY")
-            ? "Account deletion is not configured. Add SUPABASE_SERVICE_ROLE_KEY to your environment: .env.local for local development, or your hosting provider's environment variables (e.g. Vercel) for production. Get the key from Supabase Dashboard → Settings → API."
-            : message,
-      },
-      { status: 500 }
+      { error: err instanceof Error ? err.message : "Failed to delete account" },
+      { status: 500 },
     );
   }
 }
