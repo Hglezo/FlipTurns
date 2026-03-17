@@ -39,7 +39,8 @@ export function orAssignFilter(userId: string, group: string | null | undefined)
 }
 
 export function filterWorkoutsForSwimmer(workouts: Workout[], swimmerId: string, swimmerGroup: SwimmerGroup | null): Workout[] {
-  if (swimmerId === "__all_groups__") {
+  if (swimmerId === "__all__") return workouts;
+  if (swimmerId === "__all_groups__" || swimmerId === "__only_groups__") {
     return workouts.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
   }
   const byDate = new Map<string, Workout[]>();

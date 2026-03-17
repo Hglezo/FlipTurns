@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -17,10 +17,12 @@ import {
   type PoolSize,
   type FirstDayOfWeek,
 } from "@/lib/preferences";
+import { LOCALES, GROUP_KEYS, type Locale } from "@/lib/i18n";
+import { useTranslations } from "@/components/i18n-provider";
 import { usePreferences } from "@/components/preferences-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { SwimmerGroup } from "@/lib/types";
-import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Users, BarChart3, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Users, BarChart3, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import {
@@ -58,9 +60,9 @@ import {
 } from "@/lib/volume-analytics";
 
 const POOL_OPTIONS: { value: PoolSize; label: string }[] = [
-  { value: "50m", label: "50 m" },
-  { value: "25m", label: "25 m" },
-  { value: "25y", label: "25 yd" },
+  { value: "LCM", label: "LCM" },
+  { value: "SCM", label: "SCM" },
+  { value: "SCY", label: "SCY" },
 ];
 
 const WEEK_OPTIONS: { value: FirstDayOfWeek; label: string }[] = [
@@ -73,9 +75,6 @@ const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
   { value: "Middle distance", label: "Middle distance" },
   { value: "Distance", label: "Distance" },
 ];
-
-const DAY_NAMES_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const DAY_NAMES_SUN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function getVolumeDateRange(
   aggregation: Aggregation,
@@ -98,7 +97,14 @@ function getVolumeDateRange(
   return { start: d, end: new Date(d.getFullYear(), d.getMonth() + 1, 0) };
 }
 
-function getVolumePeriodLabel(aggregation: Aggregation, dateOffset: number, weekStartsOn: 0 | 1): string {
+function getVolumePeriodLabel(
+  aggregation: Aggregation,
+  dateOffset: number,
+  weekStartsOn: 0 | 1,
+  formatDate: (date: Date, type: import("@/lib/i18n").DateFormatType, endDate?: Date) => string,
+  t: (key: import("@/lib/i18n").TranslationKey, params?: Record<string, string>) => string,
+  locale: string
+): string {
   const { start } = getVolumeDateRange(aggregation, dateOffset, weekStartsOn);
   if (aggregation === "day") {
     const weekStart = start;
@@ -114,10 +120,16 @@ function getVolumePeriodLabel(aggregation: Aggregation, dateOffset: number, week
     const bestMonth = Number(Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0][0]);
     const year = new Date(weekStart.getTime() + 3 * 24 * 60 * 60 * 1000).getFullYear();
     const weekNum = Math.ceil((earliestInMonth[bestMonth] ?? 1) / 7);
-    return `Week ${weekNum}, ${format(new Date(year, bestMonth, 1), "MMMM yyyy")}`;
+    const weekLabel = locale === "es-ES" ? t("volume.semanaLabel", { n: String(weekNum) }) : t("volume.weekLabel", { n: String(weekNum) });
+    return `${weekLabel}, ${formatDate(new Date(year, bestMonth, 1), "monthYear")}`;
   }
-  return format(start, "MMMM yyyy");
+  return formatDate(start, "monthYear");
 }
+
+const DAY_NAMES_EN_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_NAMES_EN_SUN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_NAMES_ES_MON = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const DAY_NAMES_ES_SUN = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 function VolumeChart({
   workouts,
@@ -129,6 +141,9 @@ function VolumeChart({
   weekStartsOn,
   dateRangeStart,
   dateRangeEnd,
+  t,
+  formatDate,
+  locale,
 }: {
   workouts: WorkoutRow[];
   swimmers: VolumeSwimmerProfile[];
@@ -139,6 +154,9 @@ function VolumeChart({
   weekStartsOn: 0 | 1;
   dateRangeStart: string;
   dateRangeEnd: string;
+  t: (key: import("@/lib/i18n").TranslationKey, params?: Record<string, string>) => string;
+  formatDate: (date: Date, type: import("@/lib/i18n").DateFormatType, endDate?: Date) => string;
+  locale: string;
 }) {
   let chartData: { label: string; meters: number; name?: string }[] = [];
   if (viewMode === "swimmer" && selectedSwimmerId) {
@@ -165,15 +183,19 @@ function VolumeChart({
     return (
       <p className="text-sm text-muted-foreground py-8 text-center">
         {viewMode === "swimmer" && !selectedSwimmerId
-          ? "Select a swimmer"
-          : "No volume data in this range"}
+          ? t("settings.selectSwimmerGroup")
+          : viewMode === "group" && !selectedGroup
+            ? t("settings.selectSwimmerGroup")
+            : t("settings.noVolumeData")}
       </p>
     );
   }
 
   const displayData = chartData.map((d, i) => {
-    const dayNames = weekStartsOn === 1 ? DAY_NAMES_MON : DAY_NAMES_SUN;
-    const shortLabel = aggregation === "day" ? dayNames[i] : `Week ${i + 1}`;
+    const dayNames = locale === "es-ES"
+      ? (weekStartsOn === 1 ? DAY_NAMES_ES_MON : DAY_NAMES_ES_SUN)
+      : (weekStartsOn === 1 ? DAY_NAMES_EN_MON : DAY_NAMES_EN_SUN);
+    const shortLabel = aggregation === "day" ? dayNames[i] : (locale === "es-ES" ? t("volume.semanaLabel", { n: String(i + 1) }) : t("volume.weekLabel", { n: String(i + 1) }));
     return { ...d, shortLabel };
   });
 
@@ -186,7 +208,7 @@ function VolumeChart({
           <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: any) => `${(Number(v) / 1000).toFixed(1)}k`} />
           <Tooltip
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            formatter={(v: any) => [`${Number(v ?? 0).toLocaleString()} m`, "Meters"]}
+            formatter={(v: any) => [`${Number(v ?? 0).toLocaleString()} m`, t("settings.meters")]}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             labelFormatter={(_: any, payload: any) => {
               const label = payload?.[0]?.payload?.label ?? "";
@@ -194,7 +216,7 @@ function VolumeChart({
                 const start = new Date(label + "T12:00:00");
                 const end = new Date(start);
                 end.setDate(start.getDate() + 6);
-                return `Week of ${format(start, "MMM d")} – ${format(end, "MMM d, yyyy")}`;
+                return formatDate(start, "weekOf", end);
               }
               return label;
             }}
@@ -208,10 +230,16 @@ function VolumeChart({
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { t, formatDate, locale } = useTranslations();
   const prefsContext = usePreferences();
   const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const [groupSaving, setGroupSaving] = useState(false);
   const [groupError, setGroupError] = useState("");
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const [prefs, setPrefsState] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [saved, setSaved] = useState(false);
 
@@ -240,9 +268,9 @@ export default function SettingsPage() {
   const [volumeLoading, setVolumeLoading] = useState(false);
   const [volumeAggregation, setVolumeAggregation] = useState<Aggregation>("day");
   const [volumeDateOffset, setVolumeDateOffset] = useState(0);
-  const [volumeViewMode, setVolumeViewMode] = useState<"swimmer" | "group">("swimmer");
+  const [volumeViewMode, setVolumeViewMode] = useState<"swimmer" | "group">("group");
   const [volumeSelectedSwimmerId, setVolumeSelectedSwimmerId] = useState<string | null>(null);
-  const [volumeSelectedGroup, setVolumeSelectedGroup] = useState<VolumeSwimmerGroup | null>("Sprint");
+  const [volumeSelectedGroup, setVolumeSelectedGroup] = useState<VolumeSwimmerGroup | null>(null);
 
   useEffect(() => {
     setPrefsState(getPreferences());
@@ -466,19 +494,19 @@ export default function SettingsPage() {
       <div className="mx-auto flex max-w-md flex-col px-5 pb-8 pt-6">
         <div className="mb-6 flex items-center justify-between gap-4">
           <Link href="/">
-            <Button variant="ghost" size="icon" className="size-10" aria-label="Back">
+            <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>
               <ArrowLeft className="size-5" />
             </Button>
           </Link>
           <h1 className="flex items-center gap-2 text-xl font-bold">
             <Waves className="size-6 text-primary" />
-            Settings
+            {t("common.settings")}
           </h1>
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <SignOutDropdown
             trigger={
-              <Button variant="ghost" size="icon" className="size-9" aria-label="Sign out">
+              <Button variant="ghost" size="icon" className="size-9" aria-label={t("common.signOut")}>
                 <LogOut className="size-5" />
               </Button>
             }
@@ -489,30 +517,91 @@ export default function SettingsPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Profile</CardTitle>
+              <CardTitle className="text-base">{t("settings.profile")}</CardTitle>
+              <CardAction>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  aria-label={t("settings.editProfile")}
+                  onClick={() => {
+                    setEditName(profile?.full_name ?? user?.user_metadata?.full_name ?? "");
+                    setEditEmail(user?.email ?? "");
+                    setShowProfileForm(true);
+                    setProfileError("");
+                  }}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+              </CardAction>
             </CardHeader>
             <CardContent className="space-y-4">
+              {showProfileForm ? (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!user) return;
+                    setProfileSaving(true);
+                    setProfileError("");
+                    const nameTrimmed = editName.trim() || null;
+                    const { error: profileErr } = await supabase.from("profiles").update({ full_name: nameTrimmed }).eq("id", user.id);
+                    if (profileErr) {
+                      setProfileError(profileErr.message);
+                      setProfileSaving(false);
+                      return;
+                    }
+                    const newEmail = editEmail.trim();
+                    if (newEmail && newEmail !== user.email) {
+                      const { error: emailErr } = await supabase.auth.updateUser({ email: newEmail });
+                      if (emailErr) {
+                        setProfileError(emailErr.message);
+                        setProfileSaving(false);
+                        return;
+                      }
+                    }
+                    await refreshProfile();
+                    setShowProfileForm(false);
+                    setProfileSaving(false);
+                  }}
+                  className="space-y-4"
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name">{t("settings.name")}</Label>
+                    <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder={t("settings.namePlaceholder")} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-email">{t("settings.email")}</Label>
+                    <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder={t("settings.emailPlaceholder")} />
+                  </div>
+                  {profileError && <p className="text-sm text-destructive">{profileError}</p>}
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={profileSaving}>{profileSaving ? t("settings.saving") : t("common.save")}</Button>
+                    <Button type="button" variant="outline" onClick={() => { setShowProfileForm(false); setProfileError(""); }} disabled={profileSaving}>{t("common.cancel")}</Button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>{t("settings.name")}</Label>
+                    <p className="text-sm text-foreground">{profile?.full_name ?? user?.user_metadata?.full_name ?? "—"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t("settings.email")}</Label>
+                    <p className="text-sm text-foreground">{user?.email ?? "—"}</p>
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
-                <Label>Name</Label>
-                <p className="text-sm text-foreground">
-                  {profile?.full_name ?? user?.user_metadata?.full_name ?? "—"}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <p className="text-sm text-foreground">{user?.email ?? "—"}</p>
-              </div>
-              <div className="space-y-2">
-                <Label>Member since</Label>
+                <Label>{t("settings.memberSince")}</Label>
                 <p className="text-sm text-muted-foreground">
                   {profile?.created_at
-                    ? format(new Date(profile.created_at), "MMMM d, yyyy")
+                    ? formatDate(new Date(profile.created_at), "memberSince")
                     : "—"}
                 </p>
               </div>
               {profile?.role === "swimmer" && (
                 <div className="space-y-2">
-                  <Label>Group</Label>
+                  <Label>{t("settings.group")}</Label>
                   <div className="flex gap-2 flex-wrap">
                     <button
                       type="button"
@@ -534,7 +623,7 @@ export default function SettingsPage() {
                       className={`rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:pointer-events-none ${!profile?.swimmer_group ? "border-primary bg-primary/10 hover:bg-primary/20" : "border-input bg-background hover:bg-accent"}`}
                       disabled={groupSaving}
                     >
-                      Not set
+                      {t("group.notSet")}
                     </button>
                     {SWIMMER_GROUPS.map((g) => (
                       <button
@@ -558,13 +647,13 @@ export default function SettingsPage() {
                         className={`rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:pointer-events-none ${profile?.swimmer_group === g.value ? "border-primary bg-primary/10 hover:bg-primary/20" : "border-input bg-background hover:bg-accent"}`}
                         disabled={groupSaving}
                       >
-                        {g.label}
+                        {t(GROUP_KEYS[g.value])}
                       </button>
                     ))}
                   </div>
                   {groupError && <p className="text-sm text-destructive">{groupError}</p>}
                   <p className="text-xs text-muted-foreground">
-                    Coaches can assign workouts to your group; all swimmers in that group will see them.
+                    {t("settings.coachesAssignGroup")}
                   </p>
                 </div>
               )}
@@ -618,7 +707,7 @@ export default function SettingsPage() {
                           setPasswordError("");
                         }}
                       >
-                        Cancel
+                        {t("common.cancel")}
                       </Button>
                     </div>
                   </form>
@@ -629,7 +718,7 @@ export default function SettingsPage() {
                     onClick={() => setShowPasswordForm(true)}
                   >
                     <KeyRound className="size-4 mr-2" />
-                    Change password
+                    {t("settings.changePassword")}
                   </Button>
                 )}
               </div>
@@ -638,11 +727,14 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Preferences</CardTitle>
+              <CardTitle className="text-base">{t("settings.preferences")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label>Pool size</Label>
+                <Label>{t("settings.poolSize")}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.poolSizeDescription")}
+                </p>
                 <div className="flex gap-2">
                   {POOL_OPTIONS.map((opt) => (
                     <Button
@@ -657,7 +749,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>First day of week</Label>
+                <Label>{t("settings.firstDayOfWeek")}</Label>
                 <div className="flex gap-2">
                   {WEEK_OPTIONS.map((opt) => (
                     <Button
@@ -666,10 +758,24 @@ export default function SettingsPage() {
                       size="sm"
                       onClick={() => handleSavePrefs({ firstDayOfWeek: opt.value })}
                     >
-                      {opt.label}
+                      {opt.value === 1 ? t("settings.monday") : t("settings.sunday")}
                     </Button>
                   ))}
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("settings.language")}</Label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={prefs?.locale ?? "en-US"}
+                  onChange={(e) => handleSavePrefs({ locale: e.target.value as Locale })}
+                >
+                  {LOCALES.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </CardContent>
           </Card>
@@ -679,18 +785,18 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Users className="size-4" />
-                  Team management
+                  {t("settings.teamManagement")}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground font-normal">
-                  Assign swimmers to groups. This overrides the group they chose in their own profile.
+                  {t("settings.teamManagementDesc")}
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 {teamError && <p className="text-sm text-destructive">{teamError}</p>}
                 {teamLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading swimmers…</p>
+                  <p className="text-sm text-muted-foreground">{t("settings.loadingSwimmers")}</p>
                 ) : teamSwimmers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No swimmers yet.</p>
+                  <p className="text-sm text-muted-foreground">{t("settings.noSwimmersYet")}</p>
                 ) : (
                   <div className="space-y-4">
                     {SWIMMER_GROUPS.map((g) => {
@@ -698,7 +804,7 @@ export default function SettingsPage() {
                       const notInGroup = teamSwimmers.filter((s) => s.swimmer_group !== g.value).sort((a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? ""));
                       return (
                         <div key={g.value} className="space-y-2">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.label}</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t(GROUP_KEYS[g.value])}</p>
                           <div className="flex flex-wrap gap-1.5">
                             {inGroup.map((s) => (
                               <button
@@ -737,89 +843,83 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <BarChart3 className="size-4" />
-                  Volume analytics
+                  {t("settings.volumeAnalytics")}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap gap-2 items-center">
+              <CardContent className="space-y-4 overflow-x-hidden min-w-0">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 items-stretch sm:items-center min-w-0">
                   {isCoach && (
-                    <div className="flex gap-1">
-                      <Button
-                        variant={volumeViewMode === "swimmer" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setVolumeViewMode("swimmer")}
+                    <div className="min-w-0 flex-1 sm:flex-initial">
+                      <select
+                        className="w-full sm:w-48 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={
+                          volumeViewMode === "group" && volumeSelectedGroup
+                            ? `group:${volumeSelectedGroup}`
+                            : volumeViewMode === "swimmer" && volumeSelectedSwimmerId
+                              ? `swimmer:${volumeSelectedSwimmerId}`
+                              : ""
+                        }
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v.startsWith("group:")) {
+                            const group = v.slice(6) as VolumeSwimmerGroup;
+                            setVolumeViewMode("group");
+                            setVolumeSelectedGroup(group);
+                            setVolumeSelectedSwimmerId(null);
+                          } else if (v.startsWith("swimmer:")) {
+                            setVolumeViewMode("swimmer");
+                            setVolumeSelectedSwimmerId(v.slice(8));
+                            setVolumeSelectedGroup(null);
+                          }
+                        }}
                       >
-                        Swimmer
-                      </Button>
-                      <Button
-                        variant={volumeViewMode === "group" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setVolumeViewMode("group")}
-                      >
-                        Group
-                      </Button>
+                        <option value="">Select swimmer/group</option>
+                        <optgroup label={t("settings.groups")}>
+                          {SWIMMER_GROUPS.map((g) => (
+                            <option key={g.value} value={`group:${g.value}`}>
+                              {t(GROUP_KEYS[g.value])}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label={t("settings.swimmers")}>
+                          {teamSwimmers.map((s) => (
+                            <option key={s.id} value={`swimmer:${s.id}`}>
+                              {s.full_name || s.id.slice(0, 8)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
                     </div>
                   )}
-                  <div className="flex gap-1 items-center">
-                    {(["day", "week"] as const).map((a) => (
-                      <Button
-                        key={a}
-                        variant={volumeAggregation === a ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => { setVolumeAggregation(a); setVolumeDateOffset(0); }}
-                      >
-                        {a === "day" ? "Weekly" : "Monthly"}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 min-w-0 w-full sm:w-auto">
+                    <div className="flex gap-1 items-center shrink-0">
+                      {(["day", "week"] as const).map((a) => (
+                        <Button
+                          key={a}
+                          variant={volumeAggregation === a ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => { setVolumeAggregation(a); setVolumeDateOffset(0); }}
+                        >
+                          {a === "day" ? t("settings.weekly") : t("settings.monthly")}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1 items-center min-w-0 overflow-hidden">
+                      <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setVolumeDateOffset((o) => o - 1)} aria-label={t("settings.previousPeriod")}>
+                        <ChevronLeft className="size-4" />
                       </Button>
-                    ))}
-                    <Button variant="outline" size="icon" className="size-8" onClick={() => setVolumeDateOffset((o) => o - 1)} aria-label="Previous period">
-                      <ChevronLeft className="size-4" />
-                    </Button>
-                    <span className="text-sm text-muted-foreground min-w-[140px] text-center">
-                      {getVolumePeriodLabel(volumeAggregation, volumeDateOffset, weekStartsOn)}
-                    </span>
-                    <Button variant="outline" size="icon" className="size-8" onClick={() => setVolumeDateOffset((o) => o + 1)} aria-label="Next period">
-                      <ChevronRight className="size-4" />
-                    </Button>
+                      <span className="text-sm text-muted-foreground truncate min-w-0 flex-1 text-center">
+                        {getVolumePeriodLabel(volumeAggregation, volumeDateOffset, weekStartsOn, formatDate, t, locale)}
+                      </span>
+                      <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setVolumeDateOffset((o) => o + 1)} aria-label={t("settings.nextPeriod")}>
+                        <ChevronRight className="size-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
-                {isCoach && volumeViewMode === "swimmer" && (
-                  <div className="space-y-2">
-                    <Label className="text-xs">Swimmer</Label>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={volumeSelectedSwimmerId ?? ""}
-                      onChange={(e) => setVolumeSelectedSwimmerId(e.target.value || null)}
-                    >
-                      <option value="">Select swimmer</option>
-                      {teamSwimmers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.full_name || s.id.slice(0, 8)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {isCoach && volumeViewMode === "group" && (
-                  <div className="space-y-2">
-                    <Label className="text-xs">Group</Label>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={volumeSelectedGroup ?? ""}
-                      onChange={(e) => setVolumeSelectedGroup((e.target.value || null) as VolumeSwimmerGroup | null)}
-                    >
-                      {SWIMMER_GROUPS.map((g) => (
-                        <option key={g.value} value={g.value}>
-                          {g.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
                 {volumeLoading ? (
-                  <p className="text-sm text-muted-foreground py-8 text-center">Loading…</p>
+                  <p className="text-sm text-muted-foreground py-8 text-center">{t("common.loading")}</p>
                 ) : (() => {
                   const { start, end } = getVolumeDateRange(volumeAggregation, volumeDateOffset, weekStartsOn);
                   const swimmerView = profile?.role === "swimmer";
@@ -834,6 +934,9 @@ export default function SettingsPage() {
                       weekStartsOn={weekStartsOn}
                       dateRangeStart={start.toISOString().slice(0, 10)}
                       dateRangeEnd={end.toISOString().slice(0, 10)}
+                      t={t}
+                      formatDate={formatDate}
+                      locale={locale}
                     />
                   );
                 })()}
@@ -849,7 +952,7 @@ export default function SettingsPage() {
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" className="w-full">
                         <Users className="size-4 mr-2" />
-                        Remove a swimmer
+                        {t("settings.removeSwimmer")}
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="min-w-48" align="start">
@@ -868,15 +971,15 @@ export default function SettingsPage() {
                   <AlertDialog open={deleteSwimmerTargetId !== null} onOpenChange={(open) => { if (!open) { setDeleteSwimmerTargetId(null); setDeleteSwimmerError(""); } }}>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Are you sure you want to delete {deleteSwimmerTargetId ? (teamSwimmers.find((x) => x.id === deleteSwimmerTargetId)?.full_name || "this swimmer") : ""}&apos;s account?</AlertDialogTitle>
+                        <AlertDialogTitle>{t("removeSwimmer.title", { name: deleteSwimmerTargetId ? (teamSwimmers.find((x) => x.id === deleteSwimmerTargetId)?.full_name || t("removeSwimmer.thisSwimmer")) : "" })}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This action cannot be undone. All data for this swimmer will be permanently deleted.
+                          {t("removeSwimmer.description")}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel disabled={deleteSwimmerLoading}>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel disabled={deleteSwimmerLoading}>{t("common.cancel")}</AlertDialogCancel>
                         <Button variant="destructive" onClick={handleDeleteSwimmerAccount} disabled={deleteSwimmerLoading}>
-                          {deleteSwimmerLoading ? "Deleting…" : "Delete account"}
+                          {deleteSwimmerLoading ? t("coach.deleting") : t("coach.deleteAccount")}
                         </Button>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -891,23 +994,22 @@ export default function SettingsPage() {
                   onClick={() => setShowDeleteDialog(true)}
                 >
                   <Trash2 className="size-4 mr-2" />
-                  Delete account
+                  {t("settings.deleteAccount")}
                 </Button>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+                    <AlertDialogTitle>{t("deleteAccount.title")}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This action cannot be undone. All your data will be permanently deleted.
-                      Type <strong>delete</strong> below to confirm.
+                      {t("deleteAccount.description")}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <div className="space-y-2">
                     <Label htmlFor="delete-confirm">
-                      Type &quot;delete&quot; to confirm
+                      {t("deleteAccount.typeToConfirm")}
                     </Label>
                     <Input
                       id="delete-confirm"
-                      placeholder="delete"
+                      placeholder={t("deleteAccount.placeholder")}
                       value={deleteConfirmText}
                       onChange={(e) => setDeleteConfirmText(e.target.value)}
                       className="font-mono"
@@ -918,13 +1020,13 @@ export default function SettingsPage() {
                     <p className="text-sm text-destructive">{deleteError}</p>
                   )}
                   <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                     <Button
                       variant="destructive"
                       disabled={!canDelete || deleteLoading}
                       onClick={handleDeleteAccount}
                     >
-                      {deleteLoading ? "Deleting…" : "Delete account"}
+                      {deleteLoading ? t("coach.deleting") : t("coach.deleteAccount")}
                     </Button>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -933,9 +1035,9 @@ export default function SettingsPage() {
           </Card>
         </div>
 
-        {saved && (
-          <p className="mt-4 text-center text-sm text-muted-foreground">Saved</p>
-        )}
+{saved && (
+        <p className="mt-4 text-center text-sm text-muted-foreground">{t("common.saved")}</p>
+      )}
       </div>
     </div>
   );

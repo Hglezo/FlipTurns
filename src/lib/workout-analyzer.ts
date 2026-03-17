@@ -49,7 +49,11 @@ function removeParentheticalContent(text: string): string {
 function parseMetersInText(text: string): number {
   let total = 0;
   const cleanedText = removeParentheticalContent(text);
-  const lines = cleanedText.split(/\r?\n/);
+  const textWithAsteriskStripped = cleanedText
+    .split(/\r?\n/)
+    .map((line) => (/^\s*\*/.test(line) ? "" : line.replace(/\*[^*]*/g, " ").trim()))
+    .join("\n");
+  const lines = textWithAsteriskStripped.split(/\r?\n/);
 
   // First: handle "Nx" block multipliers (e.g. "2x" followed by block of content)
   const processedLines: string[] = [];
@@ -97,7 +101,6 @@ function parseMetersInText(text: string): number {
 
   // Use text with repeats removed for standalone - so "200 free 2x100" gives us "200 free " to parse
   // Exclude lines starting with * (notes/instructions like "*100 better than warm up")
-  // Exclude numbers after "word:" (e.g. "odds: 25 swim" - the 25 is descriptive, not a distance)
   const textLines = textWithoutRepeats.split(/\r?\n/);
   const linesForStandalone = textLines.filter((line) => !/^\s*\*/.test(line));
   let textForStandalone = linesForStandalone.join("\n");
