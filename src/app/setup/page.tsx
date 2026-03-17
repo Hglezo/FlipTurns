@@ -54,7 +54,10 @@ alter table public.workouts add column if not exists pool_size text check (pool_
 drop policy if exists "Anyone can update workouts" on public.workouts;
 drop policy if exists "Anyone can delete workouts" on public.workouts;
 create policy "Anyone can update workouts" on public.workouts for update using (true);
-create policy "Anyone can delete workouts" on public.workouts for delete using (true);`;
+create policy "Anyone can delete workouts" on public.workouts for delete using (true);
+
+-- Refresh PostgREST schema cache (required for new columns to work)
+notify pgrst, 'reload schema';`;
 
 const FEEDBACK_POLICIES_SQL = `drop policy if exists "Anyone can update feedback" on public.feedback;
 drop policy if exists "Anyone can delete feedback" on public.feedback;
@@ -93,6 +96,7 @@ const WORKOUTS_SETUP_SQL = `alter table public.workouts drop constraint if exist
 alter table public.workouts add column if not exists session text default '';
 alter table public.workouts add column if not exists workout_type text default '';
 alter table public.workouts add column if not exists workout_category text default '';
+alter table public.workouts add column if not exists pool_size text check (pool_size in ('LCM', 'SCM', 'SCY'));
 drop policy if exists "Anyone can update workouts" on public.workouts;
 drop policy if exists "Anyone can delete workouts" on public.workouts;
 create policy "Anyone can update workouts" on public.workouts for update using (true);
@@ -117,7 +121,76 @@ alter table public.workouts drop column if exists workout_type;
 alter table public.workouts drop constraint if exists workouts_date_key;`;
 
 const WORKOUTS_POOL_SIZE_SQL = `-- Pool size per workout: LCM (50m), SCM (25m), SCY (25yd). When SCY, analysis shows yards.
-alter table public.workouts add column if not exists pool_size text check (pool_size in ('LCM', 'SCM', 'SCY'));`;
+alter table public.workouts add column if not exists pool_size text check (pool_size in ('LCM', 'SCM', 'SCY'));
+notify pgrst, 'reload schema';`;
+
+const FIX_WORKOUT_COLUMNS_SQL = `-- Add workout category & pool size; refresh schema cache
+alter table public.workouts add column if not exists session text default '';
+alter table public.workouts add column if not exists workout_category text default '';
+alter table public.workouts add column if not exists pool_size text check (pool_size in ('LCM', 'SCM', 'SCY'));
+notify pgrst, 'reload schema';`;
+
+const WORKOUT_SAVE_RPC_SQL = `-- Fix: workout category & pool size not saving (bypasses schema cache)
+-- Run this if the fix above doesn't work
+alter table public.workouts add column if not exists session text default '';
+alter table public.workouts add column if not exists workout_category text default '';
+alter table public.workouts add column if not exists pool_size text check (pool_size in ('LCM', 'SCM', 'SCY'));
+
+create or replace function public.update_workout(
+  p_id uuid, p_content text, p_session text, p_workout_category text, p_pool_size text,
+  p_assigned_to uuid, p_assigned_to_group text
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.profiles where id = auth.uid() and role = 'coach') then
+    raise exception 'Not authorized';
+  end if;
+  update public.workouts set
+    content = coalesce(p_content, ''),
+    session = p_session,
+    workout_category = p_workout_category,
+    pool_size = case when p_pool_size in ('LCM','SCM','SCY') then p_pool_size else null end,
+    assigned_to = p_assigned_to,
+    assigned_to_group = p_assigned_to_group,
+    updated_at = now()
+  where id = p_id;
+end;
+$$;
+
+create or replace function public.insert_workout(
+  p_date date, p_content text, p_session text, p_workout_category text, p_pool_size text,
+  p_assigned_to uuid, p_assigned_to_group text
+)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare new_id uuid;
+begin
+  if not exists (select 1 from public.profiles where id = auth.uid() and role = 'coach') then
+    raise exception 'Not authorized';
+  end if;
+  insert into public.workouts (date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, updated_at)
+  values (p_date, coalesce(p_content, ''), p_session, p_workout_category,
+    case when p_pool_size in ('LCM','SCM','SCY') then p_pool_size else null end,
+    p_assigned_to, p_assigned_to_group, now())
+  returning id into new_id;
+  return new_id;
+end;
+$$;
+
+create or replace function public.get_workouts_for_date(p_date date)
+returns json language sql security definer set search_path = public stable as $$
+  select coalesce(
+    (select json_agg(row_to_json(t))
+     from (select id, date, content, session, workout_category, pool_size,
+             assigned_to, assigned_to_group, created_at, updated_at
+           from public.workouts where date = p_date order by created_at asc) t),
+    '[]'::json
+  );
+$$;
+
+grant execute on function public.update_workout(uuid, text, text, text, text, uuid, text) to authenticated;
+grant execute on function public.insert_workout(date, text, text, text, text, uuid, text) to authenticated;
+grant execute on function public.get_workouts_for_date(date) to authenticated;
+notify pgrst, 'reload schema';`;
 
 const COACH_UPDATE_SWIMMER_GROUP_SQL = `-- Coaches can assign swimmers to groups in Team management (Settings)
 drop policy if exists "Coaches can update swimmer profiles" on public.profiles;
@@ -421,6 +494,31 @@ export default function SetupPage() {
               >
                 {copied === COACH_UPDATE_SWIMMER_GROUP_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === COACH_UPDATE_SWIMMER_GROUP_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Workout category &amp; pool size not saving</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              If workout type (Recovery, Aerobic, etc.) or pool size (LCM, SCM, SCY) don&apos;t persist after save, run this in Supabase SQL Editor. It creates RPC functions that bypass the schema cache.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="max-h-[320px] overflow-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{WORKOUT_SAVE_RPC_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(WORKOUT_SAVE_RPC_SQL)}
+              >
+                {copied === WORKOUT_SAVE_RPC_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === WORKOUT_SAVE_RPC_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>

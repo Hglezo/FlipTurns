@@ -33,6 +33,7 @@ import {
 
 const badgeClass = "inline-flex items-center rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue";
 const badgeClassMuted = "inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground";
+const WORKOUT_SELECT = "id, date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_at, updated_at";
 
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
@@ -186,11 +187,11 @@ export default function Home() {
       const isAllGroups = selectedViewSwimmerId === ALL_GROUPS_ID;
       const filterId = isAllGroups ? null : (selectedViewSwimmerId ?? userId);
       const filterGroup = filterId === userId ? swimmerGroup : swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null;
-      let query = supabase.from("workouts").select("*").eq("date", dateKey).order("created_at", { ascending: true });
+      let query = supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
       if (isAllGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
       else if (filterId) query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
       const { data } = await query;
-      let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+      let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[];
       rows = await loadAndMergeWorkouts(rows, swimmers);
       const me = filterId ?? userId;
       if (!isAllGroups && (filterId || filterGroup)) {
@@ -210,9 +211,18 @@ export default function Home() {
     if (!isAddingWorkout) { setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null); }
     (async () => {
       setCoachLoading(true);
-      const { data } = await supabase.from("workouts").select("*").eq("date", dateKey).order("created_at", { ascending: true });
-      let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
-      rows = await loadAndMergeWorkouts(rows, swimmers);
+      const { data, error } = await supabase.rpc("get_workouts_for_date", { p_date: dateKey });
+      let rows: Workout[];
+      if (error?.message?.includes("function") && error?.message?.includes("does not exist")) {
+        const { data: fallback } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
+        rows = await loadAndMergeWorkouts((fallback ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[], swimmers);
+      } else if (error) {
+        setCoachLoading(false);
+        return;
+      } else {
+        const rawRows = Array.isArray(data) ? data : (typeof data === "string" ? JSON.parse(data || "[]") : []);
+        rows = await loadAndMergeWorkouts(rawRows.map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey })), swimmers);
+      }
       if (selectedCoachSwimmerId) {
         const coachFilterGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
         rows = rows.filter((w) => {
@@ -263,7 +273,7 @@ export default function Home() {
       }
 
       const { data } = await query;
-      let rows = await loadAndMergeWorkouts(data ?? [], swimmers);
+      let rows = await loadAndMergeWorkouts((data ?? []) as Workout[], swimmers);
       if (role === "swimmer" && swimmerFilterId) {
         rows = filterWorkoutsForSwimmer(rows, swimmerFilterId, filterGroup ?? null);
       }
@@ -288,16 +298,36 @@ export default function Home() {
       updated_at: new Date().toISOString(),
     };
 
+    const rpcPayload = {
+      p_content: workout.content,
+      p_session: workout.session || null,
+      p_workout_category: workout.workout_category || null,
+      p_pool_size: workout.pool_size || null,
+      p_assigned_to: workout.assigned_to ?? null,
+      p_assigned_to_group: workout.assigned_to_group ?? null,
+    };
     if (workout.id) {
-      const { error } = await supabase.from("workouts").update(updatePayload).eq("id", workout.id);
-      if (error) { alert(error.message); setLoading(false); return; }
+      const { error } = await supabase.rpc("update_workout", { p_id: workout.id, ...rpcPayload });
+      if (error) {
+        if (error.message?.includes("function") && error.message?.includes("does not exist")) {
+          const { error: updErr } = await supabase.from("workouts").update(updatePayload).eq("id", workout.id);
+          if (updErr) { alert(updErr.message); setLoading(false); return; }
+        } else { alert(error.message); setLoading(false); return; }
+      }
     } else {
-      const { data: inserted, error } = await supabase.from("workouts")
-        .insert({ date: dateKey, ...updatePayload, assigned_to: workout.assigned_to ?? null, assigned_to_group: workout.assigned_to_group ?? null })
-        .select().single();
-      if (error) { alert(error.message); setLoading(false); return; }
-      savedId = inserted?.id;
-      setCoachWorkouts((prev) => prev.map((w, i) => i === index ? { ...inserted, date: normDate(inserted?.date) ?? dateKey, assignee_ids: w.assignee_ids } : w));
+      const { data: newId, error } = await supabase.rpc("insert_workout", { p_date: dateKey, ...rpcPayload });
+      if (error) {
+        if (error.message?.includes("function") && error.message?.includes("does not exist")) {
+          const { data: inserted, error: insErr } = await supabase.from("workouts")
+            .insert({ date: dateKey, ...updatePayload, assigned_to: workout.assigned_to ?? null, assigned_to_group: workout.assigned_to_group ?? null })
+            .select().single();
+          if (insErr) { alert(insErr.message); setLoading(false); return; }
+          savedId = inserted?.id;
+          setCoachWorkouts((prev) => prev.map((w, i) => i === index ? { ...inserted, date: normDate(inserted?.date) ?? dateKey, assignee_ids: w.assignee_ids } : w));
+        } else { alert(error.message); setLoading(false); return; }
+      } else {
+        savedId = newId ?? undefined;
+      }
     }
 
     if (workout.assigned_to_group && savedId) {
@@ -317,8 +347,16 @@ export default function Home() {
   }
 
   async function refreshCoachWorkouts() {
-    const { data: rows } = await supabase.from("workouts").select("*").eq("date", dateKey).order("created_at", { ascending: true });
-    let merged = (rows ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+    const { data: rows, error } = await supabase.rpc("get_workouts_for_date", { p_date: dateKey });
+    if (error?.message?.includes("function") && error?.message?.includes("does not exist")) {
+      const { data: fallback } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
+      const merged = await loadAndMergeWorkouts((fallback ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[], swimmers);
+      setCoachWorkouts(sortCoachWorkouts(merged, swimmers));
+      return;
+    }
+    if (error) { alert(error.message); return; }
+    const rawRows = Array.isArray(rows) ? rows : (typeof rows === "string" ? JSON.parse(rows || "[]") : []);
+    let merged = rawRows.map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey }));
     merged = await loadAndMergeWorkouts(merged, swimmers);
     setCoachWorkouts(sortCoachWorkouts(merged, swimmers));
   }
