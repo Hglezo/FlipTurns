@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import heic2any from "heic2any";
 import {
   Waves, ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
@@ -424,15 +425,22 @@ export default function Home() {
     const idx = imageFromWorkoutIdxRef.current;
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (idx === null || !file || !file.type.startsWith("image/")) return;
+    if (idx === null || !file) return;
+    const isHeic = /^image\/(heic|heif)$/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+    if (!isHeic && !file.type.startsWith("image/")) return;
     setImageFromWorkoutError(null);
     setImageFromWorkoutLoading(true);
     try {
+      let blob: Blob = file;
+      if (isHeic) {
+        const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+        blob = Array.isArray(converted) ? converted[0]! : converted;
+      }
       const base64 = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => resolve(String(r.result));
         r.onerror = () => reject(new Error("Failed to read image"));
-        r.readAsDataURL(file);
+        r.readAsDataURL(blob);
       });
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
@@ -733,7 +741,7 @@ export default function Home() {
 
         {viewMode === "day" && isCoach && (
           <Card className="flex flex-1 flex-col py-4">
-            <input ref={imageFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
+            <input ref={imageFileInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
             <CardContent className="flex flex-1 flex-col gap-4 px-4 py-0">
               {coachLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">{t("common.loading")}</p></div> : (
                 <div className="flex flex-1 flex-col gap-4">
