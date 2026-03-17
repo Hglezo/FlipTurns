@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval,
-  isSameDay, isWithinInterval,
+  isSameDay, isWithinInterval, parseISO,
 } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
@@ -22,10 +22,11 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
 import { SignOutDropdown } from "@/components/sign-out-dropdown";
+import { NotificationBell } from "@/components/notification-bell";
 import { usePreferences } from "@/components/preferences-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { Workout, SwimmerProfile, ViewMode, SwimmerGroup } from "@/lib/types";
-import { SWIMMER_GROUPS, ALL_GROUPS_ID, WORKOUT_CATEGORIES, SESSION_OPTIONS, POOL_SIZE_OPTIONS, normDate, getTimeframe } from "@/lib/types";
+import { SWIMMER_GROUPS, ALL_GROUPS_ID, ALL_ID, ONLY_GROUPS_ID, WORKOUT_CATEGORIES, SESSION_OPTIONS, POOL_SIZE_OPTIONS, normDate, getTimeframe } from "@/lib/types";
 import {
   loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
   assignmentLabel, assignedToNames, teammateNames, dayPreviewLabel, saveAssigneesForGroupWorkout,
@@ -51,12 +52,12 @@ function WorkoutBlock({
     <div className={compact ? "space-y-2" : "space-y-4"}>
       <div className="flex items-start justify-between gap-2">
         <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
+          {assigneeLabel && <span className={badgeClass}>{assigneeLabel}</span>}
           <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase ${
             sessionLabel === "AM" ? "bg-amber-400/15 text-amber-600 dark:text-amber-400"
               : sessionLabel === "PM" ? "bg-indigo-400/15 text-indigo-600 dark:text-indigo-400"
                 : "bg-muted text-muted-foreground"
           }`}>{sessionLabel}</span>
-          {assigneeLabel && <span className={badgeClass}>{assigneeLabel}</span>}
         </div>
         {(workout.workout_category?.trim() || workout.pool_size) && (
           <div className={`flex flex-wrap justify-end gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
@@ -136,7 +137,9 @@ function MonthCalendar({
 }
 
 export default function Home() {
-  const { weekStartsOn } = usePreferences() ?? { weekStartsOn: 1 as 0 | 1 };
+  const prefs = usePreferences();
+  const weekStartsOn = prefs?.weekStartsOn ?? (1 as 0 | 1);
+  const defaultPoolSize = prefs?.preferences?.poolSize ?? "LCM";
   const { user, profile, role, signOut, loading: authLoading } = useAuth();
   const swimmerGroup = profile?.role === "swimmer" ? profile?.swimmer_group : null;
   const router = useRouter();
@@ -160,7 +163,7 @@ export default function Home() {
   const [editingWorkoutSnapshot, setEditingWorkoutSnapshot] = useState<Workout | null>(null);
   const [swimmers, setSwimmers] = useState<SwimmerProfile[]>([]);
   const [selectedViewSwimmerId, setSelectedViewSwimmerId] = useState<string | null>(null);
-  const [selectedCoachSwimmerId, setSelectedCoachSwimmerId] = useState<string | null>(null);
+  const [selectedCoachSwimmerId, setSelectedCoachSwimmerId] = useState<string | null>(ALL_ID);
   const addWorkoutForDateRef = useRef<string | null>(null);
 
   const dateKey = format(selectedDate, "yyyy-MM-dd");
@@ -184,21 +187,18 @@ export default function Home() {
     const userId = user.id;
     (async () => {
       setSwimmerLoading(true);
-      const isAllGroups = selectedViewSwimmerId === ALL_GROUPS_ID;
-      const filterId = isAllGroups ? null : (selectedViewSwimmerId ?? userId);
-      const filterGroup = filterId === userId ? swimmerGroup : swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null;
+      const isAll = selectedViewSwimmerId === ALL_ID;
+      const isOnlyGroups = selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID;
+      const filterId = isAll || isOnlyGroups ? selectedViewSwimmerId : (selectedViewSwimmerId ?? userId);
+      const filterGroup = filterId === userId ? swimmerGroup : (filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID && filterId !== ALL_GROUPS_ID) ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null : null;
       let query = supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
-      if (isAllGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-      else if (filterId) query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
+      if (isOnlyGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
+      else if (!isAll && filterId) query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
       const { data } = await query;
       let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[];
       rows = await loadAndMergeWorkouts(rows, swimmers);
       const me = filterId ?? userId;
-      if (!isAllGroups && (filterId || filterGroup)) {
-        rows = filterWorkoutsForSwimmer(rows, me, filterGroup ?? null);
-      } else if (isAllGroups) {
-        rows = rows.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
-      }
+      rows = filterWorkoutsForSwimmer(rows, me, filterGroup ?? null);
       setViewWorkouts(rows);
       setSwimmerLoading(false);
     })();
@@ -222,7 +222,9 @@ export default function Home() {
       } else {
         rows = await loadAndMergeWorkouts((data ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey })), swimmers);
       }
-      if (selectedCoachSwimmerId) {
+      if (selectedCoachSwimmerId === ONLY_GROUPS_ID) {
+        rows = rows.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
+      } else if (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID) {
         const coachFilterGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
         rows = rows.filter((w) => {
           if (w.assigned_to === selectedCoachSwimmerId) return true;
@@ -234,9 +236,10 @@ export default function Home() {
         });
       }
       const sortedRows = sortCoachWorkouts(rows, swimmers);
+      const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
-        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: selectedCoachSwimmerId ?? null, assigned_to_group: null };
+        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null };
         setCoachWorkouts([...sortedRows, newWorkout]);
         setEditingWorkoutIndex(sortedRows.length);
       } else {
@@ -257,24 +260,29 @@ export default function Home() {
         .gte("date", format(rangeStart, "yyyy-MM-dd")).lte("date", format(rangeEnd, "yyyy-MM-dd"));
       if (viewMode === "week") query = query.order("date", { ascending: true });
 
-      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId === ALL_GROUPS_ID ? ALL_GROUPS_ID : (selectedViewSwimmerId ?? user.id)) : null;
+      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId ?? user.id) : null;
       const filterId = role === "swimmer" ? swimmerFilterId : selectedCoachSwimmerId;
       const filterGroup = role === "swimmer" && swimmerFilterId === user.id ? swimmerGroup
-        : filterId && filterId !== ALL_GROUPS_ID ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null : null;
+        : filterId && filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID && filterId !== ALL_GROUPS_ID ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null : null;
 
       if (role === "swimmer" && swimmerFilterId) {
-        if (swimmerFilterId === ALL_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
+        if (selectedViewSwimmerId === ALL_ID) { /* no filter - show all */ }
+        else if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
         else query = filterGroup ? query.or(orAssignFilter(swimmerFilterId, filterGroup)) : query.eq("assigned_to", swimmerFilterId);
       }
-      if (isCoach && selectedCoachSwimmerId) {
-        const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
-        query = coachGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+      if (isCoach && selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID) {
+        if (selectedCoachSwimmerId === ONLY_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
+        else {
+          const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
+          query = coachGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+        }
       }
 
       const { data } = await query;
       let rows = await loadAndMergeWorkouts((data ?? []) as Workout[], swimmers);
       if (role === "swimmer" && swimmerFilterId) {
-        rows = filterWorkoutsForSwimmer(rows, swimmerFilterId, filterGroup ?? null);
+        const sf = selectedViewSwimmerId ?? user.id;
+        rows = filterWorkoutsForSwimmer(rows, sf, filterGroup ?? null);
       }
 
       if (viewMode === "week") setWeekWorkouts(rows);
@@ -290,9 +298,10 @@ export default function Home() {
     setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null);
     setLoading(true); setSaved(false);
     let savedId: string | undefined = workout.id;
+    const poolSizeToSave = workout.pool_size ?? defaultPoolSize ?? null;
     const updatePayload = {
       content: workout.content, session: workout.session || null,
-      workout_category: workout.workout_category, pool_size: workout.pool_size || null,
+      workout_category: workout.workout_category, pool_size: poolSizeToSave,
       assigned_to: workout.assigned_to, assigned_to_group: workout.assigned_to_group,
       updated_at: new Date().toISOString(),
     };
@@ -301,7 +310,7 @@ export default function Home() {
       p_content: workout.content,
       p_session: workout.session || null,
       p_workout_category: workout.workout_category || null,
-      p_pool_size: workout.pool_size || null,
+      p_pool_size: poolSizeToSave,
       p_assigned_to: workout.assigned_to ?? null,
       p_assigned_to_group: workout.assigned_to_group ?? null,
     };
@@ -439,8 +448,13 @@ export default function Home() {
   };
 
   const getPreviewDefault = () => {
-    if (isCoach) return selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined;
-    if (selectedViewSwimmerId === ALL_GROUPS_ID) return "All Groups";
+    if (isCoach) {
+      if (selectedCoachSwimmerId === ALL_ID) return "All workouts";
+      if (selectedCoachSwimmerId === ONLY_GROUPS_ID) return "Group workouts";
+      return selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined;
+    }
+    if (selectedViewSwimmerId === ALL_ID) return "All workouts";
+    if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) return "Group workouts";
     if (!selectedViewSwimmerId) return profile?.full_name ?? swimmers.find((s) => s.id === user?.id)?.full_name ?? undefined;
     return swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? undefined;
   };
@@ -569,19 +583,21 @@ export default function Home() {
       <div className="mx-auto flex max-w-md flex-col px-5 py-5 w-full min-w-0">
         {/* Header */}
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
-          <h1 className="flex shrink-0 items-center gap-2 text-2xl font-bold"><Waves className="size-7 text-primary" />FlipTurn</h1>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-2">
+            <h1 className="flex items-center gap-2 text-2xl font-bold"><Waves className="size-7 text-primary" />FlipTurn</h1>
+            <ThemeToggle />
             {role === "swimmer" && swimmers.length > 0 ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2 text-xs font-medium">
-                    {selectedViewSwimmerId === ALL_GROUPS_ID ? "All Groups" : selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? "Swimmer" : profile?.full_name ?? "My workouts"}
+                    {selectedViewSwimmerId === ALL_ID ? "All workouts" : selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID ? "Group workouts" : selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? "Swimmer" : profile?.full_name ?? "My workouts"}
                     <ChevronDown className="size-3.5 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[10rem]">
                   <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(null)}>{profile?.full_name ?? "My workouts"}</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(ALL_GROUPS_ID)}>All Groups</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(ALL_ID)}>All workouts</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(ONLY_GROUPS_ID)}>Group workouts</DropdownMenuItem>
                   {swimmers.filter((s) => s.id !== user?.id).map((s) => <DropdownMenuItem key={s.id} onClick={() => setSelectedViewSwimmerId(s.id)}>{s.full_name ?? s.id}</DropdownMenuItem>)}
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -589,19 +605,25 @@ export default function Home() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-9 gap-1.5 px-2 text-xs font-medium">
-                    {selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name ?? "Swimmer" : "All swimmers"}
+                    {selectedCoachSwimmerId === ALL_ID ? "All workouts" : selectedCoachSwimmerId === ONLY_GROUPS_ID ? "Group workouts" : selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name ?? "Swimmer" : "All workouts"}
                     <ChevronDown className="size-3.5 opacity-50" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[10rem]">
-                  <DropdownMenuItem onClick={() => setSelectedCoachSwimmerId(null)}>All swimmers</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSelectedCoachSwimmerId(ALL_ID)}>All workouts</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSelectedCoachSwimmerId(ONLY_GROUPS_ID)}>Group workouts</DropdownMenuItem>
                   {swimmers.map((s) => <DropdownMenuItem key={s.id} onClick={() => setSelectedCoachSwimmerId(s.id)}>{s.full_name ?? s.id}</DropdownMenuItem>)}
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
               <span className="flex h-9 items-center rounded-md border border-input bg-muted/50 px-2 text-xs font-medium capitalize text-muted-foreground">{profile?.full_name ?? role}</span>
             )}
-            <ThemeToggle />
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {role && user?.id && (
+              <NotificationBell role={role} userId={user.id} swimmerGroup={swimmerGroup ?? null} swimmers={swimmers}
+              onWorkoutNotificationClick={role === "swimmer" ? (_, date) => { setSelectedDate(parseISO(date + "T12:00:00")); setViewMode("day"); } : undefined} />
+            )}
             <Link href="/settings"><Button variant="ghost" size="icon" className="size-9" aria-label="Settings"><Settings className="size-5" /></Button></Link>
             <SignOutDropdown trigger={<Button variant="ghost" size="icon" className="size-9" aria-label="Sign out"><LogOut className="size-5" /></Button>} />
           </div>
@@ -683,7 +705,7 @@ export default function Home() {
                                   onChange={(e) => updateCoachWorkout(originalIdx, { workout_category: e.target.value || null })}>
                                   {WORKOUT_CATEGORIES.map((v) => <option key={v || "empty"} value={v}>{v || "Category"}</option>)}
                                 </select>
-                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size || ""}
+                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size ?? defaultPoolSize ?? ""}
                                   onChange={(e) => updateCoachWorkout(originalIdx, { pool_size: (e.target.value || null) as "LCM" | "SCM" | "SCY" | null })}>
                                   <option value="">Pool</option>
                                   {POOL_SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -764,7 +786,8 @@ export default function Home() {
                   })}
                   <div className="flex justify-center pt-2">
                     <Button variant="outline" size="icon" onClick={() => {
-                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: selectedCoachSwimmerId ?? null, assigned_to_group: null };
+                      const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
+                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null };
                       setCoachWorkouts((prev) => [...prev, newWorkout]); setEditingWorkoutSnapshot(null); setEditingWorkoutIndex(coachWorkouts.length);
                     }} className="size-10" aria-label="Add workout"><Plus className="size-5" /></Button>
                   </div>

@@ -642,7 +642,10 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label>Pool size</Label>
+                <Label>Default pool size</Label>
+                <p className="text-xs text-muted-foreground">
+                  Used as the default for the pool size dropdown when creating or editing workouts. Does not override workouts that already have a pool size set.
+                </p>
                 <div className="flex gap-2">
                   {POOL_OPTIONS.map((opt) => (
                     <Button

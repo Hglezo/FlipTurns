@@ -3,6 +3,8 @@ export type ViewMode = "day" | "week" | "month";
 
 export const SWIMMER_GROUPS: SwimmerGroup[] = ["Sprint", "Middle distance", "Distance"];
 export const ALL_GROUPS_ID = "__all_groups__" as const;
+export const ALL_ID = "__all__" as const;
+export const ONLY_GROUPS_ID = "__only_groups__" as const;
 export const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Speed", "Tech suit"] as const;
 export const SESSION_OPTIONS = ["", "AM", "PM"] as const;
 
@@ -23,6 +25,8 @@ export interface Workout {
   assigned_to?: string | null;
   assigned_to_group?: SwimmerGroup | null;
   assignee_ids?: string[];
+  updated_at?: string | null;
+  created_by?: string | null;
 }
 
 export interface SwimmerProfile {
