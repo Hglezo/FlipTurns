@@ -4,16 +4,17 @@ import { useState, useEffect } from "react";
 import { analyzeWorkout } from "@/lib/workout-analyzer";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
+import { useTranslations } from "@/components/i18n-provider";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Pencil, Trash2, MessageSquare } from "lucide-react";
 
-function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`;
+function formatDuration(minutes: number, t: (k: import("@/lib/i18n").TranslationKey) => string): string {
+  if (minutes < 60) return `${minutes} ${t("feedback.min")}`;
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m} min`;
+  if (m === 0) return `${h}${t("feedback.h")}`;
+  return `${h}${t("feedback.h")} ${m} ${t("feedback.min")}`;
 }
 
 interface Feedback {
@@ -38,6 +39,7 @@ interface WorkoutAnalysisProps {
 
 export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange }: WorkoutAnalysisProps) {
   const { user } = useAuth();
+  const { t } = useTranslations();
   const readOnly = viewerRole === "coach";
   const analysis = analyzeWorkout(content);
   const [feedback, setFeedback] = useState<Feedback[] | null>(null);
@@ -140,7 +142,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
   };
 
   const deleteFeedback = async (id: string) => {
-    if (!confirm("Delete this feedback?")) return;
+    if (!confirm(t("feedback.deleteConfirm"))) return;
     setDeletingId(id);
     const { error } = await supabase.from("feedback").delete().eq("id", id);
     setDeletingId(null);
@@ -223,10 +225,10 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
       {hasAnalysis && (
         <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Volume
+            {t("feedback.volume")}
           </p>
           <p className="mb-2 font-medium text-foreground">
-            Total: {analysis.totalMeters.toLocaleString()} {unit}
+            {t("feedback.total")}: {analysis.totalMeters.toLocaleString()} {unit}
           </p>
           {analysis.sets.length > 0 && (
             <div className="space-y-1">
@@ -243,7 +245,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
           )}
           {analysis.estimatedDurationMinutes > 0 && (
             <p className="mt-2 pt-2 text-muted-foreground text-xs border-t border-border/60">
-              Duration: {formatDuration(analysis.estimatedDurationMinutes)}
+              {t("feedback.duration")}: {formatDuration(analysis.estimatedDurationMinutes, t)}
             </p>
           )}
         </div>
@@ -252,38 +254,38 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
         <div className="space-y-2">
         {(hasFeedback || !hasLoadedFeedback || readOnly) && (
         <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-3">
-          {hasFeedback && <p className="text-xs font-semibold uppercase tracking-wide text-accent-blue">Feedback</p>}
+          {hasFeedback && <p className="text-xs font-semibold uppercase tracking-wide text-accent-blue">{t("feedback.yourFeedback")}</p>}
           {hasFeedback ? (
             feedback!.map((fb) => (
               <div key={fb.id} className="space-y-2 rounded-md border border-border/50 p-3">
                 {readOnly && (fb.anonymous ? (
-                  <p className="text-xs font-medium text-muted-foreground">Anonymous</p>
+                  <p className="text-xs font-medium text-muted-foreground">{t("feedback.anonymous")}</p>
                 ) : fb.user_id && userNames[fb.user_id] ? (
                   <p className="text-xs font-medium text-muted-foreground">{userNames[fb.user_id]}</p>
                 ) : null)}
                 {!readOnly && fb.anonymous && (
-                  <p className="text-xs font-medium text-muted-foreground">Anonymous to coach</p>
+                  <p className="text-xs font-medium text-muted-foreground">{t("feedback.anonymousToCoach")}</p>
                 )}
                 {editingId === fb.id ? (
                   <div className="space-y-3">
                     <Textarea
-                      placeholder="Your feedback (optional)"
+                      placeholder={t("feedback.yourFeedbackOptional")}
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
                       className="min-h-[80px] resize-none text-sm"
                     />
-                    <IntensityScale label="Muscle intensity (1–5, optional)" value={editMuscle} onChange={setEditMuscle} />
-                    <IntensityScale label="Cardio intensity (1–5, optional)" value={editCardio} onChange={setEditCardio} />
+                    <IntensityScale label={t("feedback.muscleIntensityOptional")} value={editMuscle} onChange={setEditMuscle} />
+                    <IntensityScale label={t("feedback.cardioIntensityOptional")} value={editCardio} onChange={setEditCardio} />
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input type="checkbox" checked={editAnonymous} onChange={(e) => setEditAnonymous(e.target.checked)} className="rounded border-input" />
-                      <span className="text-muted-foreground">Show as anonymous to coach</span>
+                      <span className="text-muted-foreground">{t("feedback.showAnonymous")}</span>
                     </label>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={saveEdit} disabled={saving}>
-                        {saving ? "Saving…" : "Save"}
+                        {saving ? t("settings.saving") : t("common.save")}
                       </Button>
                       <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saving}>
-                        Cancel
+                        {t("common.cancel")}
                       </Button>
                     </div>
                   </div>
@@ -303,7 +305,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
                       </div>
                       {!readOnly && (
                         <div className="flex shrink-0 gap-1">
-                          <Button variant="ghost" size="icon" className="size-8" onClick={() => startEdit(fb)} aria-label="Edit feedback">
+                          <Button variant="ghost" size="icon" className="size-8" onClick={() => startEdit(fb)} aria-label={t("feedback.edit")}>
                             <Pencil className="size-3.5" />
                           </Button>
                           <Button
@@ -312,7 +314,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
                             className="size-8 text-destructive hover:text-destructive"
                             onClick={() => deleteFeedback(fb.id)}
                             disabled={deletingId === fb.id}
-                            aria-label="Delete feedback"
+                            aria-label={t("common.delete")}
                           >
                             <Trash2 className="size-3.5" />
                           </Button>
@@ -324,14 +326,14 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
               </div>
             ))
           ) : !hasLoadedFeedback ? (
-            <p className="text-muted-foreground text-sm">Loading feedback…</p>
+            <p className="text-muted-foreground text-sm">{t("feedback.loadingFeedback")}</p>
           ) : readOnly ? (
-            <p className="text-muted-foreground text-sm">No feedback yet.</p>
+            <p className="text-muted-foreground text-sm">{t("feedback.noFeedbackYet")}</p>
           ) : null}
           {error && (
             <div className="space-y-1">
               <p className="text-sm text-destructive">{error}</p>
-              <a href="/setup" className="text-sm text-primary underline">Fix in Database setup →</a>
+              <a href="/setup" className="text-sm text-primary underline">{t("feedback.fixInSetup")}</a>
             </div>
           )}
         </div>
@@ -339,29 +341,29 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
         {!readOnly && user?.id && !showAddForm && !hasFeedback && (
           <Button variant="outline" size="sm" className="gap-2 mt-2" onClick={() => { setError(null); setShowAddForm(true); }}>
             <MessageSquare className="size-4" />
-            Feedback
+            {t("feedback.addFeedback")}
           </Button>
         )}
         {!readOnly && showAddForm && (
           <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-3 mt-2">
             <Textarea
-              placeholder="Your feedback (optional)"
+              placeholder={t("feedback.yourFeedbackOptional")}
               value={addText}
               onChange={(e) => setAddText(e.target.value)}
               className="min-h-[80px] resize-none text-sm"
             />
-            <IntensityScale label="Muscle intensity (1–5, optional)" value={addMuscle} onChange={setAddMuscle} />
-            <IntensityScale label="Cardio intensity (1–5, optional)" value={addCardio} onChange={setAddCardio} />
+            <IntensityScale label={t("feedback.muscleIntensityOptional")} value={addMuscle} onChange={setAddMuscle} />
+            <IntensityScale label={t("feedback.cardioIntensityOptional")} value={addCardio} onChange={setAddCardio} />
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" checked={addAnonymous} onChange={(e) => setAddAnonymous(e.target.checked)} className="rounded border-input" />
-              <span className="text-muted-foreground">Submit anonymously (coach won&apos;t see your name)</span>
+              <span className="text-muted-foreground">{t("feedback.submitAnonymous")}</span>
             </label>
             <div className="flex gap-2">
               <Button size="sm" onClick={submitAdd} disabled={addSaving || !user?.id}>
-                {addSaving ? "Saving…" : "Submit"}
+                {addSaving ? t("settings.saving") : t("feedback.submit")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setShowAddForm(false)} disabled={addSaving}>
-                Cancel
+                {t("common.cancel")}
               </Button>
             </div>
           </div>

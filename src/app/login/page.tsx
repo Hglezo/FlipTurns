@@ -8,12 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Waves } from "lucide-react";
+import { useTranslations } from "@/components/i18n-provider";
 
 type FormMode = "signin" | "signup";
 type Role = "swimmer" | "coach";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useTranslations();
   const [formMode, setFormMode] = useState<FormMode>("signin");
   const [role, setRole] = useState<Role>("swimmer");
   const [email, setEmail] = useState("");
@@ -63,50 +65,50 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 flex items-center justify-center gap-2">
           <Waves className="size-8 text-primary" />
-          <h1 className="text-2xl font-bold">FlipTurn</h1>
+          <h1 className="text-2xl font-bold">{t("app.title")}</h1>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle className="text-center">
-              {formMode === "signin" ? "Sign in" : "Create account"}
+              {formMode === "signin" ? t("login.signIn") : t("login.createAccount")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {formMode === "signup" && (
                 <div className="space-y-1.5">
-                  <Label htmlFor="fullName">Full name</Label>
+                  <Label htmlFor="fullName">{t("login.fullName")}</Label>
                   <Input
                     id="fullName"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Jane Smith"
+                    placeholder={t("login.fullNamePlaceholder")}
                     required
                   />
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("login.email")}</Label>
                 <Input
                   id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder={t("login.emailPlaceholder")}
                   required
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("login.password")}</Label>
                 <Input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={t("login.passwordPlaceholder")}
                   required
                   minLength={6}
                 />
@@ -114,7 +116,7 @@ export default function LoginPage() {
 
               {formMode === "signup" && (
                 <div className="space-y-1.5">
-                  <Label>I am a</Label>
+                  <Label>{t("login.iAmA")}</Label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
@@ -125,7 +127,7 @@ export default function LoginPage() {
                           : "border-input bg-background hover:bg-accent"
                       }`}
                     >
-                      Swimmer
+                      {t("login.swimmer")}
                     </button>
                     <button
                       type="button"
@@ -136,7 +138,7 @@ export default function LoginPage() {
                           : "border-input bg-background hover:bg-accent"
                       }`}
                     >
-                      Coach
+                      {t("login.coach")}
                     </button>
                   </div>
                 </div>
@@ -150,34 +152,34 @@ export default function LoginPage() {
 
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading
-                  ? "Please wait..."
+                  ? t("login.pleaseWait")
                   : formMode === "signin"
-                  ? "Sign in"
-                  : "Create account"}
+                  ? t("login.signIn")
+                  : t("login.createAccount")}
               </Button>
             </form>
 
             <p className="mt-4 text-center text-sm text-muted-foreground">
               {formMode === "signin" ? (
                 <>
-                  Don&apos;t have an account?{" "}
+                  {t("login.noAccount")}{" "}
                   <button
                     type="button"
                     onClick={() => switchMode("signup")}
                     className="text-primary underline-offset-4 hover:underline"
                   >
-                    Sign up
+                    {t("login.signUp")}
                   </button>
                 </>
               ) : (
                 <>
-                  Already have an account?{" "}
+                  {t("login.haveAccount")}{" "}
                   <button
                     type="button"
                     onClick={() => switchMode("signin")}
                     className="text-primary underline-offset-4 hover:underline"
                   >
-                    Sign in
+                    {t("login.signIn")}
                   </button>
                 </>
               )}

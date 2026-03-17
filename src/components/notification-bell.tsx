@@ -7,7 +7,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { supabase } from "@/lib/supabase";
 import { loadAndMergeWorkouts } from "@/lib/workouts";
 import type { Workout, SwimmerProfile, SwimmerGroup } from "@/lib/types";
-import { format, isToday, isTomorrow, isYesterday, isThisWeek, parseISO } from "date-fns";
+import { parseISO } from "date-fns";
+import { useTranslations } from "@/components/i18n-provider";
+import { formatNotificationWorkoutDate, formatNotificationFeedbackDate } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n";
 
 const DISMISSED_IDS_KEY = "flipturn_notification_dismissed_ids";
 
@@ -35,24 +38,6 @@ function getCoachFirstName(fullName: string | null): string | null {
   return first.toLowerCase() === "coach" ? null : first;
 }
 
-function formatWorkoutDateLine(dateStr: string, session: string | null): string {
-  const d = parseISO(dateStr + "T12:00:00");
-  const label = session?.trim() === "AM" || session?.trim() === "PM" ? session.trim() : "Anytime";
-  if (isToday(d)) return `Today ${label}`;
-  if (isTomorrow(d)) return `Tomorrow ${label}`;
-  if (isThisWeek(d)) return `This week: ${format(d, "EEEE, MMMM d")} ${label}`;
-  return `${format(d, "MMMM d, yyyy")} ${label}`;
-}
-
-function formatFeedbackDateLine(dateStr: string, session: string | null): string {
-  const d = parseISO(dateStr + "T12:00:00");
-  if (isToday(d)) return "Today";
-  if (isYesterday(d)) return "Yesterday";
-  if (isThisWeek(d)) return `This week: ${format(d, "EEEE, MMMM d")}`;
-  const label = session?.trim() === "AM" || session?.trim() === "PM" ? session.trim() : "Anytime";
-  return `${format(d, "MMMM d, yyyy")} ${label}`;
-}
-
 interface NotificationItem {
   id: string;
   type: "workout_saved" | "feedback_added";
@@ -71,6 +56,7 @@ interface NotificationBellProps {
 }
 
 export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorkoutNotificationClick }: NotificationBellProps) {
+  const { t, locale } = useTranslations();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -106,8 +92,8 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
           forMe.map((w) => {
             const coachId = w.created_by;
             const coachName = getCoachFirstName(coachNameMap.get(coachId ?? "") ?? null) ?? getCoachFirstName(fallbackCoachName);
-            const dateLine = formatWorkoutDateLine(w.date, w.session ?? null);
-            const title = coachName ? `Coach ${coachName} wrote a new workout for:` : "Coach wrote a new workout for:";
+            const dateLine = formatNotificationWorkoutDate(parseISO(w.date + "T12:00:00"), w.session ?? null, locale as Locale, t);
+            const title = coachName ? t("notif.coachWroteWorkout", { name: coachName }) : t("notif.coachWroteWorkoutNoName");
             return {
               id: w.id,
               type: "workout_saved" as const,
@@ -138,12 +124,12 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
           withUser.map((f) => {
             const swimmerName = f.anonymous ? "Someone" : (nameMap.get(f.user_id ?? "") ?? "Someone");
             const session = f.workout_id ? sessionByWorkout.get(f.workout_id) ?? null : null;
-            const dateLine = formatFeedbackDateLine(f.date, session);
+            const dateLine = formatNotificationFeedbackDate(parseISO(f.date + "T12:00:00"), session, locale as Locale, t);
             return {
               id: f.id,
               type: "feedback_added" as const,
               date: f.created_at,
-              title: `${swimmerName} added new feedback to:`,
+              title: swimmerName === "Someone" ? t("notif.someoneAddedFeedback") : t("notif.personAddedFeedback", { name: swimmerName }),
               subtitle: dateLine,
             };
           })
@@ -152,7 +138,7 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
     } finally {
       setLoading(false);
     }
-  }, [role, userId, swimmerGroup, swimmers]);
+  }, [role, userId, swimmerGroup, swimmers, t, locale]);
 
   useEffect(() => {
     setDismissedIds(getDismissedIds());
@@ -179,7 +165,7 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
   return (
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-9 relative" aria-label="Notifications">
+        <Button variant="ghost" size="icon" className="size-9 relative" aria-label={t("notif.notifications")}>
           <Bell className="size-5" />
           {hasNew && (
             <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
@@ -190,14 +176,14 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 max-h-[min(70vh,400px)] overflow-y-auto p-0">
         <div className="border-b px-3 py-2.5">
-          <h3 className="font-semibold text-sm">Notifications</h3>
+          <h3 className="font-semibold text-sm">{t("notif.notifications")}</h3>
         </div>
         <div className="divide-y">
           {loading && notifications.length === 0 ? (
-            <div className="px-3 py-6 text-center text-sm text-muted-foreground">Loading...</div>
+            <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t("common.loading")}</div>
           ) : undismissed.length === 0 ? (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-              {role === "swimmer" ? "No new workouts" : "No new feedback"}
+              {role === "swimmer" ? t("notif.noNewWorkouts") : t("notif.noNewFeedback")}
             </div>
           ) : (
             undismissed.map((n) => {
@@ -221,7 +207,7 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
                   <button
                     type="button"
                     className="absolute right-2 top-1/2 -translate-y-1/2 size-7 flex items-center justify-center rounded-md opacity-60 hover:opacity-100 hover:bg-accent"
-                    aria-label="Dismiss notification"
+                    aria-label={t("notif.dismiss")}
                     onClick={(e) => handleDismissNotification(e, n.id)}
                   >
                     <X className="size-3.5" />

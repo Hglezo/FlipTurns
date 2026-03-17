@@ -1,3 +1,5 @@
+import type { Locale } from "./i18n";
+
 export type PoolSize = "LCM" | "SCM" | "SCY";
 export type FirstDayOfWeek = 0 | 1;
 
@@ -5,6 +7,7 @@ export interface Preferences {
   poolSize: PoolSize;
   firstDayOfWeek: FirstDayOfWeek;
   defaultTheme: "light" | "dark";
+  locale: Locale;
 }
 
 const PREFERENCES_KEY = "swim-preferences";
@@ -13,6 +16,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   poolSize: "LCM",
   firstDayOfWeek: 1,
   defaultTheme: "dark",
+  locale: "en-US",
 };
 
 export function getPreferences(): Preferences {
