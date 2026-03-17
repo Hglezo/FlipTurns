@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -20,7 +20,7 @@ import {
 import { usePreferences } from "@/components/preferences-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { SwimmerGroup } from "@/lib/types";
-import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Users, BarChart3, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Users, BarChart3, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import {
@@ -165,8 +165,10 @@ function VolumeChart({
     return (
       <p className="text-sm text-muted-foreground py-8 text-center">
         {viewMode === "swimmer" && !selectedSwimmerId
-          ? "Select a swimmer"
-          : "No volume data in this range"}
+          ? "Select swimmer/group"
+          : viewMode === "group" && !selectedGroup
+            ? "Select swimmer/group"
+            : "No volume data in this range"}
       </p>
     );
   }
@@ -212,6 +214,11 @@ export default function SettingsPage() {
   const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const [groupSaving, setGroupSaving] = useState(false);
   const [groupError, setGroupError] = useState("");
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const [prefs, setPrefsState] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [saved, setSaved] = useState(false);
 
@@ -240,9 +247,9 @@ export default function SettingsPage() {
   const [volumeLoading, setVolumeLoading] = useState(false);
   const [volumeAggregation, setVolumeAggregation] = useState<Aggregation>("day");
   const [volumeDateOffset, setVolumeDateOffset] = useState(0);
-  const [volumeViewMode, setVolumeViewMode] = useState<"swimmer" | "group">("swimmer");
+  const [volumeViewMode, setVolumeViewMode] = useState<"swimmer" | "group">("group");
   const [volumeSelectedSwimmerId, setVolumeSelectedSwimmerId] = useState<string | null>(null);
-  const [volumeSelectedGroup, setVolumeSelectedGroup] = useState<VolumeSwimmerGroup | null>("Sprint");
+  const [volumeSelectedGroup, setVolumeSelectedGroup] = useState<VolumeSwimmerGroup | null>(null);
 
   useEffect(() => {
     setPrefsState(getPreferences());
@@ -490,18 +497,79 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Profile</CardTitle>
+              <CardAction>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  aria-label="Edit profile"
+                  onClick={() => {
+                    setEditName(profile?.full_name ?? user?.user_metadata?.full_name ?? "");
+                    setEditEmail(user?.email ?? "");
+                    setShowProfileForm(true);
+                    setProfileError("");
+                  }}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+              </CardAction>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <p className="text-sm text-foreground">
-                  {profile?.full_name ?? user?.user_metadata?.full_name ?? "—"}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <p className="text-sm text-foreground">{user?.email ?? "—"}</p>
-              </div>
+              {showProfileForm ? (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!user) return;
+                    setProfileSaving(true);
+                    setProfileError("");
+                    const nameTrimmed = editName.trim() || null;
+                    const { error: profileErr } = await supabase.from("profiles").update({ full_name: nameTrimmed }).eq("id", user.id);
+                    if (profileErr) {
+                      setProfileError(profileErr.message);
+                      setProfileSaving(false);
+                      return;
+                    }
+                    const newEmail = editEmail.trim();
+                    if (newEmail && newEmail !== user.email) {
+                      const { error: emailErr } = await supabase.auth.updateUser({ email: newEmail });
+                      if (emailErr) {
+                        setProfileError(emailErr.message);
+                        setProfileSaving(false);
+                        return;
+                      }
+                    }
+                    await refreshProfile();
+                    setShowProfileForm(false);
+                    setProfileSaving(false);
+                  }}
+                  className="space-y-4"
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name">Name</Label>
+                    <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Your name" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-email">Email</Label>
+                    <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="your@email.com" />
+                  </div>
+                  {profileError && <p className="text-sm text-destructive">{profileError}</p>}
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={profileSaving}>{profileSaving ? "Saving…" : "Save"}</Button>
+                    <Button type="button" variant="outline" onClick={() => { setShowProfileForm(false); setProfileError(""); }} disabled={profileSaving}>Cancel</Button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Name</Label>
+                    <p className="text-sm text-foreground">{profile?.full_name ?? user?.user_metadata?.full_name ?? "—"}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <p className="text-sm text-foreground">{user?.email ?? "—"}</p>
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
                 <Label>Member since</Label>
                 <p className="text-sm text-muted-foreground">
@@ -743,83 +811,77 @@ export default function SettingsPage() {
                   Volume analytics
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap gap-2 items-center">
+              <CardContent className="space-y-4 overflow-x-hidden min-w-0">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 items-stretch sm:items-center min-w-0">
                   {isCoach && (
-                    <div className="flex gap-1">
-                      <Button
-                        variant={volumeViewMode === "swimmer" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setVolumeViewMode("swimmer")}
+                    <div className="min-w-0 flex-1 sm:flex-initial">
+                      <select
+                        className="w-full sm:w-48 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={
+                          volumeViewMode === "group" && volumeSelectedGroup
+                            ? `group:${volumeSelectedGroup}`
+                            : volumeViewMode === "swimmer" && volumeSelectedSwimmerId
+                              ? `swimmer:${volumeSelectedSwimmerId}`
+                              : ""
+                        }
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v.startsWith("group:")) {
+                            const group = v.slice(6) as VolumeSwimmerGroup;
+                            setVolumeViewMode("group");
+                            setVolumeSelectedGroup(group);
+                            setVolumeSelectedSwimmerId(null);
+                          } else if (v.startsWith("swimmer:")) {
+                            setVolumeViewMode("swimmer");
+                            setVolumeSelectedSwimmerId(v.slice(8));
+                            setVolumeSelectedGroup(null);
+                          }
+                        }}
                       >
-                        Swimmer
-                      </Button>
-                      <Button
-                        variant={volumeViewMode === "group" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setVolumeViewMode("group")}
-                      >
-                        Group
-                      </Button>
+                        <option value="">Select swimmer/group</option>
+                        <optgroup label="Groups">
+                          {SWIMMER_GROUPS.map((g) => (
+                            <option key={g.value} value={`group:${g.value}`}>
+                              {g.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="Swimmers">
+                          {teamSwimmers.map((s) => (
+                            <option key={s.id} value={`swimmer:${s.id}`}>
+                              {s.full_name || s.id.slice(0, 8)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </select>
                     </div>
                   )}
-                  <div className="flex gap-1 items-center">
-                    {(["day", "week"] as const).map((a) => (
-                      <Button
-                        key={a}
-                        variant={volumeAggregation === a ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => { setVolumeAggregation(a); setVolumeDateOffset(0); }}
-                      >
-                        {a === "day" ? "Weekly" : "Monthly"}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 min-w-0 w-full sm:w-auto">
+                    <div className="flex gap-1 items-center shrink-0">
+                      {(["day", "week"] as const).map((a) => (
+                        <Button
+                          key={a}
+                          variant={volumeAggregation === a ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => { setVolumeAggregation(a); setVolumeDateOffset(0); }}
+                        >
+                          {a === "day" ? "Weekly" : "Monthly"}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1 items-center min-w-0 overflow-hidden">
+                      <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setVolumeDateOffset((o) => o - 1)} aria-label="Previous period">
+                        <ChevronLeft className="size-4" />
                       </Button>
-                    ))}
-                    <Button variant="outline" size="icon" className="size-8" onClick={() => setVolumeDateOffset((o) => o - 1)} aria-label="Previous period">
-                      <ChevronLeft className="size-4" />
-                    </Button>
-                    <span className="text-sm text-muted-foreground min-w-[140px] text-center">
-                      {getVolumePeriodLabel(volumeAggregation, volumeDateOffset, weekStartsOn)}
-                    </span>
-                    <Button variant="outline" size="icon" className="size-8" onClick={() => setVolumeDateOffset((o) => o + 1)} aria-label="Next period">
-                      <ChevronRight className="size-4" />
-                    </Button>
+                      <span className="text-sm text-muted-foreground truncate min-w-0 flex-1 text-center">
+                        {getVolumePeriodLabel(volumeAggregation, volumeDateOffset, weekStartsOn)}
+                      </span>
+                      <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setVolumeDateOffset((o) => o + 1)} aria-label="Next period">
+                        <ChevronRight className="size-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-
-                {isCoach && volumeViewMode === "swimmer" && (
-                  <div className="space-y-2">
-                    <Label className="text-xs">Swimmer</Label>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={volumeSelectedSwimmerId ?? ""}
-                      onChange={(e) => setVolumeSelectedSwimmerId(e.target.value || null)}
-                    >
-                      <option value="">Select swimmer</option>
-                      {teamSwimmers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.full_name || s.id.slice(0, 8)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {isCoach && volumeViewMode === "group" && (
-                  <div className="space-y-2">
-                    <Label className="text-xs">Group</Label>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={volumeSelectedGroup ?? ""}
-                      onChange={(e) => setVolumeSelectedGroup((e.target.value || null) as VolumeSwimmerGroup | null)}
-                    >
-                      {SWIMMER_GROUPS.map((g) => (
-                        <option key={g.value} value={g.value}>
-                          {g.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
 
                 {volumeLoading ? (
                   <p className="text-sm text-muted-foreground py-8 text-center">Loading…</p>

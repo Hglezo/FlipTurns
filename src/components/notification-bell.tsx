@@ -29,10 +29,10 @@ function addDismissedId(id: string) {
   localStorage.setItem(DISMISSED_IDS_KEY, JSON.stringify([...set]));
 }
 
-function getCoachLastName(fullName: string | null): string {
-  if (!fullName?.trim()) return "Coach";
-  const parts = fullName.trim().split(/\s+/);
-  return parts.length > 1 ? parts[parts.length - 1] : parts[0];
+function getCoachFirstName(fullName: string | null): string | null {
+  if (!fullName?.trim()) return null;
+  const first = fullName.trim().split(/\s+/)[0];
+  return first.toLowerCase() === "coach" ? null : first;
 }
 
 function formatWorkoutDateLine(dateStr: string, session: string | null): string {
@@ -98,22 +98,21 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
           }
           return false;
         });
-        const coachIds = [...new Set(forMe.map((w) => w.created_by).filter(Boolean))] as string[];
-        let coachNameMap = new Map<string, string | null>();
-        if (coachIds.length > 0) {
-          const { data: coachProfiles } = await supabase.from("profiles").select("id, full_name").in("id", coachIds);
-          coachNameMap = new Map((coachProfiles ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name]));
-        }
+        const { data: allCoaches } = await supabase.from("profiles").select("id, full_name").eq("role", "coach");
+        const coachRows = (allCoaches ?? []) as { id: string; full_name: string | null }[];
+        const coachNameMap = new Map(coachRows.map((p) => [p.id, p.full_name]));
+        const fallbackCoachName = coachRows[0]?.full_name ?? null;
         setNotifications(
           forMe.map((w) => {
             const coachId = w.created_by;
-            const coachLastName = getCoachLastName(coachNameMap.get(coachId ?? "") ?? null);
+            const coachName = getCoachFirstName(coachNameMap.get(coachId ?? "") ?? null) ?? getCoachFirstName(fallbackCoachName);
             const dateLine = formatWorkoutDateLine(w.date, w.session ?? null);
+            const title = coachName ? `Coach ${coachName} wrote a new workout for:` : "Coach wrote a new workout for:";
             return {
               id: w.id,
               type: "workout_saved" as const,
               date: w.updated_at ?? w.date,
-              title: `Coach ${coachLastName} wrote a new workout for:`,
+              title,
               subtitle: dateLine,
               workoutDate: w.date,
             };
@@ -144,7 +143,7 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
               id: f.id,
               type: "feedback_added" as const,
               date: f.created_at,
-              title: `${swimmerName} added workout feedback for:`,
+              title: `${swimmerName} added new feedback to:`,
               subtitle: dateLine,
             };
           })
