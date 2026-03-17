@@ -120,7 +120,7 @@ alter table public.workouts add column if not exists assigned_to_group text chec
 alter table public.workouts drop column if exists workout_type;
 alter table public.workouts drop constraint if exists workouts_date_key;`;
 
-const WORKOUTS_POOL_SIZE_SQL = `-- Pool size per workout: LCM (50m), SCM (25m), SCY (25yd). When SCY, analysis shows yards.
+const WORKOUTS_POOL_SIZE_SQL = `-- Pool size per workout: LCM, SCM, SCY. When SCY, analysis shows yards.
 alter table public.workouts add column if not exists pool_size text check (pool_size in ('LCM', 'SCM', 'SCY'));
 notify pgrst, 'reload schema';`;
 
@@ -248,7 +248,7 @@ export default function SetupPage() {
           <CardHeader>
             <CardTitle className="text-base">Pool size per workout</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Lets coaches assign LCM (50m), SCM (25m), or SCY (25yd) to each workout. When SCY, analysis shows yards.
+              Lets coaches assign LCM, SCM, or SCY to each workout. When SCY, analysis shows yards.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">

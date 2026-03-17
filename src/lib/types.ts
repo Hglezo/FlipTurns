@@ -8,9 +8,9 @@ export const SESSION_OPTIONS = ["", "AM", "PM"] as const;
 
 export type PoolSize = "LCM" | "SCM" | "SCY";
 export const POOL_SIZE_OPTIONS: { value: PoolSize; label: string }[] = [
-  { value: "LCM", label: "LCM (50m)" },
-  { value: "SCM", label: "SCM (25m)" },
-  { value: "SCY", label: "SCY (25yd)" },
+  { value: "LCM", label: "LCM" },
+  { value: "SCM", label: "SCM" },
+  { value: "SCY", label: "SCY" },
 ];
 
 export interface Workout {

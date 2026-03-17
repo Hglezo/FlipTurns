@@ -220,8 +220,7 @@ export default function Home() {
         setCoachLoading(false);
         return;
       } else {
-        const rawRows = Array.isArray(data) ? data : (typeof data === "string" ? JSON.parse(data || "[]") : []);
-        rows = await loadAndMergeWorkouts(rawRows.map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey })), swimmers);
+        rows = await loadAndMergeWorkouts((data ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey })), swimmers);
       }
       if (selectedCoachSwimmerId) {
         const coachFilterGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
@@ -355,8 +354,7 @@ export default function Home() {
       return;
     }
     if (error) { alert(error.message); return; }
-    const rawRows = Array.isArray(rows) ? rows : (typeof rows === "string" ? JSON.parse(rows || "[]") : []);
-    let merged = rawRows.map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey }));
+    let merged = (rows ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey }));
     merged = await loadAndMergeWorkouts(merged, swimmers);
     setCoachWorkouts(sortCoachWorkouts(merged, swimmers));
   }

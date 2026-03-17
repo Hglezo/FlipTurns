@@ -1,4 +1,4 @@
-export type PoolSize = "50m" | "25m" | "25y";
+export type PoolSize = "LCM" | "SCM" | "SCY";
 export type FirstDayOfWeek = 0 | 1;
 
 export interface Preferences {
@@ -10,7 +10,7 @@ export interface Preferences {
 const PREFERENCES_KEY = "swim-preferences";
 
 export const DEFAULT_PREFERENCES: Preferences = {
-  poolSize: "50m",
+  poolSize: "LCM",
   firstDayOfWeek: 1,
   defaultTheme: "dark",
 };

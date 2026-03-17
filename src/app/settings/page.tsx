@@ -58,9 +58,9 @@ import {
 } from "@/lib/volume-analytics";
 
 const POOL_OPTIONS: { value: PoolSize; label: string }[] = [
-  { value: "50m", label: "50 m" },
-  { value: "25m", label: "25 m" },
-  { value: "25y", label: "25 yd" },
+  { value: "LCM", label: "LCM" },
+  { value: "SCM", label: "SCM" },
+  { value: "SCY", label: "SCY" },
 ];
 
 const WEEK_OPTIONS: { value: FirstDayOfWeek; label: string }[] = [
