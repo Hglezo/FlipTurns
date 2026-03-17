@@ -6,14 +6,16 @@ A mobile-optimized Next.js app for coaches and swimmers. Coaches write workouts 
 
 1. **Supabase** – Credentials are already configured from the Supabase MCP (`.env.local`). For account deletion to work, add `SUPABASE_SERVICE_ROLE_KEY` (from Supabase Dashboard → Settings → API) to your `.env.local`.
 
-2. **Create the database table** – Run the migration in Supabase:
+2. **Anthropic (optional)** – For the coach "Take picture" feature (image-to-workout), add `ANTHROPIC_API_KEY` to your `.env.local`. Uses Claude Haiku 4.5 for vision. Without it, the button appears but the API will return an error.
+
+3. **Create the database table** – Run the migration in Supabase:
    - **Option A (Dashboard):** Open [Supabase SQL Editor](https://supabase.com/dashboard/project/ankjixmjzjaooeyqbtjr/sql/new) and paste the contents of `supabase/schema.sql`, then run it.
    - **Option B (CLI):**  
      `npx supabase link --project-ref ankjixmjzjaooeyqbtjr`  
      then  
      `npx supabase db push`
 
-3. **Start the app:**
+4. **Start the app:**
 
    ```bash
    npm run dev
