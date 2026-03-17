@@ -289,7 +289,7 @@ export default function SettingsPage() {
       const endStr = end.toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from("workouts")
-        .select("id, date, content, assigned_to, assigned_to_group")
+        .select("id, date, content, assigned_to, assigned_to_group, pool_size")
         .gte("date", startStr)
         .lte("date", endStr)
         .order("date", { ascending: true });

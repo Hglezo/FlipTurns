@@ -6,12 +6,20 @@ export const ALL_GROUPS_ID = "__all_groups__" as const;
 export const WORKOUT_CATEGORIES = ["", "Recovery", "Aerobic", "Pace", "Speed", "Tech suit"] as const;
 export const SESSION_OPTIONS = ["", "AM", "PM"] as const;
 
+export type PoolSize = "LCM" | "SCM" | "SCY";
+export const POOL_SIZE_OPTIONS: { value: PoolSize; label: string }[] = [
+  { value: "LCM", label: "LCM (50m)" },
+  { value: "SCM", label: "SCM (25m)" },
+  { value: "SCY", label: "SCY (25yd)" },
+];
+
 export interface Workout {
   id: string;
   date: string;
   content: string;
   session?: string | null;
   workout_category?: string | null;
+  pool_size?: PoolSize | null;
   assigned_to?: string | null;
   assigned_to_group?: SwimmerGroup | null;
   assignee_ids?: string[];

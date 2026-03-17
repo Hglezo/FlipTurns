@@ -29,13 +29,14 @@ interface WorkoutAnalysisProps {
   content: string;
   date?: string;
   workoutId?: string;
+  poolSize?: "LCM" | "SCM" | "SCY" | null;
   refreshKey?: number;
   className?: string;
   viewerRole?: "coach" | "swimmer";
   onFeedbackChange?: () => void;
 }
 
-export function WorkoutAnalysis({ content, date, workoutId, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange }: WorkoutAnalysisProps) {
+export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange }: WorkoutAnalysisProps) {
   const { user } = useAuth();
   const readOnly = viewerRole === "coach";
   const analysis = analyzeWorkout(content);
@@ -185,6 +186,8 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
   const hasLoadedFeedback = feedback !== null;
   const showFeedbackSection = date && (hasFeedback || hasLoadedFeedback || !readOnly) && (!readOnly || !!workoutId);
 
+  const unit = poolSize === "SCY" ? "yd" : "m";
+
   const IntensityScale = ({
     value,
     onChange,
@@ -223,7 +226,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
             Volume
           </p>
           <p className="mb-2 font-medium text-foreground">
-            Total: {analysis.totalMeters.toLocaleString()} m
+            Total: {analysis.totalMeters.toLocaleString()} {unit}
           </p>
           {analysis.sets.length > 0 && (
             <div className="space-y-1">
@@ -233,7 +236,7 @@ export function WorkoutAnalysis({ content, date, workoutId, refreshKey, classNam
                   className="flex justify-between text-muted-foreground"
                 >
                   <span className="capitalize">{set.name}</span>
-                  <span>{set.meters.toLocaleString()} m</span>
+                  <span>{set.meters.toLocaleString()} {unit}</span>
                 </div>
               ))}
             </div>

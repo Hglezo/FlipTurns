@@ -25,13 +25,14 @@ import { SignOutDropdown } from "@/components/sign-out-dropdown";
 import { usePreferences } from "@/components/preferences-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { Workout, SwimmerProfile, ViewMode, SwimmerGroup } from "@/lib/types";
-import { SWIMMER_GROUPS, ALL_GROUPS_ID, WORKOUT_CATEGORIES, SESSION_OPTIONS, normDate, getTimeframe } from "@/lib/types";
+import { SWIMMER_GROUPS, ALL_GROUPS_ID, WORKOUT_CATEGORIES, SESSION_OPTIONS, POOL_SIZE_OPTIONS, normDate, getTimeframe } from "@/lib/types";
 import {
   loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
   assignmentLabel, assignedToNames, teammateNames, dayPreviewLabel, saveAssigneesForGroupWorkout,
 } from "@/lib/workouts";
 
 const badgeClass = "inline-flex items-center rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue";
+const badgeClassMuted = "inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground";
 
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
@@ -48,21 +49,24 @@ function WorkoutBlock({
   return (
     <div className={compact ? "space-y-2" : "space-y-4"}>
       <div className="flex items-start justify-between gap-2">
-        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase ${
-          sessionLabel === "AM" ? "bg-amber-400/15 text-amber-600 dark:text-amber-400"
-            : sessionLabel === "PM" ? "bg-indigo-400/15 text-indigo-600 dark:text-indigo-400"
-              : "bg-muted text-muted-foreground"
-        }`}>{sessionLabel}</span>
-        {(hasAssignment || workout.workout_category?.trim()) && (
+        <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
+          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase ${
+            sessionLabel === "AM" ? "bg-amber-400/15 text-amber-600 dark:text-amber-400"
+              : sessionLabel === "PM" ? "bg-indigo-400/15 text-indigo-600 dark:text-indigo-400"
+                : "bg-muted text-muted-foreground"
+          }`}>{sessionLabel}</span>
+          {assigneeLabel && <span className={badgeClass}>{assigneeLabel}</span>}
+        </div>
+        {(workout.workout_category?.trim() || workout.pool_size) && (
           <div className={`flex flex-wrap justify-end gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
-            {assigneeLabel && <span className={badgeClass}>{assigneeLabel}</span>}
-            {workout.workout_category?.trim() && <span className={badgeClass}>{workout.workout_category.trim()}</span>}
+            {workout.pool_size && <span className={badgeClassMuted}>{workout.pool_size}</span>}
+            {workout.workout_category?.trim() && <span className={badgeClassMuted}>{workout.workout_category.trim()}</span>}
           </div>
         )}
       </div>
       {namesLine && <p className="text-xs text-muted-foreground -mt-1 mb-2 text-right">{namesLine}</p>}
       <pre className={`whitespace-pre-wrap font-sans leading-relaxed text-foreground/90 ${compact ? "text-[14px]" : "text-[15px]"}`}>{workout.content}</pre>
-      <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id} refreshKey={feedbackRefreshKey}
+      <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id} poolSize={workout.pool_size} refreshKey={feedbackRefreshKey}
         onFeedbackChange={onFeedbackChange} className={className} viewerRole={readOnly ? "coach" : "swimmer"} />
     </div>
   );
@@ -220,13 +224,14 @@ export default function Home() {
           return false;
         });
       }
+      const sortedRows = sortCoachWorkouts(rows, swimmers);
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
-        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, assigned_to: selectedCoachSwimmerId ?? null, assigned_to_group: null };
-        setCoachWorkouts([...rows, newWorkout]);
-        setEditingWorkoutIndex(rows.length);
+        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: selectedCoachSwimmerId ?? null, assigned_to_group: null };
+        setCoachWorkouts([...sortedRows, newWorkout]);
+        setEditingWorkoutIndex(sortedRows.length);
       } else {
-        setCoachWorkouts(rows);
+        setCoachWorkouts(sortedRows);
       }
       setCoachLoading(false);
     })();
@@ -278,8 +283,9 @@ export default function Home() {
     let savedId: string | undefined = workout.id;
     const updatePayload = {
       content: workout.content, session: workout.session || null,
-      workout_category: workout.workout_category, assigned_to: workout.assigned_to,
-      assigned_to_group: workout.assigned_to_group, updated_at: new Date().toISOString(),
+      workout_category: workout.workout_category, pool_size: workout.pool_size || null,
+      assigned_to: workout.assigned_to, assigned_to_group: workout.assigned_to_group,
+      updated_at: new Date().toISOString(),
     };
 
     if (workout.id) {
@@ -314,7 +320,7 @@ export default function Home() {
     const { data: rows } = await supabase.from("workouts").select("*").eq("date", dateKey).order("created_at", { ascending: true });
     let merged = (rows ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey }));
     merged = await loadAndMergeWorkouts(merged, swimmers);
-    setCoachWorkouts(merged);
+    setCoachWorkouts(sortCoachWorkouts(merged, swimmers));
   }
 
   async function deleteSingleWorkout(index: number) {
@@ -611,7 +617,7 @@ export default function Home() {
             <CardContent className="flex flex-1 flex-col gap-4 px-4 py-0">
               {coachLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">Loading...</p></div> : (
                 <div className="flex flex-1 flex-col gap-4">
-                  {coachWorkouts.length > 0 && (editingWorkoutIndex !== null ? coachWorkouts : sortCoachWorkouts(coachWorkouts, swimmers)).map((workout) => {
+                  {coachWorkouts.length > 0 && coachWorkouts.map((workout) => {
                     const originalIdx = coachWorkouts.indexOf(workout);
                     const label = assignmentLabel(workout, swimmers);
                     const isEditing = editingWorkoutIndex === originalIdx;
@@ -640,6 +646,11 @@ export default function Home() {
                                 <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.workout_category || ""}
                                   onChange={(e) => updateCoachWorkout(originalIdx, { workout_category: e.target.value || null })}>
                                   {WORKOUT_CATEGORIES.map((v) => <option key={v || "empty"} value={v}>{v || "Category"}</option>)}
+                                </select>
+                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size || ""}
+                                  onChange={(e) => updateCoachWorkout(originalIdx, { pool_size: (e.target.value || null) as "LCM" | "SCM" | "SCY" | null })}>
+                                  <option value="">Pool</option>
+                                  {POOL_SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                 </select>
                               </div>
                               {workout.assigned_to_group && (
@@ -717,7 +728,7 @@ export default function Home() {
                   })}
                   <div className="flex justify-center pt-2">
                     <Button variant="outline" size="icon" onClick={() => {
-                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, assigned_to: selectedCoachSwimmerId ?? null, assigned_to_group: null };
+                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: selectedCoachSwimmerId ?? null, assigned_to_group: null };
                       setCoachWorkouts((prev) => [...prev, newWorkout]); setEditingWorkoutSnapshot(null); setEditingWorkoutIndex(coachWorkouts.length);
                     }} className="size-10" aria-label="Add workout"><Plus className="size-5" /></Button>
                   </div>

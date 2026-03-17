@@ -11,6 +11,13 @@ export interface WorkoutRow {
   assigned_to: string | null;
   assigned_to_group: SwimmerGroup | null;
   assignee_ids?: string[];
+  pool_size?: "LCM" | "SCM" | "SCY" | null;
+}
+
+const YARDS_TO_METERS = 0.9144;
+
+function toMeters(value: number, poolSize?: "LCM" | "SCM" | "SCY" | null): number {
+  return poolSize === "SCY" ? value * YARDS_TO_METERS : value;
 }
 
 export interface SwimmerProfile {
@@ -44,7 +51,7 @@ export function computeSwimmerVolumes(workouts: WorkoutRow[], swimmers: SwimmerP
           (!w.assignee_ids?.length && w.assigned_to_group === swimmer.swimmer_group);
       });
       const toSum = personal.length > 0 ? personal : group;
-      const total = toSum.reduce((acc, w) => acc + analyzeWorkout(w.content).totalMeters, 0);
+      const total = toSum.reduce((acc, w) => acc + toMeters(analyzeWorkout(w.content).totalMeters, w.pool_size), 0);
       if (total > 0) volByDate.set(date, total);
     }
     result.set(swimmer.id, volByDate);
@@ -64,7 +71,7 @@ export function computeGroupVolumes(
     for (const [date, dayWorkouts] of byDate) {
       const total = dayWorkouts
         .filter((w) => w.assigned_to_group === group)
-        .reduce((acc, w) => acc + analyzeWorkout(w.content).totalMeters, 0);
+        .reduce((acc, w) => acc + toMeters(analyzeWorkout(w.content).totalMeters, w.pool_size), 0);
       if (total > 0) volByDate.set(date, total);
     }
     result.set(group, volByDate);

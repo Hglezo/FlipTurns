@@ -91,7 +91,7 @@ export function workoutLabel(w: Workout): string {
 }
 
 export function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): string | null {
-  if (workout.assigned_to_group) return `${workout.assigned_to_group} Group`;
+  if (workout.assigned_to_group) return workout.assigned_to_group;
   const assignee = swimmers.find((s) => s.id === workout.assigned_to);
   return assignee?.full_name ?? (workout.assigned_to ? "Swimmer" : null);
 }

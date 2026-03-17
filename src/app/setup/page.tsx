@@ -48,6 +48,7 @@ alter table public.workouts drop constraint if exists workouts_date_key;
 alter table public.workouts add column if not exists session text default '';
 alter table public.workouts add column if not exists workout_type text default '';
 alter table public.workouts add column if not exists workout_category text default '';
+alter table public.workouts add column if not exists pool_size text check (pool_size in ('LCM', 'SCM', 'SCY'));
 
 -- Workouts: allow update (coaches edit) and delete (coaches remove)
 drop policy if exists "Anyone can update workouts" on public.workouts;
@@ -115,6 +116,9 @@ alter table public.workouts add column if not exists assigned_to_group text chec
 alter table public.workouts drop column if exists workout_type;
 alter table public.workouts drop constraint if exists workouts_date_key;`;
 
+const WORKOUTS_POOL_SIZE_SQL = `-- Pool size per workout: LCM (50m), SCM (25m), SCY (25yd). When SCY, analysis shows yards.
+alter table public.workouts add column if not exists pool_size text check (pool_size in ('LCM', 'SCM', 'SCY'));`;
+
 const COACH_UPDATE_SWIMMER_GROUP_SQL = `-- Coaches can assign swimmers to groups in Team management (Settings)
 drop policy if exists "Coaches can update swimmer profiles" on public.profiles;
 create policy "Coaches can update swimmer profiles"
@@ -162,6 +166,31 @@ export default function SetupPage() {
               >
                 {copied === FIX_WORKOUT_SAVE_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === FIX_WORKOUT_SAVE_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Pool size per workout</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Lets coaches assign LCM (50m), SCM (25m), or SCY (25yd) to each workout. When SCY, analysis shows yards.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{WORKOUTS_POOL_SIZE_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(WORKOUTS_POOL_SIZE_SQL)}
+              >
+                {copied === WORKOUTS_POOL_SIZE_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === WORKOUTS_POOL_SIZE_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>

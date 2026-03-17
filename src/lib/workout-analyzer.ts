@@ -103,6 +103,9 @@ function parseMetersInText(text: string): number {
   let textForStandalone = linesForStandalone.join("\n");
   // Remove "word: number" patterns to avoid counting descriptive numbers (e.g. "odds: 25 swim, evens: 35 swim")
   textForStandalone = textForStandalone.replace(/\b[a-zA-Z]+\s*:\s*\d+/g, " ");
+  textForStandalone = textForStandalone.replace(/\bp\d+(?:\/\d+)?\b/gi, " ");
+  textForStandalone = textForStandalone.replace(/\bon\s+\d+["']?\s*/gi, " ");
+  textForStandalone = textForStandalone.replace(/\bc\/\s*[\d']+(?:["']?\s*)?/gi, " ");
 
   // Third: extract "N:" at start of line (e.g. "25: swim @80%")
   const leadingMatches = [...textForStandalone.matchAll(LEADING_DISTANCE_PATTERN)];
