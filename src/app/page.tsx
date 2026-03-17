@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import {
   Waves, ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
+  Camera, Loader2,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
@@ -160,7 +161,11 @@ export default function Home() {
   const [swimmers, setSwimmers] = useState<SwimmerProfile[]>([]);
   const [selectedViewSwimmerId, setSelectedViewSwimmerId] = useState<string | null>(null);
   const [selectedCoachSwimmerId, setSelectedCoachSwimmerId] = useState<string | null>(null);
+  const [imageFromWorkoutLoading, setImageFromWorkoutLoading] = useState(false);
+  const [imageFromWorkoutError, setImageFromWorkoutError] = useState<string | null>(null);
   const addWorkoutForDateRef = useRef<string | null>(null);
+  const imageFromWorkoutIdxRef = useRef<number | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
 
   const dateKey = format(selectedDate, "yyyy-MM-dd");
   const isCoach = role === "coach";
@@ -362,6 +367,40 @@ export default function Home() {
     setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null);
     if (idx !== null && snap != null) setCoachWorkouts((prev) => prev.map((w, i) => i === idx ? snap : w));
     else if (idx !== null && coachWorkouts[idx] && !coachWorkouts[idx].id) setCoachWorkouts((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleImageFromWorkout(e: React.ChangeEvent<HTMLInputElement>) {
+    const idx = imageFromWorkoutIdxRef.current;
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (idx === null || !file || !file.type.startsWith("image/")) return;
+    setImageFromWorkoutError(null);
+    setImageFromWorkoutLoading(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error("Failed to read image"));
+        r.readAsDataURL(file);
+      });
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Not signed in");
+      const res = await fetch("/api/workout/from-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ image: base64 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed to analyze image");
+      setImageFromWorkoutError(null);
+      updateCoachWorkout(idx, { content: data.content ?? "" });
+    } catch (err) {
+      setImageFromWorkoutError(err instanceof Error ? err.message : "Failed to process image");
+    } finally {
+      setImageFromWorkoutLoading(false);
+      imageFromWorkoutIdxRef.current = null;
+    }
   }
 
   const changeDate = (delta: number) => {
@@ -614,6 +653,7 @@ export default function Home() {
 
         {viewMode === "day" && isCoach && (
           <Card className="flex flex-1 flex-col py-4">
+            <input ref={imageFileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
             <CardContent className="flex flex-1 flex-col gap-4 px-4 py-0">
               {coachLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">Loading...</p></div> : (
                 <div className="flex flex-1 flex-col gap-4">
@@ -702,6 +742,19 @@ export default function Home() {
                                   </div>
                                 </div>
                               )}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
+                                  onClick={() => { imageFromWorkoutIdxRef.current = originalIdx; imageFileInputRef.current?.click(); }}>
+                                  {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
+                                  {imageFromWorkoutLoading ? "Analyzing..." : "Take picture"}
+                                </Button>
+                                {imageFromWorkoutError && editingWorkoutIndex === originalIdx && (
+                                  <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
+                                )}
+                                {imageFromWorkoutError && editingWorkoutIndex === originalIdx && (
+                                  <button type="button" onClick={() => setImageFromWorkoutError(null)} className="text-xs text-muted-foreground hover:underline">Dismiss</button>
+                                )}
+                              </div>
                               <Textarea placeholder="Warm-up: 200 free, 4×50 kick...&#10;Main set: 8×100 @ 1:30...&#10;Cool-down: 200 easy"
                                 value={workout.content} onChange={(e) => updateCoachWorkout(originalIdx, { content: e.target.value })} className="min-h-[200px] resize-none" />
                               {workout.content && <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id || undefined} refreshKey={feedbackRefreshKey} viewerRole="coach" />}
