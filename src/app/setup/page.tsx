@@ -136,6 +136,79 @@ create policy "Authenticated can read workout_assignees"
   on public.workout_assignees for select
   using (auth.uid() is not null);`;
 
+const SWIMMER_WORKOUTS_SQL = `-- Swimmers can create workouts for themselves or other swimmers (not groups)
+alter table public.workouts add column if not exists created_by uuid references auth.users(id) on delete set null;
+
+drop policy if exists "Swimmers can manage assignees for own workouts" on public.workout_assignees;
+create policy "Swimmers can manage assignees for own workouts"
+  on public.workout_assignees for all
+  using (
+    exists (select 1 from public.workouts w where w.id = workout_assignees.workout_id and w.created_by = auth.uid())
+  )
+  with check (
+    exists (select 1 from public.workouts w where w.id = workout_assignees.workout_id and w.created_by = auth.uid())
+  );
+
+create or replace function public.insert_workout_swimmer(
+  p_date date, p_content text, p_session text, p_workout_category text, p_pool_size text,
+  p_assigned_to uuid
+)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare new_id uuid;
+begin
+  if auth.uid() is null then raise exception 'Not authenticated'; end if;
+  if not exists (select 1 from public.profiles where id = auth.uid() and role = 'swimmer') then
+    raise exception 'Only swimmers can use this function';
+  end if;
+  insert into public.workouts (date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_by, updated_at)
+  values (p_date, coalesce(p_content, ''), p_session, p_workout_category,
+    case when p_pool_size in ('LCM','SCM','SCY') then p_pool_size else null end,
+    p_assigned_to, null, auth.uid(), now())
+  returning id into new_id;
+  return new_id;
+end;
+$$;
+
+create or replace function public.update_workout_swimmer(
+  p_id uuid, p_content text, p_session text, p_workout_category text, p_pool_size text,
+  p_assigned_to uuid
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.workouts where id = p_id and created_by = auth.uid()) then
+    raise exception 'Not authorized to update this workout';
+  end if;
+  update public.workouts set
+    content = coalesce(p_content, ''),
+    session = p_session,
+    workout_category = p_workout_category,
+    pool_size = case when p_pool_size in ('LCM','SCM','SCY') then p_pool_size else null end,
+    assigned_to = p_assigned_to,
+    assigned_to_group = null,
+    updated_at = now()
+  where id = p_id;
+end;
+$$;
+
+create or replace function public.get_workouts_for_date(p_date date)
+returns json language sql security definer set search_path = public stable as $$
+  select coalesce(
+    (select json_agg(row_to_json(t))
+     from (select id, date, content, session, workout_category, pool_size,
+             assigned_to, assigned_to_group, created_at, updated_at, created_by
+           from public.workouts where date = p_date order by created_at asc) t),
+    '[]'::json
+  );
+$$;
+
+grant execute on function public.insert_workout_swimmer(date, text, text, text, text, uuid) to authenticated;
+grant execute on function public.update_workout_swimmer(uuid, text, text, text, text, uuid) to authenticated;
+notify pgrst, 'reload schema';`;
+
+const TEAM_NAME_SQL = `-- Coach team name (shown in Team Management banner)
+alter table public.profiles add column if not exists team_name text;
+notify pgrst, 'reload schema';`;
+
 const FIX_WORKOUT_SAVE_SQL = `-- Run this if coach workout save is broken (e.g. after adding group assignment)
 alter table public.workouts add column if not exists assigned_to_group text check (assigned_to_group in ('Sprint', 'Middle distance', 'Distance'));
 alter table public.workouts drop column if exists workout_type;
@@ -492,6 +565,66 @@ export default function SetupPage() {
                 {copied === WORKOUT_GROUPS_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Swimmer-created workouts</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Allows swimmers to create and edit workouts for themselves or other swimmers (not groups).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="max-h-[320px] overflow-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{SWIMMER_WORKOUTS_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(SWIMMER_WORKOUTS_SQL)}
+              >
+                {copied === SWIMMER_WORKOUTS_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === SWIMMER_WORKOUTS_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
+              <li>Open <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-primary underline">Supabase Dashboard</a></li>
+              <li>Select your project → SQL Editor</li>
+              <li>Paste the SQL above and run it</li>
+            </ol>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Coach team name</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Lets coaches set a custom team name (e.g. &quot;Sprint Team&quot;) shown in the Team Management banner. Run this in Supabase SQL Editor.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{TEAM_NAME_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(TEAM_NAME_SQL)}
+              >
+                {copied === TEAM_NAME_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === TEAM_NAME_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
+              <li>Open <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-primary underline">Supabase Dashboard</a></li>
+              <li>Select your project → SQL Editor</li>
+              <li>Paste the SQL above and run it</li>
+            </ol>
           </CardContent>
         </Card>
 

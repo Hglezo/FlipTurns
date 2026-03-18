@@ -90,6 +90,9 @@ const TRANSLATIONS_EN = {
   "settings.language": "Language",
   "settings.poolSizeDescription": "Used as the default for the pool size dropdown when creating or editing workouts. Does not override workouts that already have a pool size set.",
   "settings.teamManagement": "Team management",
+  "settings.teamName": "Team name",
+  "settings.teamNamePlaceholder": "e.g. Sprint Team",
+  "settings.editTeamName": "Edit team name",
   "settings.teamManagementDesc": "Assign swimmers to groups. This overrides the group they chose in their own profile.",
   "settings.loadingSwimmers": "Loading swimmers…",
   "settings.noSwimmersYet": "No swimmers yet.",
@@ -230,6 +233,9 @@ const TRANSLATIONS_EN = {
 
   // Notifications
   "notif.coachWroteWorkout": "Coach {name} wrote a new workout for:",
+  "notif.swimmerWroteOwnWorkout": "{name} wrote their own workout for:",
+  "notif.swimmerWroteYourWorkout": "{name} wrote your workout for:",
+  "notif.swimmerWroteWorkout": "{name} wrote a workout for:",
   "notif.addedFeedbackTo": "added new feedback to:",
   "notif.personAddedFeedback": "{name} added new feedback to:",
   "notif.today": "Today",
@@ -354,6 +360,9 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "settings.language": "Idioma",
   "settings.poolSizeDescription": "Se usa como valor por defecto al crear o editar entrenamientos. No modifica los entrenamientos que ya tienen un tamaño de piscina.",
   "settings.teamManagement": "Gestión del equipo",
+  "settings.teamName": "Nombre del equipo",
+  "settings.teamNamePlaceholder": "ej. Equipo Sprint",
+  "settings.editTeamName": "Editar nombre del equipo",
   "settings.teamManagementDesc": "Asigna nadadores a grupos. Esto sobrescribe el grupo que eligieron en su perfil.",
   "settings.loadingSwimmers": "Cargando nadadores…",
   "settings.noSwimmersYet": "Aún no hay nadadores.",
@@ -364,7 +373,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "settings.deleteAccountConfirm": "Escribe ELIMINAR para confirmar",
   "settings.removeSwimmer": "Eliminar nadador",
   "settings.volumeAnalytics": "Análisis de volumen",
-  "settings.selectSwimmerGroup": "Seleccionar nadador/grupo",
+  "settings.selectSwimmerGroup": "Elegir nadador/grupo",
   "settings.noVolumeData": "No hay datos de volumen en este período",
   "settings.weekly": "Semanal",
   "settings.monthly": "Mensual",
@@ -494,6 +503,9 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
 
   // Notifications
   "notif.coachWroteWorkout": "El entrenador {name} ha escrito un nuevo entrenamiento para:",
+  "notif.swimmerWroteOwnWorkout": "{name} ha escrito su propio entrenamiento para:",
+  "notif.swimmerWroteYourWorkout": "{name} ha escrito tu entrenamiento para:",
+  "notif.swimmerWroteWorkout": "{name} ha escrito un entrenamiento para:",
   "notif.addedFeedbackTo": "ha añadido un nuevo comentario a:",
   "notif.personAddedFeedback": "{name} ha añadido un nuevo comentario a:",
   "notif.today": "Hoy",

@@ -16,20 +16,21 @@ export async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<M
 
 export function mergeAssigneesIntoWorkouts(workouts: Workout[], assigneesByWorkout: Map<string, string[]>, swimmers: SwimmerProfile[]): Workout[] {
   return workouts.map((w) => {
-    if (!w.assigned_to_group) return w;
     const ids = assigneesByWorkout.get(w.id);
-    const assigneeIds = ids?.length ? ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
-    return { ...w, assignee_ids: assigneeIds };
+    if (w.assigned_to_group) {
+      const assigneeIds = ids?.length ? ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
+      return { ...w, assignee_ids: assigneeIds };
+    }
+    if (ids?.length) return { ...w, assignee_ids: ids };
+    return w;
   });
 }
 
 export async function loadAndMergeWorkouts(rows: Workout[], swimmers: SwimmerProfile[]): Promise<Workout[]> {
-  const groupIds = rows.filter((w) => w.assigned_to_group).map((w) => w.id);
-  if (groupIds.length > 0) {
-    const assigneesMap = await fetchAssigneesForWorkouts(groupIds);
-    return mergeAssigneesIntoWorkouts(rows, assigneesMap, swimmers);
-  }
-  return rows;
+  const workoutIds = rows.filter((w) => w.id).map((w) => w.id!);
+  if (workoutIds.length === 0) return rows;
+  const assigneesMap = await fetchAssigneesForWorkouts(workoutIds);
+  return mergeAssigneesIntoWorkouts(rows, assigneesMap, swimmers);
 }
 
 export function orAssignFilter(userId: string, group: string | null | undefined): string {
@@ -60,15 +61,17 @@ export function filterWorkoutsForSwimmer(workouts: Workout[], swimmerId: string,
       byTf.set(tf, list);
     }
     for (const [, tfList] of byTf) {
-      if (tfList.some((w) => w.assigned_to === swimmerId)) {
-        out.push(...tfList.filter((w) => w.assigned_to === swimmerId));
-      } else if (swimmerGroup) {
-        out.push(...tfList.filter((w) => {
-          if (!w.assigned_to_group) return false;
-          return (w.assignee_ids ?? []).includes(swimmerId) ||
-            (!(w.assignee_ids && w.assignee_ids.length > 0) && w.assigned_to_group === swimmerGroup);
-        }));
-      }
+      const forMe = tfList.filter((w) => {
+        const wc = w as Workout & { created_by?: string | null };
+        if (w.assigned_to === swimmerId) return true;
+        if (wc.created_by === swimmerId) return true;
+        if ((w.assignee_ids ?? []).includes(swimmerId)) return true;
+        if (w.assigned_to_group && swimmerGroup) {
+          return (!(w.assignee_ids && w.assignee_ids.length > 0) && w.assigned_to_group === swimmerGroup);
+        }
+        return false;
+      });
+      if (forMe.length > 0) out.push(...forMe);
     }
   }
   return out;
@@ -76,6 +79,16 @@ export function filterWorkoutsForSwimmer(workouts: Workout[], swimmerId: string,
 
 export function sortCoachWorkouts(workouts: Workout[], swimmers: SwimmerProfile[]): Workout[] {
   return [...workouts].sort((a, b) => {
+    const isGroup = (w: Workout) => !!w.assigned_to_group;
+    const sessionOrder = (w: Workout) => {
+      const s = w.session?.trim();
+      if (s === "AM") return 0;
+      if (s === "PM") return 1;
+      return 2;
+    };
+    if (isGroup(a) !== isGroup(b)) return isGroup(a) ? -1 : 1;
+    const aSession = sessionOrder(a), bSession = sessionOrder(b);
+    if (aSession !== bSession) return aSession - bSession;
     const order = (w: Workout) => w.assigned_to_group ? SWIMMER_GROUPS.indexOf(w.assigned_to_group) : -1;
     const aIdx = order(a), bIdx = order(b);
     if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
@@ -110,8 +123,18 @@ function formatSwimmerDisplayName(fullName: string | null, swimmers: SwimmerProf
 
 export function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): string | null {
   if (workout.assigned_to_group) return workout.assigned_to_group;
-  const assignee = swimmers.find((s) => s.id === workout.assigned_to);
-  return assignee ? formatSwimmerDisplayName(assignee.full_name, swimmers) : (workout.assigned_to ? "Swimmer" : null);
+  if (workout.assigned_to) {
+    const assignee = swimmers.find((s) => s.id === workout.assigned_to);
+    return assignee ? formatSwimmerDisplayName(assignee.full_name, swimmers) : "Swimmer";
+  }
+  const ids = workout.assignee_ids ?? [];
+  if (ids.length === 0) return null;
+  if (ids.length === 1) {
+    const assignee = swimmers.find((s) => s.id === ids[0]);
+    return assignee ? formatSwimmerDisplayName(assignee.full_name, swimmers) : "Swimmer";
+  }
+  const names = ids.map((id) => swimmers.find((s) => s.id === id)?.full_name ?? id.slice(0, 8)).filter(Boolean);
+  return names.length ? names.join(", ") : null;
 }
 
 export function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], excludeUserIds?: string[]): string | null {
@@ -157,5 +180,14 @@ export async function saveAssigneesForGroupWorkout(workoutId: string, assigneeId
     if (otherGroupWorkoutIdsSameDay.length === 0) continue;
     const { error } = await supabase.from("workout_assignees").delete().in("workout_id", otherGroupWorkoutIdsSameDay).eq("user_id", uid);
     if (error) throw error;
+  }
+}
+
+export async function saveAssigneesForIndividualWorkout(workoutId: string, assigneeIds: string[]): Promise<void> {
+  const { error: delErr } = await supabase.from("workout_assignees").delete().eq("workout_id", workoutId);
+  if (delErr) throw delErr;
+  if (assigneeIds.length > 0) {
+    const { error: insErr } = await supabase.from("workout_assignees").insert(assigneeIds.map((user_id) => ({ workout_id: workoutId, user_id })));
+    if (insErr) throw insErr;
   }
 }

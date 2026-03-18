@@ -41,6 +41,7 @@ export interface Profile {
   role: "coach" | "swimmer";
   created_at: string;
   swimmer_group: SwimmerGroup | null;
+  team_name?: string | null;
 }
 
 export function normDate(d: string | undefined): string | undefined {

@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import {
   Waves, ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
-  Camera, Loader2,
+  Camera, Loader2, Users, BarChart3,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
@@ -32,12 +32,12 @@ import { SWIMMER_GROUPS, ALL_GROUPS_ID, ALL_ID, ONLY_GROUPS_ID, WORKOUT_CATEGORI
 import { getCategoryLabel, getPoolLabel, GROUP_KEYS } from "@/lib/i18n";
 import {
   loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
-  assignmentLabel, assignedToNames, teammateNames, dayPreviewLabel, saveAssigneesForGroupWorkout,
+  assignmentLabel, assignedToNames, teammateNames, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
 } from "@/lib/workouts";
 
 const badgeClass = "inline-flex items-center rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue";
 const badgeClassMuted = "inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground";
-const WORKOUT_SELECT = "id, date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_at, updated_at";
+const WORKOUT_SELECT = "id, date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_at, updated_at, created_by";
 
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
@@ -55,18 +55,18 @@ function WorkoutBlock({
   return (
     <div className={compact ? "space-y-2" : "space-y-4"}>
       <div className="flex items-start justify-between gap-2">
-        <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
-          {assigneeLabel && <span className={badgeClass}>{assigneeLabel}</span>}
-          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase ${
+        <div className={`flex flex-wrap items-center gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:gap-1 max-md:pb-0.5 ${compact ? "mb-1" : "mb-2"}`}>
+          {assigneeLabel && <span className={`${badgeClass} max-md:shrink-0 max-md:text-[10px] max-md:px-1.5`}>{assigneeLabel}</span>}
+          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase max-md:shrink-0 max-md:text-[10px] max-md:px-1.5 ${
             sessionLabel === "AM" ? "bg-amber-400/15 text-amber-600 dark:text-amber-400"
               : sessionLabel === "PM" ? "bg-indigo-400/15 text-indigo-600 dark:text-indigo-400"
                 : "bg-muted text-muted-foreground"
           }`}>{sessionLabel}</span>
         </div>
         {(workout.workout_category?.trim() || workout.pool_size) && (
-          <div className={`flex flex-wrap justify-end gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
-            {workout.pool_size && <span className={badgeClassMuted}>{getPoolLabel(workout.pool_size, t)}</span>}
-            {workout.workout_category?.trim() && <span className={badgeClassMuted}>{getCategoryLabel(workout.workout_category.trim(), t)}</span>}
+          <div className={`flex flex-wrap justify-end gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:gap-1 ${compact ? "mb-1" : "mb-2"}`}>
+            {workout.pool_size && <span className={`${badgeClassMuted} max-md:shrink-0 max-md:text-[10px] max-md:px-1.5`}>{getPoolLabel(workout.pool_size, t)}</span>}
+            {workout.workout_category?.trim() && <span className={`${badgeClassMuted} max-md:shrink-0 max-md:text-[10px] max-md:px-1.5`}>{getCategoryLabel(workout.workout_category.trim(), t)}</span>}
           </div>
         )}
       </div>
@@ -153,8 +153,11 @@ export default function Home() {
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [coachWorkouts, setCoachWorkouts] = useState<Workout[]>([]);
+  const [swimmerWorkouts, setSwimmerWorkouts] = useState<Workout[]>([]);
   const [viewWorkouts, setViewWorkouts] = useState<Workout[]>([]);
   const [swimmerLoading, setSwimmerLoading] = useState(false);
+  const [swimmerEditingIndex, setSwimmerEditingIndex] = useState<number | null>(null);
+  const [swimmerEditingSnapshot, setSwimmerEditingSnapshot] = useState<Workout | null>(null);
   const [coachLoading, setCoachLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -204,13 +207,33 @@ export default function Home() {
       const filterGroup = filterId === userId ? swimmerGroup : (filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID && filterId !== ALL_GROUPS_ID) ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null : null;
       let query = supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
       if (isOnlyGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-      else if (!isAll && filterId) query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
+      else if (!isAll && filterId) {
+        if (filterId === userId) {
+          query = query;
+        } else {
+          query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
+        }
+      }
       const { data } = await query;
       let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[];
       rows = await loadAndMergeWorkouts(rows, swimmers);
       const me = filterId ?? userId;
       rows = filterWorkoutsForSwimmer(rows, me, filterGroup ?? null);
       setViewWorkouts(rows);
+      const isMyView = !isAll && !isOnlyGroups && filterId === userId;
+      if (isMyView) {
+        const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
+        if (!isAddingWorkout) { setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null); }
+        const sorted = sortCoachWorkouts(rows, swimmers);
+        if (isAddingWorkout) {
+          addWorkoutForDateRef.current = null;
+          const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: userId, assigned_to_group: null };
+          setSwimmerWorkouts([...sorted, newWorkout]);
+          setSwimmerEditingIndex(sorted.length);
+        } else {
+          setSwimmerWorkouts(sorted);
+        }
+      }
       setSwimmerLoading(false);
     })();
   }, [dateKey, role, viewMode, user?.id, selectedViewSwimmerId, swimmerGroup, swimmers]);
@@ -420,6 +443,107 @@ export default function Home() {
     else if (idx !== null && coachWorkouts[idx] && !coachWorkouts[idx].id) setCoachWorkouts((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  const isSwimmerOwnView = !isCoach && (selectedViewSwimmerId === null || selectedViewSwimmerId === user?.id);
+  const isSwimmerMyView = isSwimmerOwnView && viewMode === "day";
+
+  async function saveSingleWorkoutSwimmer(index: number) {
+    if (!dateKey || !user || index < 0 || index >= swimmerWorkouts.length) return;
+    const workout = swimmerWorkouts[index];
+    setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null);
+    setLoading(true); setSaved(false);
+    const poolSizeToSave = workout.pool_size ?? defaultPoolSize ?? null;
+    const assigneeIds = workout.assignee_ids?.length ? workout.assignee_ids : (workout.assigned_to ? [workout.assigned_to] : []);
+    const singleAssignee = assigneeIds.length === 1 ? assigneeIds[0]! : null;
+
+    if (workout.id) {
+      const { error } = await supabase.rpc("update_workout_swimmer", {
+        p_id: workout.id,
+        p_content: workout.content,
+        p_session: workout.session || null,
+        p_workout_category: workout.workout_category || null,
+        p_pool_size: poolSizeToSave,
+        p_assigned_to: singleAssignee,
+      });
+      if (error) {
+        if (error.message?.includes("function") && error.message?.includes("does not exist")) {
+          const { error: updErr } = await supabase.from("workouts").update({
+            content: workout.content, session: workout.session || null, workout_category: workout.workout_category,
+            pool_size: poolSizeToSave, assigned_to: singleAssignee, assigned_to_group: null, updated_at: new Date().toISOString(),
+          }).eq("id", workout.id).eq("created_by", user.id);
+          if (updErr) { alert(updErr.message); setLoading(false); return; }
+        } else { alert(error.message); setLoading(false); return; }
+      }
+      if (assigneeIds.length > 1) {
+        try { await saveAssigneesForIndividualWorkout(workout.id, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
+      }
+    } else {
+      const { data: newId, error } = await supabase.rpc("insert_workout_swimmer", {
+        p_date: dateKey,
+        p_content: workout.content,
+        p_session: workout.session || null,
+        p_workout_category: workout.workout_category || null,
+        p_pool_size: poolSizeToSave,
+        p_assigned_to: singleAssignee,
+      });
+      if (error) {
+        if (error.message?.includes("function") && error.message?.includes("does not exist")) {
+          const { data: inserted, error: insErr } = await supabase.from("workouts").insert({
+            date: dateKey, content: workout.content, session: workout.session || null, workout_category: workout.workout_category,
+            pool_size: poolSizeToSave, assigned_to: singleAssignee, assigned_to_group: null, created_by: user.id, updated_at: new Date().toISOString(),
+          }).select().single();
+          if (insErr) { alert(insErr.message); setLoading(false); return; }
+          if (assigneeIds.length > 1) {
+            try { await saveAssigneesForIndividualWorkout(inserted.id, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
+          }
+          setSwimmerWorkouts((prev) => prev.map((w, i) => i === index ? { ...inserted, date: dateKey, assignee_ids: workout.assignee_ids } : w));
+        } else { alert(error.message); setLoading(false); return; }
+      } else if (newId && assigneeIds.length > 1) {
+        try { await saveAssigneesForIndividualWorkout(newId, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
+      }
+    }
+
+    await refreshSwimmerWorkouts();
+    setLoading(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+  }
+
+  async function refreshSwimmerWorkouts() {
+    const { data } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
+    let rows = await loadAndMergeWorkouts((data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[], swimmers);
+    rows = filterWorkoutsForSwimmer(rows, user?.id ?? "", swimmerGroup);
+    setSwimmerWorkouts(sortCoachWorkouts(rows, swimmers));
+    setViewWorkouts(rows);
+  }
+
+  async function deleteSingleWorkoutSwimmer(index: number) {
+    if (index < 0 || index >= swimmerWorkouts.length || !user || !confirm("Delete this workout?")) return;
+    setLoading(true);
+    const workout = swimmerWorkouts[index];
+    if (workout.id) {
+      const { data: w } = await supabase.from("workouts").select("created_by").eq("id", workout.id).single();
+      if (w?.created_by !== user.id) { alert("Not authorized"); setLoading(false); return; }
+      const { error } = await supabase.from("workouts").delete().eq("id", workout.id);
+      if (error) { alert(error.message); setLoading(false); return; }
+    }
+    setSwimmerWorkouts((prev) => prev.filter((_, i) => i !== index));
+    setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null); setLoading(false);
+  }
+
+  function updateSwimmerWorkout(index: number, updates: Partial<Workout>) {
+    setSwimmerWorkouts((prev) => prev.map((w, i) => i === index ? { ...w, ...updates } : w));
+  }
+
+  function swimmerIdsInTimeframeExcludingSwimmer(workoutIdx: number): Set<string> {
+    const w = swimmerWorkouts[workoutIdx];
+    const tf = getTimeframe(w);
+    const out = new Set<string>();
+    swimmerWorkouts.forEach((ow, i) => {
+      if (i === workoutIdx || getTimeframe(ow) !== tf) return;
+      if (ow.assigned_to) out.add(ow.assigned_to);
+      (ow.assignee_ids ?? []).forEach((id) => out.add(id));
+    });
+    return out;
+  }
+
   async function handleImageFromWorkout(e: React.ChangeEvent<HTMLInputElement>) {
     const idx = imageFromWorkoutIdxRef.current;
     const file = e.target.files?.[0];
@@ -453,7 +577,8 @@ export default function Home() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Failed to analyze image");
       setImageFromWorkoutError(null);
-      updateCoachWorkout(idx, { content: data.content ?? "" });
+      if (swimmerEditingIndex === idx) updateSwimmerWorkout(idx, { content: data.content ?? "" });
+      else updateCoachWorkout(idx, { content: data.content ?? "" });
     } catch (err) {
       setImageFromWorkoutError(err instanceof Error ? err.message : "Failed to process image");
     } finally {
@@ -562,7 +687,7 @@ export default function Home() {
             const excludeIds = isCoach ? [...new Set(dayWorkouts.filter((x) => x.id !== w.id && getTimeframe(x) === getTimeframe(w)).flatMap((x) => x.assigned_to && !x.assigned_to_group ? [x.assigned_to] : (x.assignee_ids ?? [])))] : undefined;
             return renderWorkoutBlock(w, dayKey, { readOnly: isCoach, compact: true, showLabel: dayWorkouts.length > 1, excludeIds });
           }) : <p className="text-xs text-muted-foreground">{t("main.noWorkout")}</p>}
-          actions={isCoach && expandedDayKey === dayKey ? (
+          actions={(isCoach || isSwimmerOwnView) && expandedDayKey === dayKey ? (
             dayWorkouts.length > 0
               ? <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}><Pencil className="size-4" />{t("main.editDay")}</Button>
               : <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndAddWorkout(day)}><Plus className="size-4" />{t("main.addWorkout")}</Button>
@@ -624,9 +749,9 @@ export default function Home() {
                               const excludeIds = isCoach ? [...new Set(dayWorkouts.filter((x) => x.id !== w.id && getTimeframe(x) === getTimeframe(w)).flatMap((x) => x.assigned_to && !x.assigned_to_group ? [x.assigned_to] : (x.assignee_ids ?? [])))] : undefined;
                               return renderWorkoutBlock(w, dayKey, { readOnly: isCoach, compact: true, showLabel: dayWorkouts.length > 1, excludeIds });
                             })}
-                            {isCoach && <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}><Pencil className="size-4" />{t("main.editDay")}</Button>}
+                            {(isCoach || isSwimmerOwnView) && <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}><Pencil className="size-4" />{t("main.editDay")}</Button>}
                           </>
-                        ) : isCoach ? (
+                        ) : (isCoach || isSwimmerOwnView) ? (
                           <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndAddWorkout(day)}><Plus className="size-4" />{t("main.addWorkout")}</Button>
                         ) : <p className="text-sm text-muted-foreground">{t("main.noWorkout")}</p>}
                       </div>
@@ -698,6 +823,26 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Main menu: Team Management & Analytics */}
+        <nav className={`mb-3 grid gap-2 ${isCoach ? "grid-cols-2" : "grid-cols-1"}`}>
+          {isCoach && (
+            <Link
+              href="/team-management"
+              className="flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-4 transition-colors hover:bg-accent/50"
+            >
+              <Users className="size-6 text-muted-foreground shrink-0" />
+              <span className="text-sm font-medium">{t("settings.teamManagement")}</span>
+            </Link>
+          )}
+          <Link
+            href="/analytics"
+            className="flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-4 transition-colors hover:bg-accent/50"
+          >
+            <BarChart3 className="size-6 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium">{t("settings.volumeAnalytics")}</span>
+          </Link>
+        </nav>
+
         {/* Date bar */}
         <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
           <Button variant="ghost" size="icon" className="size-10 shrink-0" onClick={() => changeDate(-1)}><ChevronLeft className="size-5" /><span className="sr-only">Previous</span></Button>
@@ -721,8 +866,8 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Day view */}
-        {viewMode === "day" && !isCoach && (
+        {/* Day view - swimmer */}
+        {viewMode === "day" && !isCoach && !isSwimmerMyView && (
           <div className="flex flex-1 flex-col">
             {swimmerLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">{t("common.loading")}</p></div>
               : viewWorkouts.length > 0 ? (
@@ -737,6 +882,137 @@ export default function Home() {
                 </div>
               ) : <div className="flex flex-1 flex-col items-center justify-center py-12 text-center"><p className="text-muted-foreground">{t("main.noWorkoutForDay")}</p></div>}
           </div>
+        )}
+
+        {/* Day view - swimmer editor (my workouts) */}
+        {viewMode === "day" && isSwimmerMyView && (
+          <Card className="flex flex-1 flex-col py-4">
+            <input ref={imageFileInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
+            <CardContent className="flex flex-1 flex-col gap-4 px-4 py-0">
+              {swimmerLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">{t("common.loading")}</p></div> : (
+                <div className="flex flex-1 flex-col gap-4">
+                  {swimmerWorkouts.length > 0 && swimmerWorkouts.map((workout) => {
+                    const originalIdx = swimmerWorkouts.indexOf(workout);
+                    const rawLabel = workout.assigned_to ? (swimmers.find((s) => s.id === workout.assigned_to)?.full_name ?? workout.assigned_to) : (workout.assignee_ids?.length ? assignedToNames(workout, swimmers) : null);
+                    const label = rawLabel && GROUP_KEYS[rawLabel as keyof typeof GROUP_KEYS] ? t(GROUP_KEYS[rawLabel as keyof typeof GROUP_KEYS]) : rawLabel;
+                    const isEditing = swimmerEditingIndex === originalIdx;
+                    const assigneeIds = workout.assignee_ids?.length ? workout.assignee_ids : (workout.assigned_to ? [workout.assigned_to] : []);
+                    const conflictIds = swimmerIdsInTimeframeExcludingSwimmer(originalIdx);
+                    return (
+                      <Card key={workout.id || `new-${originalIdx}`} className="relative py-4">
+                        {isEditing ? (
+                          <CardContent className="pl-4 pr-4 py-0">
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-2">
+                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                  value={assigneeIds.length === 1 ? `swimmer:${assigneeIds[0]}` : assigneeIds.length > 1 ? `swimmer:${assigneeIds[0]}` : ""}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    if (v.startsWith("swimmer:")) {
+                                      const id = v.slice(8) || null;
+                                      updateSwimmerWorkout(originalIdx, { assigned_to: id, assigned_to_group: null, assignee_ids: id ? [id] : undefined });
+                                    } else {
+                                      updateSwimmerWorkout(originalIdx, { assigned_to: null, assigned_to_group: null, assignee_ids: undefined });
+                                    }
+                                  }}>
+                                  <option value="">{t("main.assignTo")}</option>
+                                  <optgroup label={t("coach.swimmer")}>
+                                    {swimmers.map((s) => <option key={s.id} value={`swimmer:${s.id}`}>{s.full_name || s.id}</option>)}
+                                  </optgroup>
+                                </select>
+                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.session || ""}
+                                  onChange={(e) => updateSwimmerWorkout(originalIdx, { session: e.target.value || null })}>
+                                  {SESSION_OPTIONS.map((v) => <option key={v || "any"} value={v}>{v === "AM" ? t("session.am") : v === "PM" ? t("session.pm") : t("main.anytime")}</option>)}
+                                </select>
+                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.workout_category || ""}
+                                  onChange={(e) => updateSwimmerWorkout(originalIdx, { workout_category: e.target.value || null })}>
+                                  {WORKOUT_CATEGORIES.map((v) => <option key={v || "empty"} value={v}>{getCategoryLabel(v, t)}</option>)}
+                                </select>
+                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size ?? defaultPoolSize ?? ""}
+                                  onChange={(e) => updateSwimmerWorkout(originalIdx, { pool_size: (e.target.value || null) as "LCM" | "SCM" | "SCY" | null })}>
+                                  <option value="">{t("main.pool")}</option>
+                                  {POOL_SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{getPoolLabel(opt.value, t)}</option>)}
+                                </select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-xs font-medium text-muted-foreground">{t("coach.swimmersInWorkout")}</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {swimmers.map((s) => {
+                                    const isIn = assigneeIds.includes(s.id);
+                                    const hasConflict = conflictIds.has(s.id);
+                                    return (
+                                      <button key={s.id} type="button"
+                                        onClick={() => {
+                                          if (isIn) {
+                                            const next = assigneeIds.filter((id) => id !== s.id);
+                                            updateSwimmerWorkout(originalIdx, { assignee_ids: next, assigned_to: next.length === 1 ? next[0]! : null });
+                                          } else if (!hasConflict) {
+                                            const next = [...assigneeIds, s.id];
+                                            updateSwimmerWorkout(originalIdx, { assignee_ids: next, assigned_to: next.length === 1 ? next[0]! : null });
+                                          }
+                                        }}
+                                        title={hasConflict ? t("coach.workoutConflict") : undefined}
+                                        className={hasConflict ? "rounded-md border border-red-400/80 bg-red-400/10 text-red-800 dark:text-red-200 dark:bg-red-500/15 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium"
+                                          : isIn ? "rounded-md border px-2.5 py-1.5 text-xs font-medium border-primary bg-primary/10"
+                                            : "rounded-md border px-2.5 py-1.5 text-xs font-medium border-input bg-background text-muted-foreground hover:bg-accent"}>
+                                        {hasConflict && <AlertCircle className="size-3.5 shrink-0" />}
+                                        {s.full_name || s.id.slice(0, 8)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
+                                  onClick={() => { imageFromWorkoutIdxRef.current = originalIdx; imageFileInputRef.current?.click(); }}>
+                                  {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
+                                  {imageFromWorkoutLoading ? "Analyzing..." : "Take picture"}
+                                </Button>
+                                {imageFromWorkoutError && swimmerEditingIndex === originalIdx && (
+                                  <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
+                                )}
+                              </div>
+                              <Textarea placeholder="Warm-up: 200 free..." value={workout.content} onChange={(e) => updateSwimmerWorkout(originalIdx, { content: e.target.value })} className="min-h-[200px] resize-none" />
+                              {workout.content && <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id || undefined} refreshKey={feedbackRefreshKey} viewerRole="swimmer" />}
+                              <div className="flex gap-2 pt-2">
+                                <Button type="button" size="sm" onClick={() => saveSingleWorkoutSwimmer(originalIdx)} disabled={loading || swimmerLoading}>{saved ? t("main.saved") : t("common.save")}</Button>
+                                <button type="button" onClick={() => {
+                                  const idx = swimmerEditingIndex; const snap = swimmerEditingSnapshot;
+                                  setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null);
+                                  if (idx !== null && snap != null) setSwimmerWorkouts((prev) => prev.map((w, i) => i === idx ? snap : w));
+                                  else if (idx !== null && swimmerWorkouts[idx] && !swimmerWorkouts[idx].id) setSwimmerWorkouts((prev) => prev.filter((_, i) => i !== idx));
+                                }} disabled={loading}
+                                  className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent">{t("common.cancel")}</button>
+                                <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => deleteSingleWorkoutSwimmer(originalIdx)} disabled={loading}>{t("common.delete")}</Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="icon" className="absolute right-2 top-2 size-8 z-10" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                            <CardContent className="pl-4 pr-12 py-0">
+                              <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={swimmerWorkouts.length > 1} assigneeLabel={label}
+                                assigneeNames={assignedToNames(workout, swimmers, Array.from(conflictIds))}
+                                feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly t={t} />
+                            </CardContent>
+                          </>
+                        )}
+                      </Card>
+                    );
+                  })}
+                  <div className="flex justify-center pt-2">
+                    <Button variant="outline" size="icon" onClick={() => {
+                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: user?.id ?? null, assigned_to_group: null };
+                      setSwimmerWorkouts((prev) => [...prev, newWorkout]);
+                      setSwimmerEditingSnapshot(null);
+                      setSwimmerEditingIndex(swimmerWorkouts.length);
+                    }} className="size-10" aria-label="Add workout"><Plus className="size-5" /></Button>
+                  </div>
+                  {swimmerWorkouts.length === 0 && <p className="text-center text-muted-foreground py-4">{t("main.noWorkoutForDay")}</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         {viewMode === "day" && isCoach && (

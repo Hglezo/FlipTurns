@@ -34,23 +34,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function fetchProfile(userId: string) {
     const { data: withGroup } = await supabase
       .from("profiles")
-      .select("id, full_name, role, created_at, swimmer_group")
+      .select("id, full_name, role, created_at, swimmer_group, team_name")
       .eq("id", userId)
       .single();
 
     if (withGroup) {
-      setProfile({ ...withGroup, swimmer_group: withGroup.swimmer_group ?? null } as Profile);
+      setProfile({ ...withGroup, swimmer_group: withGroup.swimmer_group ?? null, team_name: withGroup.team_name ?? null } as Profile);
       return;
     }
 
     const { data: base } = await supabase
       .from("profiles")
-      .select("id, full_name, role, created_at")
+      .select("id, full_name, role, created_at, team_name")
       .eq("id", userId)
       .single();
 
     if (base) {
-      setProfile({ ...base, swimmer_group: null } as Profile);
+      setProfile({ ...base, swimmer_group: null, team_name: base.team_name ?? null } as Profile);
       return;
     }
 
@@ -61,11 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: created } = await supabase
       .from("profiles")
       .upsert({ id: userId, full_name: meta.full_name ?? null, role })
-      .select("id, full_name, role, created_at")
+      .select("id, full_name, role, created_at, team_name")
       .single();
 
     if (created) {
-      setProfile({ ...created, swimmer_group: null } as Profile);
+      setProfile({ ...created, swimmer_group: null, team_name: created.team_name ?? null } as Profile);
     }
   }
 
