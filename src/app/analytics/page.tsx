@@ -40,6 +40,10 @@ const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
   { value: "Distance", label: "Distance" },
 ];
 
+function toLocalDateStr(d: Date): string {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
 function getVolumeDateRange(
   aggregation: Aggregation,
   dateOffset: number,
@@ -243,8 +247,8 @@ export default function AnalyticsPage() {
     async function loadWorkouts() {
       setVolumeLoading(true);
       const { start, end } = getVolumeDateRange(volumeAggregation, volumeDateOffset, weekStartsOn);
-      const startStr = start.toISOString().slice(0, 10);
-      const endStr = end.toISOString().slice(0, 10);
+      const startStr = toLocalDateStr(start);
+      const endStr = toLocalDateStr(end);
       const { data, error } = await supabase
         .from("workouts")
         .select("id, date, content, assigned_to, assigned_to_group, pool_size")
@@ -401,8 +405,8 @@ export default function AnalyticsPage() {
                   selectedGroup={swimmerView ? null : volumeSelectedGroup}
                   aggregation={volumeAggregation}
                   weekStartsOn={weekStartsOn}
-                  dateRangeStart={start.toISOString().slice(0, 10)}
-                  dateRangeEnd={end.toISOString().slice(0, 10)}
+                  dateRangeStart={toLocalDateStr(start)}
+                  dateRangeEnd={toLocalDateStr(end)}
                   t={t}
                   formatDate={formatDate}
                   locale={locale}

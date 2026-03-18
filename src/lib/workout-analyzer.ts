@@ -143,6 +143,9 @@ function parseMetersInText(text: string): number {
   textForStandalone = textForStandalone.replace(/\bp\d+(?:\/\d+)?\b/gi, " ");
   textForStandalone = textForStandalone.replace(/\bon\s+\d+["']?\s*/gi, " ");
   textForStandalone = textForStandalone.replace(/\bc\/\s*[\d']+(?:["']?\s*)?/gi, " ");
+  // Remove time/interval formats (e.g. 1'25", 1:25) so "25" in "1'25"" is not counted as 25m
+  textForStandalone = textForStandalone.replace(/\d+[\'']\d+[""]?/g, " ");
+  textForStandalone = textForStandalone.replace(/\d+:\d{2}(?:\d)?/g, " ");
 
   // Third: extract "N:" at start of line (e.g. "25: swim @80%")
   const leadingMatches = [...textForStandalone.matchAll(LEADING_DISTANCE_PATTERN)];

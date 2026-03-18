@@ -86,8 +86,12 @@ function getWeekStart(d: Date, weekStartsOn: 0 | 1): Date {
   return start;
 }
 
+/** Format date as YYYY-MM-DD in local timezone (toISOString uses UTC and can shift dates) */
 function fmtDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function aggregateByPeriod(
