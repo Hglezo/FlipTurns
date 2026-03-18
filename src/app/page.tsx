@@ -15,7 +15,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import heic2any from "heic2any";
 import {
   Waves, ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
@@ -433,6 +432,7 @@ export default function Home() {
     try {
       let blob: Blob = file;
       if (isHeic) {
+        const heic2any = (await import("heic2any")).default;
         const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
         blob = Array.isArray(converted) ? converted[0]! : converted;
       }
