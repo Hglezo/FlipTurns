@@ -42,8 +42,9 @@ const STANDALONE_DISTANCE_PATTERN = /(?<![:\d])\b(25|50|75|[1-9]\d{0,2}(?:00|25|
 const LEADING_DISTANCE_PATTERN = /^\s*(\d{2,})\s*:/gm;
 
 // Remove parenthetical content to avoid double-counting (e.g. "4x50 (25drill 25easy)") and times (e.g. "2:25")
+// Use [^)\n]* so we don't match across newlines—unclosed "25 (" would otherwise consume content until the next ")"
 function removeParentheticalContent(text: string): string {
-  return text.replace(/\([^)]*\)/g, " ");
+  return text.replace(/\([^)\n]*\)/g, " ");
 }
 
 function parseMetersInText(text: string): number {
@@ -62,12 +63,21 @@ function parseMetersInText(text: string): number {
   while (i < lines.length) {
     const line = lines[i];
     // Match "2x" or "2x[" at start of line (block multiplier)
-    const blockMatch = line.match(/^\s*(\d+)\s*[xX]\s*(\[)?\s*$/);
-    if (blockMatch) {
-      const multiplier = parseInt(blockMatch[1], 10);
-      const useBracket = !!blockMatch[2];
+    const blockStartStrict = line.match(/^\s*(\d+)\s*[xX]\s*(\[)?\s*$/);
+    if (blockStartStrict) {
+      const multiplier = parseInt(blockStartStrict[1], 10);
+      let useBracket = !!blockStartStrict[2];
       const blockLines: string[] = [];
       i++;
+      // If "2x" without bracket, check if next non-empty line is "[" (bracket on own line)
+      if (!useBracket && i < lines.length) {
+        let peek = i;
+        while (peek < lines.length && lines[peek].trim() === "") peek++;
+        if (peek < lines.length && /^\s*\[\s*$/.test(lines[peek])) {
+          useBracket = true;
+          i = peek + 1; // skip the "[" line
+        }
+      }
       while (i < lines.length) {
         const blockLine = lines[i];
         if (useBracket && blockLine.includes("]")) {
@@ -76,6 +86,30 @@ function parseMetersInText(text: string): number {
           break;
         }
         if (!useBracket && blockLine.trim() === "") break;
+        if (blockLine.trim() !== "") {
+          blockLines.push(blockLine);
+        }
+        i++;
+      }
+      const blockMeters = parseMetersInText(blockLines.join("\n"));
+      total += blockMeters * multiplier;
+      continue;
+    }
+    // Match "2x[" with content on same line (e.g. "2x[ 50 dive")
+    const blockWithContent = line.match(/^\s*(\d+)\s*[xX]\s*\[\s*(.*)$/);
+    if (blockWithContent) {
+      const multiplier = parseInt(blockWithContent[1], 10);
+      const blockLines: string[] = [];
+      const restOfLine = blockWithContent[2].trim();
+      if (restOfLine) blockLines.push(restOfLine);
+      i++;
+      while (i < lines.length) {
+        const blockLine = lines[i];
+        if (blockLine.includes("]")) {
+          blockLines.push(blockLine.replace(/\].*$/, "").replace(/^\s*\]/, "").trim());
+          i++;
+          break;
+        }
         if (blockLine.trim() !== "") {
           blockLines.push(blockLine);
         }
@@ -162,7 +196,8 @@ export function analyzeWorkout(content: string): WorkoutAnalysis {
       currentSetName = setName;
       const restOfLine = line.replace(/^[^:]*:?\s*/, "").trim();
       currentSetLines = restOfLine ? [restOfLine] : [];
-    } else if (line.trim()) {
+    } else {
+      // Include empty lines so parseMetersInText can use them (e.g. "2x" breaks on empty line)
       currentSetLines.push(line);
     }
   }

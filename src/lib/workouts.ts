@@ -91,10 +91,27 @@ export function workoutLabel(w: Workout): string {
   return w.workout_category?.trim() || "Workout";
 }
 
+/** Format name for display: first name only, or "Firstname L." when multiple swimmers share the same first name */
+function formatSwimmerDisplayName(fullName: string | null, swimmers: SwimmerProfile[]): string {
+  if (!fullName?.trim()) return "?";
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0) return fullName;
+  const firstName = parts[0];
+  const lastNameInitial = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  const sameFirstNameCount = swimmers.filter((s) => {
+    const first = (s.full_name ?? "").trim().split(/\s+/)[0];
+    return first && first.toLowerCase() === firstName.toLowerCase();
+  }).length;
+  if (sameFirstNameCount > 1 && lastNameInitial) {
+    return `${firstName} ${lastNameInitial}.`;
+  }
+  return firstName;
+}
+
 export function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): string | null {
   if (workout.assigned_to_group) return workout.assigned_to_group;
   const assignee = swimmers.find((s) => s.id === workout.assigned_to);
-  return assignee?.full_name ?? (workout.assigned_to ? "Swimmer" : null);
+  return assignee ? formatSwimmerDisplayName(assignee.full_name, swimmers) : (workout.assigned_to ? "Swimmer" : null);
 }
 
 export function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], excludeUserIds?: string[]): string | null {
@@ -109,14 +126,17 @@ export function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], ex
     const diff = groupOrder(a.swimmer_group) - groupOrder(b.swimmer_group);
     return diff !== 0 ? diff : (a.full_name ?? "").localeCompare(b.full_name ?? "");
   });
-  const names = sorted.map((s) => s.full_name || s.id.slice(0, 8));
+  const names = sorted.map((s) => formatSwimmerDisplayName(s.full_name, swimmers) || s.id.slice(0, 8));
   return names.length ? names.join(", ") : "None";
 }
 
 export function teammateNames(workout: Workout, swimmers: SwimmerProfile[], currentUserId: string | undefined): string | null {
   if (!workout.assigned_to_group) return null;
   const ids = workout.assignee_ids?.length ? workout.assignee_ids : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
-  const names = swimmers.filter((s) => ids.includes(s.id) && s.id !== currentUserId).map((s) => s.full_name || s.id.slice(0, 8)).sort((a, b) => a.localeCompare(b));
+  const assignees = swimmers.filter((s) => ids.includes(s.id) && s.id !== currentUserId);
+  const names = assignees
+    .map((s) => formatSwimmerDisplayName(s.full_name, swimmers) || s.id.slice(0, 8))
+    .sort((a, b) => a.localeCompare(b));
   return names.length ? names.join(", ") : "None";
 }
 
