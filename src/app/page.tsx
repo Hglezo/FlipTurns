@@ -352,12 +352,12 @@ export default function Home() {
     if (workout.assigned_to_group && savedId) {
       const tf = getTimeframe(workout);
       const otherIds = coachWorkouts.filter((w) => w.id && w.assigned_to_group && w.id !== workout.id && getTimeframe(w) === tf).map((w) => w.id!);
-      try { await saveAssigneesForGroupWorkout(savedId, workout.assignee_ids ?? [], otherIds); } catch (e) { alert(e instanceof Error ? e.message : "Failed to save assignees"); setLoading(false); return; }
+      try { await saveAssigneesForGroupWorkout(savedId, workout.assignee_ids ?? [], otherIds); } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
       for (const w of coachWorkouts) {
         if (!w.assigned_to_group || !w.id || w.id === workout.id) continue;
         const tfW = getTimeframe(w);
         const otherIdsForW = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === tfW).map((x) => x.id!);
-        try { await saveAssigneesForGroupWorkout(w.id, w.assignee_ids ?? [], otherIdsForW); } catch (e) { alert(e instanceof Error ? e.message : "Failed to save assignees"); setLoading(false); return; }
+        try { await saveAssigneesForGroupWorkout(w.id, w.assignee_ids ?? [], otherIdsForW); } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
       }
     }
 

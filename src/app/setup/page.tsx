@@ -115,6 +115,27 @@ alter table public.workouts
 alter table public.workouts
   drop constraint if exists workouts_date_key;`;
 
+const WORKOUT_ASSIGNEES_SQL = `-- Per-workout assignees: lets coach add/remove swimmers from a group workout (e.g. remove Hugo from Middle distance)
+-- Run this if you get "Failed to save assignees" when adding/removing swimmers from group workouts
+create table if not exists public.workout_assignees (
+  workout_id uuid not null references public.workouts(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  primary key (workout_id, user_id)
+);
+
+alter table public.workout_assignees enable row level security;
+
+drop policy if exists "Coaches can manage workout_assignees" on public.workout_assignees;
+create policy "Coaches can manage workout_assignees"
+  on public.workout_assignees for all
+  using (exists (select 1 from public.profiles where id = auth.uid() and role = 'coach'))
+  with check (exists (select 1 from public.profiles where id = auth.uid() and role = 'coach'));
+
+drop policy if exists "Authenticated can read workout_assignees" on public.workout_assignees;
+create policy "Authenticated can read workout_assignees"
+  on public.workout_assignees for select
+  using (auth.uid() is not null);`;
+
 const FIX_WORKOUT_SAVE_SQL = `-- Run this if coach workout save is broken (e.g. after adding group assignment)
 alter table public.workouts add column if not exists assigned_to_group text check (assigned_to_group in ('Sprint', 'Middle distance', 'Distance'));
 alter table public.workouts drop column if exists workout_type;
@@ -469,6 +490,31 @@ export default function SetupPage() {
               >
                 {copied === WORKOUT_GROUPS_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === WORKOUT_GROUPS_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Per-workout assignees (add/remove swimmers from group workouts)</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              If you get &quot;Failed to save assignees&quot; when adding or removing swimmers from a group workout (e.g. Middle distance), run this SQL in Supabase.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{WORKOUT_ASSIGNEES_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(WORKOUT_ASSIGNEES_SQL)}
+              >
+                {copied === WORKOUT_ASSIGNEES_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === WORKOUT_ASSIGNEES_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>
