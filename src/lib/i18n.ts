@@ -131,6 +131,7 @@ const TRANSLATIONS_EN = {
   "feedback.duration": "Duration",
   "feedback.addFeedback": "Add feedback",
   "feedback.yourFeedback": "Your feedback",
+  "feedback.feedback": "Feedback",
   "feedback.muscleIntensity": "Muscle intensity",
   "feedback.cardioIntensity": "Cardio intensity",
   "feedback.optional": "Optional",
@@ -195,8 +196,8 @@ const TRANSLATIONS_EN = {
   "session.pm": "PM",
 
   // Swimmer groups (display labels)
-  "group.sprint": "Sprint",
-  "group.middleDistance": "Middle distance",
+  "group.sprint": "Sprinters",
+  "group.middleDistance": "Middle Distance",
   "group.distance": "Distance",
   "group.notSet": "Not set",
 
@@ -208,6 +209,20 @@ const TRANSLATIONS_EN = {
   "category.techSuit": "Tech suit",
   "category.empty": "",
   "category.workout": "Workout",
+
+  // Pool size (display labels)
+  "pool.lcm": "LCM",
+  "pool.scm": "SCM",
+  "pool.scy": "SCY",
+
+  // Workout set names (volume breakdown)
+  "set.warmUp": "Warm Up",
+  "set.mainSet": "Main Set",
+  "set.preSet": "Pre set",
+  "set.coolDown": "Cool down",
+  "set.pullSet": "Pull Set",
+  "set.kickSet": "Kick Set",
+  "set.speedSet": "Speed Set",
 
   // Other
   "common.saved": "Saved",
@@ -304,7 +319,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "main.editDay": "Editar día",
   "main.addWorkout": "Añadir entrenamiento",
   "main.assignTo": "Asignar a...",
-  "main.anytime": "Cualquier hora",
+  "main.anytime": "Libre",
   "main.category": "Categoría",
   "main.pool": "Piscina",
   "main.swimmersInWorkout": "Nadadores en este entrenamiento",
@@ -380,6 +395,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "feedback.duration": "Duración",
   "feedback.addFeedback": "Añadir feedback",
   "feedback.yourFeedback": "Tu comentario",
+  "feedback.feedback": "Comentarios",
   "feedback.muscleIntensity": "Intensidad muscular",
   "feedback.cardioIntensity": "Intensidad cardio",
   "feedback.optional": "Opcional",
@@ -458,6 +474,20 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "category.empty": "",
   "category.workout": "Entrenamiento",
 
+  // Pool size (display labels)
+  "pool.lcm": "50m",
+  "pool.scm": "25m",
+  "pool.scy": "25yd",
+
+  // Workout set names (volume breakdown)
+  "set.warmUp": "Calentamiento",
+  "set.mainSet": "Set Principal",
+  "set.preSet": "Pre set",
+  "set.coolDown": "Suave",
+  "set.pullSet": "Pull Set",
+  "set.kickSet": "Set de pies",
+  "set.speedSet": "Set de velocidad",
+
   // Other
   "common.saved": "Guardado",
   "settings.coachesAssignGroup": "Los entrenadores pueden asignar entrenamientos a tu grupo; todos los nadadores del grupo los verán.",
@@ -526,6 +556,13 @@ export const GROUP_KEYS: Record<string, TranslationKey> = {
   Distance: "group.distance",
 };
 
+/** Pool size value to translation key */
+export const POOL_KEYS: Record<string, TranslationKey> = {
+  LCM: "pool.lcm",
+  SCM: "pool.scm",
+  SCY: "pool.scy",
+};
+
 /** Workout category value to translation key */
 export const CATEGORY_KEYS: Record<string, TranslationKey> = {
   "": "category.empty",
@@ -541,6 +578,41 @@ export function getCategoryLabel(value: string, t: (k: TranslationKey) => string
   if (value === "Workout") return t("category.workout");
   const key = CATEGORY_KEYS[value];
   return key ? t(key) : value;
+}
+
+export function getPoolLabel(value: string | null | undefined, t: (k: TranslationKey) => string): string {
+  if (!value) return "";
+  const key = POOL_KEYS[value];
+  return key ? t(key) : value;
+}
+
+/** Workout set name (normalized) to translation key */
+const SET_NAME_KEYS: Record<string, TranslationKey> = {
+  "warm up": "set.warmUp",
+  warmup: "set.warmUp",
+  "warm-up": "set.warmUp",
+  "main set": "set.mainSet",
+  "pre set": "set.preSet",
+  "pre-set": "set.preSet",
+  preset: "set.preSet",
+  "cool down": "set.coolDown",
+  cooldown: "set.coolDown",
+  "cool-down": "set.coolDown",
+  "pull set": "set.pullSet",
+  pulls: "set.pullSet",
+  "kick set": "set.kickSet",
+  kicks: "set.kickSet",
+  "speed set": "set.speedSet",
+  speed: "set.speedSet",
+};
+
+export function getSetNameLabel(name: string, t: (k: TranslationKey) => string): string {
+  const suffixMatch = name.match(/(\s*#\s*\d+)\s*$/i);
+  const suffix = suffixMatch ? suffixMatch[1] : "";
+  const base = name.replace(/\s*#\s*\d+\s*$/i, "").trim();
+  const normalized = base.toLowerCase().replace(/\s+/g, " ").trim();
+  const key = SET_NAME_KEYS[normalized] ?? SET_NAME_KEYS[normalized.replace(/-/g, " ")];
+  return key ? t(key) + suffix : name;
 }
 
 /** Session value to translation key */

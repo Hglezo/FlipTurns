@@ -29,7 +29,7 @@ import { useTranslations } from "@/components/i18n-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { Workout, SwimmerProfile, ViewMode, SwimmerGroup } from "@/lib/types";
 import { SWIMMER_GROUPS, ALL_GROUPS_ID, ALL_ID, ONLY_GROUPS_ID, WORKOUT_CATEGORIES, SESSION_OPTIONS, POOL_SIZE_OPTIONS, normDate, getTimeframe } from "@/lib/types";
-import { getCategoryLabel, GROUP_KEYS } from "@/lib/i18n";
+import { getCategoryLabel, getPoolLabel, GROUP_KEYS } from "@/lib/i18n";
 import {
   loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
   assignmentLabel, assignedToNames, teammateNames, dayPreviewLabel, saveAssigneesForGroupWorkout,
@@ -65,7 +65,7 @@ function WorkoutBlock({
         </div>
         {(workout.workout_category?.trim() || workout.pool_size) && (
           <div className={`flex flex-wrap justify-end gap-1.5 ${compact ? "mb-1" : "mb-2"}`}>
-            {workout.pool_size && <span className={badgeClassMuted}>{workout.pool_size}</span>}
+            {workout.pool_size && <span className={badgeClassMuted}>{getPoolLabel(workout.pool_size, t)}</span>}
             {workout.workout_category?.trim() && <span className={badgeClassMuted}>{getCategoryLabel(workout.workout_category.trim(), t)}</span>}
           </div>
         )}
@@ -747,7 +747,8 @@ export default function Home() {
                 <div className="flex flex-1 flex-col gap-4">
                   {coachWorkouts.length > 0 && coachWorkouts.map((workout) => {
                     const originalIdx = coachWorkouts.indexOf(workout);
-                    const label = assignmentLabel(workout, swimmers);
+                    const rawLabel = assignmentLabel(workout, swimmers);
+                    const label = rawLabel && GROUP_KEYS[rawLabel] ? t(GROUP_KEYS[rawLabel]) : rawLabel;
                     const isEditing = editingWorkoutIndex === originalIdx;
                     return (
                       <Card key={workout.id || `new-${originalIdx}`} className="relative py-4">
@@ -778,7 +779,7 @@ export default function Home() {
                                 <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size ?? defaultPoolSize ?? ""}
                                   onChange={(e) => updateCoachWorkout(originalIdx, { pool_size: (e.target.value || null) as "LCM" | "SCM" | "SCY" | null })}>
                                   <option value="">{t("main.pool")}</option>
-                                  {POOL_SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                  {POOL_SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{getPoolLabel(opt.value, t)}</option>)}
                                 </select>
                               </div>
                               {workout.assigned_to_group && (

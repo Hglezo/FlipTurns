@@ -5,6 +5,7 @@ import { analyzeWorkout } from "@/lib/workout-analyzer";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
 import { useTranslations } from "@/components/i18n-provider";
+import { getSetNameLabel } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Pencil, Trash2, MessageSquare } from "lucide-react";
@@ -237,7 +238,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
                   key={`${set.name}-${i}`}
                   className="flex justify-between text-muted-foreground"
                 >
-                  <span className="capitalize">{set.name}</span>
+                  <span className="capitalize">{getSetNameLabel(set.name, t)}</span>
                   <span>{set.meters.toLocaleString()} {unit}</span>
                 </div>
               ))}
@@ -254,7 +255,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
         <div className="space-y-2">
         {(hasFeedback || !hasLoadedFeedback || readOnly) && (
         <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-3">
-          {hasFeedback && <p className="text-xs font-semibold uppercase tracking-wide text-accent-blue">{t("feedback.yourFeedback")}</p>}
+          {hasFeedback && <p className="text-xs font-semibold uppercase tracking-wide text-accent-blue">{t(viewerRole === "coach" ? "feedback.feedback" : "feedback.yourFeedback")}</p>}
           {hasFeedback ? (
             feedback!.map((fb) => (
               <div key={fb.id} className="space-y-2 rounded-md border border-border/50 p-3">

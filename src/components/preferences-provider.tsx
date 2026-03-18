@@ -16,9 +16,7 @@ const PreferencesContext = createContext<{
 } | null>(null);
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
-  const [preferences, setPrefsState] = useState<Preferences | null>(() =>
-    typeof window !== "undefined" ? getPreferences() : null
-  );
+  const [preferences, setPrefsState] = useState<Preferences | null>(null);
   const [theme, setThemeState] = useState<Theme>("dark");
 
   useEffect(() => {

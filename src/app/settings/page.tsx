@@ -17,7 +17,7 @@ import {
   type PoolSize,
   type FirstDayOfWeek,
 } from "@/lib/preferences";
-import { LOCALES, GROUP_KEYS, type Locale } from "@/lib/i18n";
+import { LOCALES, GROUP_KEYS, getPoolLabel, type Locale } from "@/lib/i18n";
 import { useTranslations } from "@/components/i18n-provider";
 import { usePreferences } from "@/components/preferences-provider";
 import { useAuth } from "@/components/auth-provider";
@@ -743,7 +743,7 @@ export default function SettingsPage() {
                       size="sm"
                       onClick={() => handleSavePrefs({ poolSize: opt.value })}
                     >
-                      {opt.label}
+                      {getPoolLabel(opt.value, t)}
                     </Button>
                   ))}
                 </div>
@@ -873,7 +873,7 @@ export default function SettingsPage() {
                           }
                         }}
                       >
-                        <option value="">Select swimmer/group</option>
+                        <option value="">{t("settings.selectSwimmerGroup")}</option>
                         <optgroup label={t("settings.groups")}>
                           {SWIMMER_GROUPS.map((g) => (
                             <option key={g.value} value={`group:${g.value}`}>
