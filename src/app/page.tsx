@@ -16,10 +16,11 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Waves, ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
+  ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
   Camera, Loader2, Users, BarChart3,
 } from "lucide-react";
+import { FlipTurnsLogo } from "@/components/flipturns-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
 import { SignOutDropdown } from "@/components/sign-out-dropdown";
@@ -772,7 +773,7 @@ export default function Home() {
         {/* Header */}
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-            <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-bold"><Waves className="size-5 text-primary" />{t("app.title")}</h1>
+            <h1 className="flex shrink-0 items-center gap-1.5 text-lg font-bold"><FlipTurnsLogo className="size-5 shrink-0" size={20} />{t("app.title")}</h1>
             <div className="shrink-0"><ThemeToggle /></div>
             {role === "swimmer" && swimmers.length > 0 ? (
               <div className="min-w-0 flex-1 overflow-hidden">

@@ -86,8 +86,7 @@ function getWeekStart(d: Date, weekStartsOn: 0 | 1): Date {
   return start;
 }
 
-/** Format date as YYYY-MM-DD in local timezone (toISOString uses UTC and can shift dates) */
-function fmtDate(d: Date): string {
+export function toLocalDateStr(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -105,7 +104,7 @@ export function aggregateByPeriod(
   const buckets = new Map<string, number>();
   for (const [date, meters] of volByDate) {
     const d = new Date(date + "T12:00:00");
-    const key = aggregation === "week" ? fmtDate(getWeekStart(d, weekStartsOn)) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const key = aggregation === "week" ? toLocalDateStr(getWeekStart(d, weekStartsOn)) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     buckets.set(key, (buckets.get(key) ?? 0) + meters);
   }
   return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, meters]) => ({ label, meters }));
@@ -126,14 +125,14 @@ export function fillPeriodsInRange(
     for (let i = 0; i < 7; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
-      const label = fmtDate(d);
+      const label = toLocalDateStr(d);
       result.push({ label, meters: dataMap.get(label) ?? 0 });
     }
   } else if (aggregation === "week") {
     const end = new Date(endStr + "T12:00:00");
     const current = new Date(getWeekStart(new Date(startStr + "T12:00:00"), weekStartsOn));
     while (current <= end) {
-      const label = fmtDate(current);
+      const label = toLocalDateStr(current);
       result.push({ label, meters: dataMap.get(label) ?? 0 });
       current.setDate(current.getDate() + 7);
     }

@@ -26,6 +26,7 @@ import {
   computeGroupVolumes,
   aggregateByPeriod,
   fillPeriodsInRange,
+  toLocalDateStr,
   type WorkoutRow,
   type SwimmerProfile as VolumeSwimmerProfile,
   type Aggregation,
@@ -39,10 +40,6 @@ const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
   { value: "Middle distance", label: "Middle distance" },
   { value: "Distance", label: "Distance" },
 ];
-
-function toLocalDateStr(d: Date): string {
-  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-}
 
 function getVolumeDateRange(
   aggregation: Aggregation,
