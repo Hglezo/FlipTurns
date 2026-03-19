@@ -894,9 +894,10 @@ export default function Home() {
                 <div className="flex flex-1 flex-col gap-4">
                   {swimmerWorkouts.length > 0 && swimmerWorkouts.map((workout) => {
                     const originalIdx = swimmerWorkouts.indexOf(workout);
-                    const rawLabel = workout.assigned_to ? (swimmers.find((s) => s.id === workout.assigned_to)?.full_name ?? workout.assigned_to) : (workout.assignee_ids?.length ? assignedToNames(workout, swimmers) : null);
+                    const canSwimmerEdit = !workout.id || workout.created_by === user?.id;
+                    const rawLabel = assignmentLabel(workout, swimmers);
                     const label = rawLabel && GROUP_KEYS[rawLabel as keyof typeof GROUP_KEYS] ? t(GROUP_KEYS[rawLabel as keyof typeof GROUP_KEYS]) : rawLabel;
-                    const isEditing = swimmerEditingIndex === originalIdx;
+                    const isEditing = swimmerEditingIndex === originalIdx && canSwimmerEdit;
                     const assigneeIds = workout.assignee_ids?.length ? workout.assignee_ids : (workout.assigned_to ? [workout.assigned_to] : []);
                     const conflictIds = swimmerIdsInTimeframeExcludingSwimmer(originalIdx);
                     return (
@@ -990,8 +991,10 @@ export default function Home() {
                           </CardContent>
                         ) : (
                           <>
-                            <Button variant="ghost" size="icon" className="absolute right-2 top-2 size-8 z-10" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
-                            <CardContent className="pl-4 pr-12 py-0">
+                            {canSwimmerEdit && (
+                              <Button variant="ghost" size="icon" className="absolute right-2 top-2 size-8 z-10" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                            )}
+                            <CardContent className={`pl-4 py-0 ${canSwimmerEdit ? "pr-12" : "pr-4"}`}>
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={swimmerWorkouts.length > 1} assigneeLabel={label}
                                 assigneeNames={assignedToNames(workout, swimmers, Array.from(conflictIds))}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly t={t} />

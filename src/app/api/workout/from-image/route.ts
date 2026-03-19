@@ -29,7 +29,7 @@ const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   "";
 
-async function verifyCoach(request: Request) {
+async function verifyAuth(request: Request) {
   const accessToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!accessToken) return { error: "Unauthorized" as const };
 
@@ -41,7 +41,7 @@ async function verifyCoach(request: Request) {
 
   const adminClient = createServerSupabaseClient();
   const { data: profile } = await adminClient.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "coach") return { error: "Forbidden" as const };
+  if (!profile?.role || !["coach", "swimmer"].includes(profile.role)) return { error: "Forbidden" as const };
 
   return { user };
 }
@@ -71,7 +71,7 @@ cool down
 
 export async function POST(request: Request) {
   try {
-    const auth = await verifyCoach(request);
+    const auth = await verifyAuth(request);
     if ("error" in auth) return NextResponse.json({ error: auth.error }, { status: auth.error === "Forbidden" ? 403 : 401 });
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
