@@ -286,6 +286,30 @@ grant execute on function public.insert_workout(date, text, text, text, text, uu
 grant execute on function public.get_workouts_for_date(date) to authenticated;
 notify pgrst, 'reload schema';`;
 
+const COACH_EDIT_ANY_WORKOUT_SQL = `-- Allow any coach to edit any workout (including another coach's)
+create or replace function public.update_workout(
+  p_id uuid, p_content text, p_session text, p_workout_category text, p_pool_size text,
+  p_assigned_to uuid, p_assigned_to_group text
+)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.profiles where id = auth.uid() and role = 'coach') then
+    raise exception 'Not authorized';
+  end if;
+  update public.workouts set
+    content = coalesce(p_content, ''),
+    session = p_session,
+    workout_category = p_workout_category,
+    pool_size = case when p_pool_size in ('LCM','SCM','SCY') then p_pool_size else null end,
+    assigned_to = p_assigned_to,
+    assigned_to_group = p_assigned_to_group,
+    updated_at = now()
+  where id = p_id;
+end;
+$$;
+grant execute on function public.update_workout(uuid, text, text, text, text, uuid, text) to authenticated;
+notify pgrst, 'reload schema';`;
+
 const COACH_UPDATE_SWIMMER_GROUP_SQL = `-- Coaches can assign swimmers to groups in Team management (Settings)
 drop policy if exists "Coaches can update swimmer profiles" on public.profiles;
 create policy "Coaches can update swimmer profiles"
@@ -650,6 +674,36 @@ export default function SetupPage() {
                 {copied === WORKOUT_ASSIGNEES_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Coach can edit any workout</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              If you get &quot;Not authorized to update this workout&quot; when a coach edits another coach&apos;s workout, run this in Supabase SQL Editor.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{COACH_EDIT_ANY_WORKOUT_SQL}</code>
+              </pre>
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-2 top-2 gap-1"
+                onClick={() => copy(COACH_EDIT_ANY_WORKOUT_SQL)}
+              >
+                {copied === COACH_EDIT_ANY_WORKOUT_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === COACH_EDIT_ANY_WORKOUT_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <ol className="list-decimal space-y-2 pl-4 text-sm text-muted-foreground">
+              <li>Open <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-primary underline">Supabase Dashboard</a></li>
+              <li>Select your project → SQL Editor</li>
+              <li>Paste the SQL above and run it</li>
+            </ol>
           </CardContent>
         </Card>
 

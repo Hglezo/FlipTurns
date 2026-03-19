@@ -15,9 +15,9 @@ export interface WorkoutAnalysis {
 }
 
 const SET_NAME_PATTERNS = [
-  /^(?:warm[- ]?up|warmup)\s*:?/i,
+  /^(?:warm[- ]?up|warmup|calentamiento)\s*:?/i,
   /^(?:pre[- ]?set\s+activation|pre[- ]?set|pre\s+set|preset)\s*:?/i,
-  /^(?:main\s+set)\s*:?/i,
+  /^(?:main\s+set|set\s+principal)\s*:?/i,
   /^(?:kick\s+set)\s*:?/i,
   /^(?:pull\s+set)\s*:?/i,
   /^(?:speed\s+set|speed)\s*:?/i,
@@ -25,7 +25,7 @@ const SET_NAME_PATTERNS = [
   /^(?:uw\s+set|underwater\s+set)\s*:?/i,
   /^(?:fins\s+set)\s*:?/i,
   /^(?:warm[- ]?down|warmdown)\s*:?/i,
-  /^(?:cool[- ]?down|cooldown)\s*:?/i,
+  /^(?:cool[- ]?down|cooldown|suave|vuelta\s+a\s+la\s+calma)\s*:?/i,
   /^(?:drill(?:s)?)\s*:?/i,
   /^(?:kick(?:s)?)\s*:?/i,
   /^(?:pull(?:s)?)\s*:?/i,
