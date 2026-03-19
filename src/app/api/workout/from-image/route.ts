@@ -44,7 +44,7 @@ async function verifyAuth(request: Request) {
 
   const adminClient = createServerSupabaseClient();
   const { data: profile } = await adminClient.from("profiles").select("role").eq("id", user.id).single();
-  const role = profile?.role?.toLowerCase?.();
+  const role = profile?.role?.toLowerCase();
   if (!role || !["coach", "swimmer"].includes(role)) return { error: "Forbidden" as const };
 
   return { user };

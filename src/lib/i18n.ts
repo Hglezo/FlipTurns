@@ -23,7 +23,7 @@ const TRANSLATIONS_EN = {
   "common.signOut": "Sign out",
 
   // App
-  "app.title": "FlipTurn",
+  "app.title": "FlipTurns",
   "app.description": "Coach and swimmer workout calendar",
 
   // Login
@@ -66,6 +66,10 @@ const TRANSLATIONS_EN = {
   "main.deleteWorkoutConfirm": "Delete this workout?",
   "main.assignedTo": "Assigned to",
   "main.teammates": "Teammates",
+  "main.session": "Session",
+  "main.exportPdf": "Download PDF",
+  "main.exportPdfTitle": "Download this workout as a PDF file",
+  "main.workoutN": "Workout {n}",
   "main.settingUpAccount": "Setting up your account...",
   "main.setupPersist": "If this persists, the database migration may not have been applied yet. Try signing out and back in.",
   "main.weekWorkouts": "workout",
@@ -293,7 +297,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "common.signOut": "Cerrar sesión",
 
   // App
-  "app.title": "FlipTurn",
+  "app.title": "FlipTurns",
   "app.description": "Calendario de entrenamientos para entrenadores y nadadores",
 
   // Login
@@ -336,6 +340,10 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "main.deleteWorkoutConfirm": "¿Eliminar este entrenamiento?",
   "main.assignedTo": "Asignado a",
   "main.teammates": "Compañeros",
+  "main.session": "Sesión",
+  "main.exportPdf": "Descargar PDF",
+  "main.exportPdfTitle": "Descargar este entrenamiento como archivo PDF",
+  "main.workoutN": "Entrenamiento {n}",
   "main.settingUpAccount": "Configurando tu cuenta...",
   "main.setupPersist": "Si esto continúa, es posible que la migración de la base de datos no se haya aplicado. Prueba a cerrar sesión y volver a entrar.",
   "main.weekWorkouts": "entrenamiento",
@@ -707,6 +715,27 @@ export function formatDate(
     default:
       return dateFnsFormat(date, "PP", opts);
   }
+}
+
+export function formatPdfWorkoutHeaderDate(
+  date: Date,
+  session: string | null | undefined,
+  locale: Locale,
+  t: (key: TranslationKey) => string,
+): string {
+  const opts = locale === "es-ES" ? { locale: es } : {};
+  const capitalize = (s: string) => (locale === "es-ES" ? capitalizeSpanishDate(s) : s);
+  const sessionLabel =
+    session?.trim() === "AM" || session?.trim() === "PM"
+      ? session.trim()
+      : t("main.anytime");
+  const weekday = capitalize(dateFnsFormat(date, "EEEE", opts));
+  const datePart = capitalize(
+    locale === "es-ES"
+      ? dateFnsFormat(date, "d 'de' MMMM, yyyy", opts)
+      : dateFnsFormat(date, "MMMM d, yyyy", opts),
+  );
+  return `${weekday} ${sessionLabel}, ${datePart}`;
 }
 
 /** Format date for notification workout line: "Today AM", "Tomorrow PM", "This week: Friday, March 20" AM, or "March 20, 2026" AM */
