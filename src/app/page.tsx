@@ -572,7 +572,11 @@ export default function Home() {
       if (!token) throw new Error("Not signed in");
       const res = await fetch("/api/workout/from-image", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Auth-Token": token,
+        },
         body: JSON.stringify({ image: base64 }),
       });
       const data = await res.json().catch(() => ({}));

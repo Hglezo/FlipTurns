@@ -30,7 +30,10 @@ const supabaseAnonKey =
   "";
 
 async function verifyAuth(request: Request) {
-  const accessToken = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const accessToken =
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    request.headers.get("x-auth-token") ??
+    "";
   if (!accessToken) return { error: "Unauthorized" as const };
 
   const client = createClient(supabaseUrl, supabaseAnonKey, {
@@ -41,7 +44,8 @@ async function verifyAuth(request: Request) {
 
   const adminClient = createServerSupabaseClient();
   const { data: profile } = await adminClient.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile?.role || !["coach", "swimmer"].includes(profile.role)) return { error: "Forbidden" as const };
+  const role = profile?.role?.toLowerCase?.();
+  if (!role || !["coach", "swimmer"].includes(role)) return { error: "Forbidden" as const };
 
   return { user };
 }
