@@ -51,6 +51,8 @@ function WorkoutBlock({
   teammateNames?: string | null; className?: string; readOnly?: boolean; compact?: boolean;
   t: (key: import("@/lib/i18n").TranslationKey) => string;
 }) {
+  const { role: viewerProfileRole } = useAuth();
+  const feedbackViewerRole = viewerProfileRole === "coach" ? "coach" : "swimmer";
   const hasAssignment = workout.assigned_to_group?.trim() || workout.assigned_to;
   const sessionLabel = workout.session?.trim() === "AM" || workout.session?.trim() === "PM" ? workout.session.trim() : t("main.anytime");
   const namesLine = readOnly ? assigneeNamesStr && `${t("main.assignedTo")} ${assigneeNamesStr}` : teammateNamesStr != null && `${t("main.teammates")}: ${teammateNamesStr}`;
@@ -75,7 +77,7 @@ function WorkoutBlock({
       {namesLine && <div className="flex w-full justify-end -mt-1 mb-2"><p className="text-xs text-muted-foreground text-right">{namesLine}</p></div>}
       <pre className={`whitespace-pre-wrap font-sans leading-relaxed text-foreground/90 ${compact ? "text-[14px]" : "text-[15px]"}`}>{workout.content}</pre>
       <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id} poolSize={workout.pool_size} refreshKey={feedbackRefreshKey}
-        onFeedbackChange={onFeedbackChange} className={className} viewerRole={readOnly ? "coach" : "swimmer"} />
+        onFeedbackChange={onFeedbackChange} className={className} viewerRole={feedbackViewerRole} />
     </div>
   );
 }
