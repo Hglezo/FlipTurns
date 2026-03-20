@@ -122,13 +122,15 @@ export function downloadWorkoutsPdf(options: {
     font: "helvetica" | "courier" | "times",
     style: "normal" | "bold",
     lineGapMm: number,
+    align: "left" | "right" = "left",
   ) => {
     doc.setFont(font, style);
     doc.setFontSize(fontSize);
     const lines = doc.splitTextToSize(text, maxW);
+    const x = align === "right" ? pageW - margin : margin;
     for (const line of lines) {
       ensureSpace(lineGapMm);
-      doc.text(line, margin, y, { baseline: "top" });
+      doc.text(line, x, y, { baseline: "top", align });
       y += lineGapMm;
     }
   };
@@ -152,10 +154,8 @@ export function downloadWorkoutsPdf(options: {
     }
 
     doc.setTextColor(...META_RGB);
-    for (const block of [s.categoryPoolLine, s.assignedLine ?? ""]) {
-      const t = block.trim();
-      if (t) writeWrapped(t, PDF_SIZES.meta, "helvetica", "normal", PDF_SIZES.metaLeading);
-    }
+    if (s.categoryPoolLine.trim()) writeWrapped(s.categoryPoolLine.trim(), PDF_SIZES.meta, "helvetica", "normal", PDF_SIZES.metaLeading);
+    if (s.assignedLine?.trim()) writeWrapped(s.assignedLine.trim(), PDF_SIZES.meta, "helvetica", "normal", PDF_SIZES.metaLeading, "right");
     doc.setTextColor(0, 0, 0);
     y += 5;
 

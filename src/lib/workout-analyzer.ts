@@ -35,6 +35,27 @@ const SET_NAME_PATTERNS = [
 ];
 
 const REPEAT_PATTERN = /(\d+)\s*[×xX]\s*(\d+)/g;
+
+// Out/in adds extra meters: 1=25, 2=50, 3=100, 4=125, 5=150, 6=200
+const OUT_IN_METERS: Record<number, number> = { 1: 25, 2: 50, 3: 100, 4: 125, 5: 150, 6: 200 };
+// Only match single-digit count (1-9) so "400 out/in" is base 400 + 1 out/in, not count 400
+const OUT_IN_WITH_COUNT = /\b([1-9])\s*[xX]?\s*out\s*\/\s*in\s*s?/gi;
+const OUT_IN_STANDALONE = /(?<!\d)\bout\s*\/\s*in\s*s?\b/gi;
+
+function parseOutInMeters(text: string): number {
+  let meters = 0;
+  let remaining = text;
+  // Match "Nx out/in" or "N out/in" or "N out/ins" first
+  for (const m of text.matchAll(OUT_IN_WITH_COUNT)) {
+    const n = Math.min(parseInt(m[1], 10), 6);
+    meters += OUT_IN_METERS[n] ?? n * 25;
+    remaining = remaining.replace(m[0], " "); // remove so we don't double-count standalone
+  }
+  // Match standalone "out/in" or "out/ins" (not preceded by digit)
+  const standalone = remaining.match(OUT_IN_STANDALONE);
+  if (standalone) meters += standalone.length * 25;
+  return meters;
+}
 // Matches pool distances (multiples of 25 from 25–9975), optionally followed by m/meters or stroke.
 // Lookbehind (?<![:\d]) prevents matching numbers inside time formats like "1:25" or "2:50".
 const STANDALONE_DISTANCE_PATTERN = /(?<![:\d])\b(25|50|75|[1-9]\d{0,2}(?:00|25|50|75)|[1-9]\d{3})\s*(?:m|meters?|free|fr|fly|fl|back|bk|breast|br|uw|kick|drill|pull|easy|im)?\b/gi;
@@ -158,6 +179,9 @@ function parseMetersInText(text: string): number {
   for (const m of standaloneMatches) {
     total += parseInt(m[1], 10);
   }
+
+  // Fifth: add meters from out/in (1=25m, 2=50m, 3=100m, 4=125m, 5=150m, 6=200m)
+  total += parseOutInMeters(remainingText);
 
   return total;
 }

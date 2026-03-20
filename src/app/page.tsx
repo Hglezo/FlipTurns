@@ -72,7 +72,7 @@ function WorkoutBlock({
           </div>
         )}
       </div>
-      {namesLine && <p className="text-xs text-muted-foreground -mt-1 mb-2 text-right">{namesLine}</p>}
+      {namesLine && <div className="flex w-full justify-end -mt-1 mb-2"><p className="text-xs text-muted-foreground text-right">{namesLine}</p></div>}
       <pre className={`whitespace-pre-wrap font-sans leading-relaxed text-foreground/90 ${compact ? "text-[14px]" : "text-[15px]"}`}>{workout.content}</pre>
       <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id} poolSize={workout.pool_size} refreshKey={feedbackRefreshKey}
         onFeedbackChange={onFeedbackChange} className={className} viewerRole={readOnly ? "coach" : "swimmer"} />
@@ -676,14 +676,14 @@ export default function Home() {
   const workoutsForRange = viewMode === "week" ? weekWorkouts : monthWorkouts;
   const previewDefault = getPreviewDefault();
 
-  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[] }) => {
+  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean }) => {
     const rawLabel = assignmentLabel(workout, swimmers);
     const label = rawLabel && GROUP_KEYS[rawLabel] ? t(GROUP_KEYS[rawLabel]) : rawLabel;
     return (
       <WorkoutBlock key={workout.id || dayKey} workout={workout} dateKey={dayKey} showLabel={opts.showLabel ?? true}
         feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
         className={opts.compact ? "mt-1" : "mt-4"} compact={opts.compact} readOnly={opts.readOnly} assigneeLabel={label}
-        assigneeNames={opts.readOnly ? assignedToNames(workout, swimmers, opts.excludeIds) : undefined}
+        assigneeNames={opts.namesInHeader ? undefined : (opts.readOnly ? assignedToNames(workout, swimmers, opts.excludeIds) : undefined)}
         teammateNames={!opts.readOnly ? teammateNames(workout, swimmers, user?.id) : undefined} t={t} />
     );
   };
@@ -898,14 +898,19 @@ export default function Home() {
                 <div className="space-y-4">
                   {viewWorkouts.map((workout, i) => (
                     <Card key={workout.id || i} className="relative py-4">
-                      {workout.content.trim() && (
-                        <Button type="button" variant="ghost" size="icon" className="absolute right-2 top-2 z-10 size-8"
-                          title={t("main.exportPdfTitle")} aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
-                          <Printer className="size-4" />
-                        </Button>
-                      )}
+                        <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+                          {workout.content.trim() && (
+                            <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0"
+                              title={t("main.exportPdfTitle")} aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
+                              <Printer className="size-4" />
+                            </Button>
+                          )}
+                          {assignedToNames(workout, swimmers) && (
+                            <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedToNames(workout, swimmers)}</p>
+                          )}
+                        </div>
                       <CardContent className={`px-4 py-0 ${workout.content.trim() ? "pr-12" : ""}`}>
-                        {renderWorkoutBlock(workout, dateKey, { compact: false })}
+                        {renderWorkoutBlock(workout, dateKey, { compact: false, namesInHeader: true })}
                       </CardContent>
                     </Card>
                   ))}
@@ -999,10 +1004,6 @@ export default function Home() {
                                   {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
                                   {imageFromWorkoutLoading ? "Analyzing..." : "Take picture"}
                                 </Button>
-                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={!workout.content.trim()}
-                                  title={t("main.exportPdfTitle")} onClick={() => downloadWorkoutPdf([workout])}>
-                                  <Printer className="size-4" aria-hidden />{t("main.exportPdf")}
-                                </Button>
                                 {imageFromWorkoutError && swimmerEditingIndex === originalIdx && (
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}
@@ -1024,20 +1025,25 @@ export default function Home() {
                           </CardContent>
                         ) : (
                           <>
-                            <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5">
-                              {workout.content.trim() && (
-                                <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
-                                  aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
-                                  <Printer className="size-4" />
-                                </Button>
-                              )}
-                              {canSwimmerEdit && (
-                                <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                            <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+                              <div className="flex items-center gap-0.5">
+                                {workout.content.trim() && (
+                                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
+                                    aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
+                                    <Printer className="size-4" />
+                                  </Button>
+                                )}
+                                {canSwimmerEdit && (
+                                  <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                                )}
+                              </div>
+                              {assignedToNames(workout, swimmers, Array.from(conflictIds)) && (
+                                <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedToNames(workout, swimmers, Array.from(conflictIds))}</p>
                               )}
                             </div>
                             <CardContent className={`pl-4 py-0 ${workout.content.trim() && canSwimmerEdit ? "pr-[4.5rem]" : workout.content.trim() || canSwimmerEdit ? "pr-12" : "pr-4"}`}>
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={swimmerWorkouts.length > 1} assigneeLabel={label}
-                                assigneeNames={assignedToNames(workout, swimmers, Array.from(conflictIds))}
+                                assigneeNames={undefined}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly t={t} />
                             </CardContent>
                           </>
@@ -1158,10 +1164,6 @@ export default function Home() {
                                   {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
                                   {imageFromWorkoutLoading ? "Analyzing..." : "Take picture"}
                                 </Button>
-                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={!workout.content.trim()}
-                                  title={t("main.exportPdfTitle")} onClick={() => downloadWorkoutPdf([workout])}>
-                                  <Printer className="size-4" aria-hidden />{t("main.exportPdf")}
-                                </Button>
                                 {imageFromWorkoutError && editingWorkoutIndex === originalIdx && (
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}
@@ -1182,18 +1184,23 @@ export default function Home() {
                           </CardContent>
                         ) : (
                           <>
-                            <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5">
-                              {workout.content.trim() && (
-                                <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
-                                  aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
-                                  <Printer className="size-4" />
-                                </Button>
+                            <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+                              <div className="flex items-center gap-0.5">
+                                {workout.content.trim() && (
+                                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
+                                    aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
+                                    <Printer className="size-4" />
+                                  </Button>
+                                )}
+                                <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => startEditingWorkout(originalIdx)} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                              </div>
+                              {assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx))) && (
+                                <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx)))}</p>
                               )}
-                              <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => startEditingWorkout(originalIdx)} aria-label="Edit workout"><Pencil className="size-4" /></Button>
                             </div>
                             <CardContent className={`pl-4 py-0 ${workout.content.trim() ? "pr-[4.5rem]" : "pr-12"}`}>
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={coachWorkouts.length > 1} assigneeLabel={label}
-                                assigneeNames={assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx)))}
+                                assigneeNames={undefined}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly t={t} />
                             </CardContent>
                           </>
