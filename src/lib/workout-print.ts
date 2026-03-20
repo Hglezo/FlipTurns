@@ -155,7 +155,7 @@ export function downloadWorkoutsPdf(options: {
 
     doc.setTextColor(...META_RGB);
     if (s.categoryPoolLine.trim()) writeWrapped(s.categoryPoolLine.trim(), PDF_SIZES.meta, "helvetica", "normal", PDF_SIZES.metaLeading);
-    if (s.assignedLine?.trim()) writeWrapped(s.assignedLine.trim(), PDF_SIZES.meta, "helvetica", "normal", PDF_SIZES.metaLeading, "right");
+    if (s.assignedLine?.trim()) writeWrapped(s.assignedLine.trim(), PDF_SIZES.meta, "helvetica", "normal", PDF_SIZES.metaLeading);
     doc.setTextColor(0, 0, 0);
     y += 5;
 
