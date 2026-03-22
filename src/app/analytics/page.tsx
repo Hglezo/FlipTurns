@@ -172,6 +172,18 @@ function VolumeChart({
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: any) => `${(Number(v) / 1000).toFixed(1)}k`} />
           <Tooltip
+            contentStyle={{
+              backgroundColor: "var(--popover)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+              color: "var(--popover-foreground)",
+            }}
+            labelStyle={{
+              color: "var(--foreground)",
+              fontWeight: 600,
+              marginBottom: 6,
+            }}
+            itemStyle={{ color: "var(--popover-foreground)" }}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             formatter={(v: any) => [`${Number(v ?? 0).toLocaleString()} m`, t("settings.meters")]}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

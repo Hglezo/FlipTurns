@@ -42,6 +42,41 @@ const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-
 const badgeClassMuted = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground max-md:text-[10px] max-md:px-1.5";
 const WORKOUT_SELECT = "id, date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_at, updated_at, created_by";
 
+/**
+ * Same horizontal bleed as analysis: CardContent is `pl-4` plus larger `pr-*` for icons.
+ * Must not combine with `w-full` on the same node — tailwind-merge drops one of the widths.
+ */
+function swimmerAggregatedNamesRowClass(swimBrowsePr: string): string | undefined {
+  if (swimBrowsePr === "pr-20") return "w-[calc(100%+4rem)] max-w-none";
+  if (swimBrowsePr === "pr-12") return "w-[calc(100%+2rem)] max-w-none";
+  return undefined;
+}
+
+/**
+ * Reclaim extra right padding so full-width blocks (e.g. analysis) align with ~1rem inset from the card edge,
+ * matching the left padding from `pl-4`.
+ */
+function swimmerAnalysisBleedClass(swimBrowsePr: string): string | undefined {
+  if (swimBrowsePr === "pr-20") return "w-[calc(100%+4rem)] max-w-none";
+  if (swimBrowsePr === "pr-12") return "w-[calc(100%+2rem)] max-w-none";
+  return undefined;
+}
+
+function coachAnalysisBleedClass(coachReadPr: string): string | undefined {
+  switch (coachReadPr) {
+    case "pr-[4.75rem]":
+      return "w-[calc(100%+3.75rem)] max-w-none";
+    case "pr-20":
+      return "w-[calc(100%+4rem)] max-w-none";
+    case "pr-[4.5rem]":
+      return "w-[calc(100%+3.5rem)] max-w-none";
+    case "pr-12":
+      return "w-[calc(100%+2rem)] max-w-none";
+    default:
+      return undefined;
+  }
+}
+
 function workoutListKey(workout: Workout, index: number): string {
   return workout.id ? String(workout.id) : `idx-${index}`;
 }
@@ -52,10 +87,30 @@ function buildSwimmerDayCacheKey(dateKey: string, selectedViewSwimmerId: string 
   return `${dateKey}:${selectedViewSwimmerId ?? userId}`;
 }
 
+/** Collapsed week/month day line: “Name: AM - Aerobic” (assignee/group, timing, type of work). */
+function weekDayCollapsedPreviewLabel(
+  w: Workout,
+  swimmers: SwimmerProfile[],
+  previewDefault: string | null | undefined,
+  t: (key: import("@/lib/i18n").TranslationKey) => string,
+): string {
+  const raw = dayPreviewLabel(w, swimmers, previewDefault ?? undefined);
+  const parts = raw.split(" - ");
+  const assignee = parts.length > 1 ? parts[0] : null;
+  const category = parts.length > 1 ? parts[1] : parts[0];
+  const translatedAssignee = assignee && GROUP_KEYS[assignee as keyof typeof GROUP_KEYS] ? t(GROUP_KEYS[assignee as keyof typeof GROUP_KEYS]) : assignee;
+  const translatedCategory = getCategoryLabel(category === "Workout" ? "" : category, t) || t("category.workout");
+  const sessionTrim = w.session?.trim();
+  const sessionSuffix =
+    sessionTrim === "AM" ? t("session.am") : sessionTrim === "PM" ? t("session.pm") : t("main.anytime");
+  if (assignee) return `${translatedAssignee}: ${sessionSuffix} - ${translatedCategory}`;
+  return `${sessionSuffix} - ${translatedCategory}`;
+}
+
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
   assigneeLabel, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
-  className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner, onExpandPreview,
+  className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner, onExpandPreview, namesRowClassName, analysisBleedClassName,
 }: {
   workout: Workout; dateKey: string; showLabel: boolean; feedbackRefreshKey: number;
   onFeedbackChange?: () => void; assigneeLabel?: string | null; assigneeNames?: string | null;
@@ -70,6 +125,10 @@ function WorkoutBlock({
   };
   /** Day view collapsed preview: tap to expand like the chevron */
   onExpandPreview?: () => void;
+  /** Extra classes on the Assigned to / Teammates row (e.g. offset when card has wider right padding for header icons). */
+  namesRowClassName?: string;
+  /** Widen analysis to the card’s symmetric horizontal inset when CardContent uses extra `pr-*` for icons. */
+  analysisBleedClassName?: string;
   t: (key: import("@/lib/i18n").TranslationKey) => string;
 }) {
   const { role: viewerProfileRole } = useAuth();
@@ -105,7 +164,7 @@ function WorkoutBlock({
         ? `${t("main.teammates")}: ${teammateNamesStr}`
         : (assigneeNamesStr && `${t("main.assignedTo")} ${assigneeNamesStr}`));
   return (
-    <div className={compact ? "space-y-2" : "space-y-4"}>
+    <div className={cn(compact ? "space-y-2" : "space-y-4", "w-full min-w-0")}>
       <div
         className={cn(
           "flex w-full min-w-0 flex-nowrap items-center gap-1.5 max-md:gap-1",
@@ -144,8 +203,13 @@ function WorkoutBlock({
         </div>
       )}
       {namesLine && (
-        <div className="mb-2 flex w-full min-w-0 justify-end">
-          <p className="max-w-full text-right text-xs text-muted-foreground break-words">{namesLine}</p>
+        <div
+          className={cn(
+            "mb-2 flex min-w-0 justify-end",
+            namesRowClassName ?? "w-full",
+          )}
+        >
+          <p className="min-w-0 max-w-full flex-1 text-right text-xs text-muted-foreground break-words">{namesLine}</p>
         </div>
       )}
       {contentDisplay === "preview" ? (
@@ -184,7 +248,7 @@ function WorkoutBlock({
       )}
       {contentDisplay === "full" && (
         <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id} poolSize={workout.pool_size} refreshKey={feedbackRefreshKey}
-          onFeedbackChange={onFeedbackChange} className={className} viewerRole={feedbackViewerRole} />
+          onFeedbackChange={onFeedbackChange} className={cn(className, analysisBleedClassName)} viewerRole={feedbackViewerRole} />
       )}
     </div>
   );
@@ -212,7 +276,7 @@ function ExpandableDay({
         {isExpanded ? <ChevronUp className="size-3.5 shrink-0 text-muted-foreground ml-1" /> : <ChevronDown className="size-3.5 shrink-0 text-muted-foreground ml-1" />}
       </button>
       {isExpanded && (
-        <div className="animate-in slide-in-from-top-2 border-t px-2 py-1.5 duration-200 space-y-1.5">
+        <div className="animate-in slide-in-from-top-2 border-t px-2 py-2 duration-200 space-y-3">
           {renderWorkouts()}
           {actions}
         </div>
@@ -977,7 +1041,7 @@ function HomePage() {
   const workoutsForRange = viewMode === "week" ? weekWorkouts : monthWorkouts;
   const previewDefault = getPreviewDefault();
 
-  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; onExpandPreview?: () => void; aggregatedPdfBelowBanner?: { show: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
+  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; onExpandPreview?: () => void; namesRowClassName?: string; analysisBleedClassName?: string; aggregatedPdfBelowBanner?: { show: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
     const rawLabel = assignmentLabel(workout, swimmers);
     const label = rawLabel && GROUP_KEYS[rawLabel] ? t(GROUP_KEYS[rawLabel]) : rawLabel;
     const viewerInWorkout = user?.id ? isViewerInWorkout(workout, user.id, swimmers) : false;
@@ -999,7 +1063,7 @@ function HomePage() {
         assigneeNames={assigneeNames}
         teammateNames={teammateNamesProp}
         contentDisplay={opts.contentDisplay ?? "full"} aggregatedPdfBelowBanner={opts.aggregatedPdfBelowBanner}
-        onExpandPreview={opts.onExpandPreview} t={t} />
+        onExpandPreview={opts.onExpandPreview} namesRowClassName={opts.namesRowClassName} analysisBleedClassName={opts.analysisBleedClassName} t={t} />
     );
   };
 
@@ -1018,19 +1082,18 @@ function HomePage() {
       return (
         <ExpandableDay key={day.toISOString()} day={day} dayWorkouts={dayWorkouts}
           isExpanded={expandedDayKey === dayKey} onToggle={() => { setExpandedDayKey(expandedDayKey === dayKey ? null : dayKey); setSelectedDate(day); }}
-          previewLabel={(w) => {
-            const raw = dayPreviewLabel(w, swimmers, previewDefault);
-            const parts = raw.split(" - ");
-            const assignee = parts.length > 1 ? parts[0] : null;
-            const category = parts.length > 1 ? parts[1] : parts[0];
-            const translatedAssignee = assignee && GROUP_KEYS[assignee] ? t(GROUP_KEYS[assignee]) : assignee;
-            const translatedCategory = getCategoryLabel(category === "Workout" ? "" : category, t) || t("category.workout");
-            return assignee ? `${translatedAssignee} - ${translatedCategory}` : translatedCategory;
-          }}
+          previewLabel={(w) => weekDayCollapsedPreviewLabel(w, swimmers, previewDefault, t)}
           t={t} formatDate={formatDate}
-          renderWorkouts={() => dayWorkouts.length > 0 ? dayWorkouts.map((w) => {
+          renderWorkouts={() => dayWorkouts.length > 0 ? dayWorkouts.map((w, wi) => {
             const excludeIds = isCoach ? [...new Set(dayWorkouts.filter((x) => x.id !== w.id && getTimeframe(x) === getTimeframe(w)).flatMap((x) => x.assigned_to && !x.assigned_to_group ? [x.assigned_to] : (x.assignee_ids ?? [])))] : undefined;
-            return renderWorkoutBlock(w, dayKey, { readOnly: isCoach, compact: true, showLabel: dayWorkouts.length > 1, excludeIds });
+            const workoutKey = w.id || `${dayKey}-w-${wi}`;
+            return (
+              <Card key={workoutKey} className="gap-0 rounded-lg py-3 shadow-sm">
+                <CardContent className="px-3 py-0">
+                  {renderWorkoutBlock(w, dayKey, { readOnly: isCoach, compact: true, showLabel: dayWorkouts.length > 1, excludeIds })}
+                </CardContent>
+              </Card>
+            );
           }) : <p className="text-xs text-muted-foreground">{t("main.noWorkout")}</p>}
           actions={(isCoach || isSwimmerOwnView) && expandedDayKey === dayKey ? (
             dayWorkouts.length > 0
@@ -1086,19 +1149,26 @@ function HomePage() {
                         <p className="mb-0.5 text-xs font-medium text-muted-foreground">{formatDate(day, "dateBar")}</p>
                         {dayWorkouts.length > 0 ? (
                           <div className="space-y-0.5 font-sans text-xs text-muted-foreground">
-                            {dayWorkouts.map((w, wi) => <p key={wi}>{dayPreviewLabel(w, swimmers, previewDefault)}</p>)}
+                            {dayWorkouts.map((w, wi) => <p key={wi}>{weekDayCollapsedPreviewLabel(w, swimmers, previewDefault, t)}</p>)}
                           </div>
                         ) : <p className="text-xs text-muted-foreground">{t("main.noWorkout")}</p>}
                       </div>
                       {isDayExpanded ? <ChevronUp className="size-4 shrink-0 text-muted-foreground ml-2" /> : <ChevronDown className="size-4 shrink-0 text-muted-foreground ml-2" />}
                     </button>
                     {isDayExpanded && (
-                      <div className="animate-in slide-in-from-top-2 border-t px-2 py-1.5 duration-200 space-y-2">
+                      <div className="animate-in slide-in-from-top-2 border-t px-2 py-2 duration-200 space-y-3">
                         {dayWorkouts.length > 0 ? (
                           <>
-                            {dayWorkouts.map((w) => {
+                            {dayWorkouts.map((w, wi) => {
                               const excludeIds = isCoach ? [...new Set(dayWorkouts.filter((x) => x.id !== w.id && getTimeframe(x) === getTimeframe(w)).flatMap((x) => x.assigned_to && !x.assigned_to_group ? [x.assigned_to] : (x.assignee_ids ?? [])))] : undefined;
-                              return renderWorkoutBlock(w, dayKey, { readOnly: isCoach, compact: true, showLabel: dayWorkouts.length > 1, excludeIds });
+                              const workoutKey = w.id || `${dayKey}-w-${wi}`;
+                              return (
+                                <Card key={workoutKey} className="gap-0 rounded-lg py-3 shadow-sm">
+                                  <CardContent className="px-3 py-0">
+                                    {renderWorkoutBlock(w, dayKey, { readOnly: isCoach, compact: true, showLabel: dayWorkouts.length > 1, excludeIds })}
+                                  </CardContent>
+                                </Card>
+                              );
                             })}
                             {(isCoach || isSwimmerOwnView) && <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}><Pencil className="size-4" />{t("main.editDay")}</Button>}
                           </>
@@ -1309,6 +1379,8 @@ function HomePage() {
                               browseCollapsed && workout.content.trim()
                                 ? () => setAggregatedDayExpandedWorkoutKey(browseKey)
                                 : undefined,
+                            namesRowClassName: swimmerAggregatedNamesRowClass(swimBrowsePr),
+                            analysisBleedClassName: swimmerAnalysisBleedClass(swimBrowsePr),
                           })}
                         </CardContent>
                       </Card>
@@ -1717,6 +1789,7 @@ function HomePage() {
                                       }
                                     : undefined
                                 }
+                                analysisBleedClassName={coachAnalysisBleedClass(coachReadPr)}
                                 t={t} />
                             </CardContent>
                           </>

@@ -8,6 +8,7 @@ import { useTranslations } from "@/components/i18n-provider";
 import { getSetNameLabel, formatAnalysisDurationMinutes } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { Pencil, Trash2, MessageSquare } from "lucide-react";
 
 interface Feedback {
@@ -218,9 +219,9 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
   if (!hasAnalysis && !showFeedbackSection) return null;
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={cn("w-full min-w-0 space-y-4", className)}>
       {hasAnalysis && (
-        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+        <div className="w-full min-w-0 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t("feedback.volume")}
           </p>
@@ -250,7 +251,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
       {showFeedbackSection && (
         <div className="space-y-2">
         {(hasFeedback || !hasLoadedFeedback || readOnly) && (
-        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-3">
+        <div className="w-full min-w-0 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-3">
           {hasFeedback && <p className="text-xs font-semibold uppercase tracking-wide text-accent-blue">{t(viewerRole === "coach" ? "feedback.feedback" : "feedback.yourFeedback")}</p>}
           {hasFeedback ? (
             feedback!.map((fb) => (

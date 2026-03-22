@@ -91,12 +91,12 @@ export default function LoginPage() {
         </div>
 
         <Card>
-          <CardHeader className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 space-y-0 pb-4">
-            <div className="min-w-0" aria-hidden />
-            <CardTitle className="min-w-0 text-center">
+          <CardHeader className="flex flex-col items-center gap-3 space-y-0 pb-4 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-2">
+            <div className="hidden min-w-0 sm:block" aria-hidden />
+            <CardTitle className="min-w-0 max-w-full px-1 text-center leading-snug sm:px-0 sm:leading-none">
               {formMode === "signin" ? t("login.signIn") : t("login.createAccount")}
             </CardTitle>
-            <div className="flex min-w-0 items-center justify-end gap-0.5">
+            <div className="flex w-full min-w-0 shrink-0 items-center justify-center gap-0.5 sm:w-auto sm:justify-end">
               <ThemeToggle className="size-8 shrink-0" />
               <div
                 className="flex shrink-0 items-center justify-end gap-1.5"
