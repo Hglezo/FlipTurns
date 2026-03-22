@@ -80,6 +80,7 @@ const TRANSLATIONS_EN = {
   "main.next": "Next",
   "main.expandWorkout": "Expand workout",
   "main.collapseWorkout": "Collapse workout",
+  "main.seeMore": "See more",
 
   // Settings
   "settings.profile": "Profile",
@@ -358,6 +359,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "main.next": "Siguiente",
   "main.expandWorkout": "Desplegar entrenamiento",
   "main.collapseWorkout": "Contraer entrenamiento",
+  "main.seeMore": "Ver más",
 
   // Settings
   "settings.profile": "Perfil",

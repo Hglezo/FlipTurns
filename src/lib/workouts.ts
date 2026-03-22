@@ -153,10 +153,26 @@ export function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], ex
   return names.length ? names.join(", ") : "None";
 }
 
-export function teammateNames(workout: Workout, swimmers: SwimmerProfile[], currentUserId: string | undefined): string | null {
+/** True if the viewer is among this workout's assignees (individual, explicit ids, or group roster). */
+export function isViewerInWorkout(workout: Workout, viewerId: string | undefined, swimmers: SwimmerProfile[]): boolean {
+  if (!viewerId) return false;
+  if (workout.assigned_to === viewerId) return true;
+  if (workout.assignee_ids?.includes(viewerId)) return true;
+  if (workout.assigned_to_group) {
+    const ids = workout.assignee_ids?.length
+      ? workout.assignee_ids
+      : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+    return ids.includes(viewerId);
+  }
+  return false;
+}
+
+export function teammateNames(workout: Workout, swimmers: SwimmerProfile[], currentUserId: string | undefined, excludeUserIds?: string[]): string | null {
+  if (!currentUserId || !isViewerInWorkout(workout, currentUserId, swimmers)) return null;
   if (!workout.assigned_to_group) return null;
   const ids = workout.assignee_ids?.length ? workout.assignee_ids : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
-  const assignees = swimmers.filter((s) => ids.includes(s.id) && s.id !== currentUserId);
+  let assignees = swimmers.filter((s) => ids.includes(s.id) && s.id !== currentUserId);
+  if (excludeUserIds?.length) assignees = assignees.filter((s) => !excludeUserIds.includes(s.id));
   const names = assignees
     .map((s) => formatSwimmerDisplayName(s.full_name, swimmers) || s.id.slice(0, 8))
     .sort((a, b) => a.localeCompare(b));

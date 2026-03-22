@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, Suspense } from "react";
 import {
   format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -33,7 +33,7 @@ import { SWIMMER_GROUPS, ALL_GROUPS_ID, ALL_ID, ONLY_GROUPS_ID, WORKOUT_CATEGORI
 import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i18n";
 import {
   loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
-  assignmentLabel, assignedToNames, teammateNames, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
+  assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { cn } from "@/lib/utils";
@@ -46,10 +46,16 @@ function workoutListKey(workout: Workout, index: number): string {
   return workout.id ? String(workout.id) : `idx-${index}`;
 }
 
+function buildSwimmerDayCacheKey(dateKey: string, selectedViewSwimmerId: string | null, userId: string): string {
+  if (selectedViewSwimmerId === ALL_ID) return `${dateKey}:${ALL_ID}`;
+  if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) return `${dateKey}:${selectedViewSwimmerId}`;
+  return `${dateKey}:${selectedViewSwimmerId ?? userId}`;
+}
+
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
   assigneeLabel, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
-  className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner,
+  className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner, onExpandPreview,
 }: {
   workout: Workout; dateKey: string; showLabel: boolean; feedbackRefreshKey: number;
   onFeedbackChange?: () => void; assigneeLabel?: string | null; assigneeNames?: string | null;
@@ -62,12 +68,42 @@ function WorkoutBlock({
     exportTitle: string;
     exportAria: string;
   };
+  /** Day view collapsed preview: tap to expand like the chevron */
+  onExpandPreview?: () => void;
   t: (key: import("@/lib/i18n").TranslationKey) => string;
 }) {
   const { role: viewerProfileRole } = useAuth();
   const feedbackViewerRole = viewerProfileRole === "coach" ? "coach" : "swimmer";
+  const previewBodyRef = useRef<HTMLDivElement>(null);
+  const [previewTruncated, setPreviewTruncated] = useState(false);
   const sessionLabel = workout.session?.trim() === "AM" || workout.session?.trim() === "PM" ? workout.session.trim() : t("main.anytime");
-  const namesLine = readOnly ? assigneeNamesStr && `${t("main.assignedTo")} ${assigneeNamesStr}` : teammateNamesStr != null && `${t("main.teammates")}: ${teammateNamesStr}`;
+
+  const measurePreviewTruncation = useCallback(() => {
+    const el = previewBodyRef.current;
+    if (!el || contentDisplay !== "preview") {
+      setPreviewTruncated(false);
+      return;
+    }
+    setPreviewTruncated(el.scrollHeight > el.clientHeight + 1);
+  }, [contentDisplay, workout.content, compact]);
+
+  useLayoutEffect(() => {
+    measurePreviewTruncation();
+  }, [measurePreviewTruncation]);
+
+  useEffect(() => {
+    if (contentDisplay !== "preview") return;
+    const el = previewBodyRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measurePreviewTruncation());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [contentDisplay, measurePreviewTruncation]);
+  const namesLine = readOnly
+    ? (assigneeNamesStr && `${t("main.assignedTo")} ${assigneeNamesStr}`)
+    : (teammateNamesStr != null
+        ? `${t("main.teammates")}: ${teammateNamesStr}`
+        : (assigneeNamesStr && `${t("main.assignedTo")} ${assigneeNamesStr}`));
   return (
     <div className={compact ? "space-y-2" : "space-y-4"}>
       <div
@@ -112,15 +148,40 @@ function WorkoutBlock({
           <p className="max-w-full text-right text-xs text-muted-foreground break-words">{namesLine}</p>
         </div>
       )}
-      <div
-        className={cn(
-          "whitespace-pre-wrap font-sans leading-relaxed text-foreground/90",
-          compact ? "text-[14px]" : "text-[15px]",
-          contentDisplay === "preview" && "line-clamp-4 max-h-[6.25rem] overflow-hidden",
-        )}
-      >
-        {workout.content}
-      </div>
+      {contentDisplay === "preview" ? (
+        <div className="flex min-h-0 w-full flex-col gap-0.5">
+          <div
+            ref={previewBodyRef}
+            className={cn(
+              "w-full overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-sans leading-relaxed text-foreground/90",
+              compact ? "max-h-[4.27rem] text-[14px]" : "max-h-[4.57rem] text-[15px]",
+            )}
+          >
+            {workout.content}
+          </div>
+          {previewTruncated && workout.content.trim() && onExpandPreview && (
+            <button
+              type="button"
+              className="shrink-0 text-left text-[11px] font-normal leading-snug text-muted-foreground/85 hover:text-muted-foreground hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onExpandPreview();
+              }}
+            >
+              {t("main.seeMore")}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div
+          className={cn(
+            "whitespace-pre-wrap font-sans leading-relaxed text-foreground/90",
+            compact ? "text-[14px]" : "text-[15px]",
+          )}
+        >
+          {workout.content}
+        </div>
+      )}
       {contentDisplay === "full" && (
         <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id} poolSize={workout.pool_size} refreshKey={feedbackRefreshKey}
           onFeedbackChange={onFeedbackChange} className={className} viewerRole={feedbackViewerRole} />
@@ -237,6 +298,13 @@ function HomePage() {
   const addWorkoutForDateRef = useRef<string | null>(null);
   const imageFromWorkoutIdxRef = useRef<number | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const swimmerDayCacheRef = useRef<Map<string, Workout[]>>(new Map());
+  /** Cleared when leaving week/month so returning refetches; avoids refetch when only `selectedDate` moves inside same range. */
+  const rangeDataKeyRef = useRef<string>("");
+  const weekWorkoutsRef = useRef<Workout[]>([]);
+  const monthWorkoutsRef = useRef<Workout[]>([]);
+  weekWorkoutsRef.current = weekWorkouts;
+  monthWorkoutsRef.current = monthWorkouts;
 
   const dateKey = format(selectedDate, "yyyy-MM-dd");
   const isCoach = role === "coach";
@@ -300,6 +368,10 @@ function HomePage() {
   }, [dateKey, selectedCoachSwimmerId, selectedViewSwimmerId, viewMode]);
 
   useEffect(() => {
+    if (viewMode === "day") rangeDataKeyRef.current = "";
+  }, [viewMode]);
+
+  useEffect(() => {
     if (!role) return;
     supabase.from("profiles").select("id, full_name, swimmer_group").eq("role", "swimmer").order("full_name")
       .then(({ data, error }) => {
@@ -313,28 +385,18 @@ function HomePage() {
   useEffect(() => {
     if (role !== "swimmer" || viewMode !== "day" || !user) return;
     const userId = user.id;
-    (async () => {
-      setSwimmerLoading(true);
-      const isAll = selectedViewSwimmerId === ALL_ID;
-      const isOnlyGroups = selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID;
-      const filterId = isAll || isOnlyGroups ? selectedViewSwimmerId : (selectedViewSwimmerId ?? userId);
-      const filterGroup = filterId === userId ? swimmerGroup : (filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID && filterId !== ALL_GROUPS_ID) ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null : null;
-      let query = supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
-      if (isOnlyGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-      else if (!isAll && filterId) {
-        if (filterId === userId) {
-          query = query;
-        } else {
-          query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
-        }
-      }
-      const { data } = await query;
-      let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[];
-      rows = await loadAndMergeWorkouts(rows, swimmers);
-      const me = filterId ?? userId;
-      rows = filterWorkoutsForSwimmer(rows, me, filterGroup ?? null);
+    const isAll = selectedViewSwimmerId === ALL_ID;
+    const isOnlyGroups = selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID;
+    const filterId = isAll || isOnlyGroups ? selectedViewSwimmerId : (selectedViewSwimmerId ?? userId);
+    const filterGroup = filterId === userId ? swimmerGroup : (filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID && filterId !== ALL_GROUPS_ID) ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null : null;
+    const me = filterId ?? userId;
+    const isMyView = !isAll && !isOnlyGroups && filterId === userId;
+    const cacheKey = buildSwimmerDayCacheKey(dateKey, selectedViewSwimmerId, userId);
+    const skipCache = addWorkoutForDateRef.current === dateKey;
+    const cached = !skipCache ? swimmerDayCacheRef.current.get(cacheKey) : undefined;
+
+    const applyRows = (rows: Workout[]) => {
       setViewWorkouts(rows);
-      const isMyView = !isAll && !isOnlyGroups && filterId === userId;
       if (isMyView) {
         const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
         if (!isAddingWorkout) { setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null); }
@@ -348,15 +410,65 @@ function HomePage() {
           setSwimmerWorkouts(sorted);
         }
       }
+    };
+
+    let cancelled = false;
+
+    if (cached) {
+      applyRows(cached);
       setSwimmerLoading(false);
+    } else {
+      const wk = weekWorkoutsRef.current;
+      const mo = monthWorkoutsRef.current;
+      const inWeek = wk.some((w) => normDate(w.date) === dateKey);
+      const primeSource = inWeek ? wk : mo;
+      const primeRaw = primeSource.filter((w) => normDate(w.date) === dateKey);
+      if (!skipCache && primeRaw.length > 0) {
+        const filtered = filterWorkoutsForSwimmer(primeRaw, me, filterGroup ?? null);
+        applyRows(filtered);
+        setSwimmerLoading(false);
+      } else {
+        setViewWorkouts([]);
+        if (isMyView && !skipCache) setSwimmerWorkouts([]);
+        setSwimmerLoading(true);
+      }
+    }
+
+    (async () => {
+      let query = supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
+      if (isOnlyGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
+      else if (!isAll && filterId) {
+        if (filterId === userId) {
+          query = query;
+        } else {
+          query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
+        }
+      }
+      const { data } = await query;
+      if (cancelled) return;
+      let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[];
+      rows = await loadAndMergeWorkouts(rows, swimmers);
+      if (cancelled) return;
+      rows = filterWorkoutsForSwimmer(rows, me, filterGroup ?? null);
+      swimmerDayCacheRef.current.set(cacheKey, rows);
+      applyRows(rows);
+      if (!cancelled) setSwimmerLoading(false);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [dateKey, role, viewMode, user?.id, selectedViewSwimmerId, swimmerGroup, swimmers]);
 
   // Coach day fetch
   useEffect(() => {
     if (!dateKey || !isCoach || viewMode !== "day" || !user) return;
     const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
-    if (!isAddingWorkout) { setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null); }
+    if (!isAddingWorkout) {
+      setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null);
+      setCoachWorkouts([]);
+    }
+    let cancelled = false;
     (async () => {
       setCoachLoading(true);
       const { data, error } = await supabase.rpc("get_workouts_for_date", { p_date: dateKey });
@@ -365,11 +477,12 @@ function HomePage() {
         const { data: fallback } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
         rows = await loadAndMergeWorkouts((fallback ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[], swimmers);
       } else if (error) {
-        setCoachLoading(false);
+        if (!cancelled) setCoachLoading(false);
         return;
       } else {
         rows = await loadAndMergeWorkouts((data ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey })), swimmers);
       }
+      if (cancelled) return;
       if (selectedCoachSwimmerId === ONLY_GROUPS_ID) {
         rows = rows.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
       } else if (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID) {
@@ -385,6 +498,7 @@ function HomePage() {
       }
       const sortedRows = sortCoachWorkouts(rows, swimmers);
       const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
+      if (cancelled) return;
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
         const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null };
@@ -393,50 +507,93 @@ function HomePage() {
       } else {
         setCoachWorkouts(sortedRows);
       }
-      setCoachLoading(false);
+      if (!cancelled) setCoachLoading(false);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [dateKey, role, viewMode, user?.id, selectedCoachSwimmerId, swimmers]);
 
   // Week/month range fetch (shared for swimmer and coach)
   useEffect(() => {
-    if ((viewMode !== "week" && viewMode !== "month") || !user) return;
+    if ((viewMode !== "week" && viewMode !== "month") || !user) {
+      setRangeLoading(false);
+      return;
+    }
+
+    const rangeStart = viewMode === "week" ? startOfWeek(selectedDate, { weekStartsOn }) : startOfMonth(selectedDate);
+    const rangeEnd = viewMode === "week" ? endOfWeek(selectedDate, { weekStartsOn }) : endOfMonth(selectedDate);
+    const swimmerWeekSelfOnly = role === "swimmer" && viewMode === "week";
+    const swimmerFilterId = role === "swimmer" ? (swimmerWeekSelfOnly ? user.id : (selectedViewSwimmerId ?? user.id)) : null;
+    const filterId = role === "swimmer" ? swimmerFilterId : selectedCoachSwimmerId;
+    const filterGroup = role === "swimmer" && swimmerFilterId === user.id ? swimmerGroup
+      : filterId && filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID && filterId !== ALL_GROUPS_ID ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null : null;
+
+    const fetchKey = [
+      viewMode,
+      format(rangeStart, "yyyy-MM-dd"),
+      format(rangeEnd, "yyyy-MM-dd"),
+      user.id,
+      role,
+      selectedViewSwimmerId ?? "",
+      selectedCoachSwimmerId ?? "",
+      swimmerGroup ?? "",
+      swimmers.length,
+      weekStartsOn,
+      swimmerWeekSelfOnly ? "1" : "0",
+    ].join("|");
+
+    if (fetchKey === rangeDataKeyRef.current) {
+      setRangeLoading(false);
+      return;
+    }
+
+    const modeAtStart = viewMode;
+    let cancelled = false;
     (async () => {
       setRangeLoading(true);
-      const rangeStart = viewMode === "week" ? startOfWeek(selectedDate, { weekStartsOn }) : startOfMonth(selectedDate);
-      const rangeEnd = viewMode === "week" ? endOfWeek(selectedDate, { weekStartsOn }) : endOfMonth(selectedDate);
-      let query = supabase.from("workouts").select("*")
-        .gte("date", format(rangeStart, "yyyy-MM-dd")).lte("date", format(rangeEnd, "yyyy-MM-dd"));
-      if (viewMode === "week") query = query.order("date", { ascending: true });
+      try {
+        let query = supabase.from("workouts").select("*")
+          .gte("date", format(rangeStart, "yyyy-MM-dd")).lte("date", format(rangeEnd, "yyyy-MM-dd"));
+        if (modeAtStart === "week") query = query.order("date", { ascending: true });
 
-      const swimmerFilterId = role === "swimmer" ? (selectedViewSwimmerId ?? user.id) : null;
-      const filterId = role === "swimmer" ? swimmerFilterId : selectedCoachSwimmerId;
-      const filterGroup = role === "swimmer" && swimmerFilterId === user.id ? swimmerGroup
-        : filterId && filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID && filterId !== ALL_GROUPS_ID ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null : null;
-
-      if (role === "swimmer" && swimmerFilterId) {
-        if (selectedViewSwimmerId === ALL_ID) { /* no filter - show all */ }
-        else if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-        else query = filterGroup ? query.or(orAssignFilter(swimmerFilterId, filterGroup)) : query.eq("assigned_to", swimmerFilterId);
-      }
-      if (isCoach && selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID) {
-        if (selectedCoachSwimmerId === ONLY_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-        else {
-          const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
-          query = coachGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+        if (role === "swimmer" && swimmerFilterId) {
+          if (swimmerWeekSelfOnly) {
+            query = filterGroup ? query.or(orAssignFilter(swimmerFilterId, filterGroup)) : query.eq("assigned_to", swimmerFilterId);
+          } else if (selectedViewSwimmerId === ALL_ID) { /* no filter - show all */ }
+          else if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
+          else query = filterGroup ? query.or(orAssignFilter(swimmerFilterId, filterGroup)) : query.eq("assigned_to", swimmerFilterId);
         }
-      }
+        if (isCoach && selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID) {
+          if (selectedCoachSwimmerId === ONLY_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
+          else {
+            const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
+            query = coachGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+          }
+        }
 
-      const { data } = await query;
-      let rows = await loadAndMergeWorkouts((data ?? []) as Workout[], swimmers);
-      if (role === "swimmer" && swimmerFilterId) {
-        const sf = selectedViewSwimmerId ?? user.id;
-        rows = filterWorkoutsForSwimmer(rows, sf, filterGroup ?? null);
-      }
+        const { data } = await query;
+        if (cancelled) return;
+        let rows = await loadAndMergeWorkouts((data ?? []) as Workout[], swimmers);
+        if (cancelled) return;
+        if (role === "swimmer" && swimmerFilterId) {
+          const sf = swimmerWeekSelfOnly ? user.id : (selectedViewSwimmerId ?? user.id);
+          const fg = swimmerWeekSelfOnly ? (swimmerGroup ?? null) : (filterGroup ?? null);
+          rows = filterWorkoutsForSwimmer(rows, sf, fg);
+        }
 
-      if (viewMode === "week") setWeekWorkouts(rows);
-      else setMonthWorkouts(rows);
-      setRangeLoading(false);
+        if (cancelled) return;
+        if (modeAtStart === "week") setWeekWorkouts(rows);
+        else setMonthWorkouts(rows);
+        rangeDataKeyRef.current = fetchKey;
+      } finally {
+        if (!cancelled) setRangeLoading(false);
+      }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedDate, viewMode, weekStartsOn, user?.id, role, selectedViewSwimmerId, selectedCoachSwimmerId, swimmerGroup, swimmers]);
 
   // Coach CRUD operations
@@ -671,6 +828,9 @@ function HomePage() {
     const { data } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
     let rows = await loadAndMergeWorkouts((data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[], swimmers);
     rows = filterWorkoutsForSwimmer(rows, user?.id ?? "", swimmerGroup);
+    if (user?.id) {
+      swimmerDayCacheRef.current.set(buildSwimmerDayCacheKey(dateKey, selectedViewSwimmerId, user.id), rows);
+    }
     setSwimmerWorkouts(sortCoachWorkouts(rows, swimmers));
     setViewWorkouts(rows);
   }
@@ -817,21 +977,40 @@ function HomePage() {
   const workoutsForRange = viewMode === "week" ? weekWorkouts : monthWorkouts;
   const previewDefault = getPreviewDefault();
 
-  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; aggregatedPdfBelowBanner?: { show: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
+  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; onExpandPreview?: () => void; aggregatedPdfBelowBanner?: { show: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
     const rawLabel = assignmentLabel(workout, swimmers);
     const label = rawLabel && GROUP_KEYS[rawLabel] ? t(GROUP_KEYS[rawLabel]) : rawLabel;
+    const viewerInWorkout = user?.id ? isViewerInWorkout(workout, user.id, swimmers) : false;
+    /** Teammates: only in own schedule view; coaches and every other swimmer context use Assigned to. */
+    const showTeammatesForSwimmer = !opts.readOnly && isSwimmerOwnView && viewerInWorkout;
+    const assigneeNames =
+      opts.namesInHeader && opts.readOnly
+        ? undefined
+        : opts.readOnly
+          ? assignedToNames(workout, swimmers, opts.excludeIds)
+          : !showTeammatesForSwimmer
+            ? assignedToNames(workout, swimmers, opts.excludeIds)
+            : undefined;
+    const teammateNamesProp = showTeammatesForSwimmer ? teammateNames(workout, swimmers, user?.id, opts.excludeIds) : undefined;
     return (
       <WorkoutBlock key={workout.id || dayKey} workout={workout} dateKey={dayKey} showLabel={opts.showLabel ?? true}
         feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
         className={opts.compact ? "mt-1" : "mt-4"} compact={opts.compact} readOnly={opts.readOnly} assigneeLabel={label}
-        assigneeNames={opts.namesInHeader ? undefined : (opts.readOnly ? assignedToNames(workout, swimmers, opts.excludeIds) : undefined)}
-        teammateNames={!opts.readOnly ? teammateNames(workout, swimmers, user?.id) : undefined}
-        contentDisplay={opts.contentDisplay ?? "full"} aggregatedPdfBelowBanner={opts.aggregatedPdfBelowBanner} t={t} />
+        assigneeNames={assigneeNames}
+        teammateNames={teammateNamesProp}
+        contentDisplay={opts.contentDisplay ?? "full"} aggregatedPdfBelowBanner={opts.aggregatedPdfBelowBanner}
+        onExpandPreview={opts.onExpandPreview} t={t} />
     );
   };
 
   const renderWeekView = () => {
-    if (rangeLoading) return <div className="flex flex-1 items-center justify-center py-8"><p className="text-muted-foreground">{t("common.loading")}</p></div>;
+    if (rangeLoading && weekWorkouts.length === 0) {
+      return (
+        <div className="flex flex-1 items-center justify-center py-10" aria-busy="true">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
+        </div>
+      );
+    }
     const days = eachDayOfInterval({ start: startOfWeek(selectedDate, { weekStartsOn }), end: endOfWeek(selectedDate, { weekStartsOn }) });
     return days.map((day) => {
       const dayKey = format(day, "yyyy-MM-dd");
@@ -864,7 +1043,13 @@ function HomePage() {
   };
 
   const renderMonthView = () => {
-    if (rangeLoading) return <p className="text-muted-foreground">{t("common.loading")}</p>;
+    if (rangeLoading && monthWorkouts.length === 0) {
+      return (
+        <div className="flex justify-center py-10" aria-busy="true">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
+        </div>
+      );
+    }
     const monthStart = startOfMonth(selectedDate);
     const monthEnd = endOfMonth(selectedDate);
     const weeks: { start: Date; end: Date; key: string }[] = [];
@@ -1035,15 +1220,18 @@ function HomePage() {
         {/* Day view - swimmer */}
         {viewMode === "day" && !isCoach && !isSwimmerMyView && (
           <div className="flex flex-1 flex-col">
-            {swimmerLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">{t("common.loading")}</p></div>
-              : viewWorkouts.length > 0 ? (
+            {swimmerLoading && viewWorkouts.length === 0 ? (
+              <div className="flex justify-center py-10" aria-busy="true">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
+              </div>
+            ) : viewWorkouts.length > 0 ? (
                 <div className="space-y-4">
                   {viewWorkouts.map((workout, i) => {
                     const browseKey = workoutListKey(workout, i);
                     const browseCollapsed = swimmerUsesWorkoutPreviews && aggregatedDayExpandedWorkoutKey !== browseKey;
                     const swimBrowsePr =
                       swimmerUsesWorkoutPreviews
-                        ? workout.content.trim() ? "pr-12" : "pr-4"
+                        ? workout.content.trim() ? "pr-20" : "pr-12"
                         : workout.content.trim() ? "pr-12" : "";
                     return (
                       <Card
@@ -1069,9 +1257,25 @@ function HomePage() {
                             : undefined
                         }
                       >
-                        <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
-                          <div className="flex shrink-0 justify-end gap-0.5">
-                            {swimmerUsesWorkoutPreviews ? (
+                        <div className="absolute right-2 top-2 z-10 flex shrink-0 justify-end gap-0.5">
+                          {swimmerUsesWorkoutPreviews ? (
+                            <>
+                              {workout.content.trim() && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 shrink-0"
+                                  title={t("main.exportPdfTitle")}
+                                  aria-label={t("main.exportPdf")}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    downloadWorkoutPdf([workout]);
+                                  }}
+                                >
+                                  <Printer className="size-4" />
+                                </Button>
+                              )}
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -1085,18 +1289,15 @@ function HomePage() {
                               >
                                 {browseCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
                               </Button>
-                            ) : (
-                              workout.content.trim() && (
-                                <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0"
-                                  title={t("main.exportPdfTitle")} aria-label={t("main.exportPdf")}
-                                  onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
-                                  <Printer className="size-4" />
-                                </Button>
-                              )
-                            )}
-                          </div>
-                          {assignedToNames(workout, swimmers) && (
-                            <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedToNames(workout, swimmers)}</p>
+                            </>
+                          ) : (
+                            workout.content.trim() && (
+                              <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0"
+                                title={t("main.exportPdfTitle")} aria-label={t("main.exportPdf")}
+                                onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
+                                <Printer className="size-4" />
+                              </Button>
+                            )
                           )}
                         </div>
                         <CardContent className={cn("px-4 py-0", swimBrowsePr)}>
@@ -1104,17 +1305,9 @@ function HomePage() {
                             compact: false,
                             namesInHeader: true,
                             contentDisplay: browseCollapsed ? "preview" : "full",
-                            aggregatedPdfBelowBanner:
-                              swimmerUsesWorkoutPreviews && workout.content.trim() && !browseCollapsed
-                                ? {
-                                    show: true,
-                                    onClick: (e) => {
-                                      e.stopPropagation();
-                                      downloadWorkoutPdf([workout]);
-                                    },
-                                    exportTitle: t("main.exportPdfTitle"),
-                                    exportAria: t("main.exportPdf"),
-                                  }
+                            onExpandPreview:
+                              browseCollapsed && workout.content.trim()
+                                ? () => setAggregatedDayExpandedWorkoutKey(browseKey)
                                 : undefined,
                           })}
                         </CardContent>
@@ -1131,7 +1324,11 @@ function HomePage() {
           <Card className="flex flex-1 flex-col py-4">
             <input ref={imageFileInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
             <CardContent className="flex flex-1 flex-col gap-4 px-4 py-0">
-              {swimmerLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">{t("common.loading")}</p></div> : (
+              {swimmerLoading && swimmerWorkouts.length === 0 ? (
+                <div className="flex justify-center py-10" aria-busy="true">
+                  <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
+                </div>
+              ) : (
                 <div className="flex flex-1 flex-col gap-4">
                   {swimmerWorkouts.length > 0 && swimmerWorkouts.map((workout) => {
                     const originalIdx = swimmerWorkouts.indexOf(workout);
@@ -1141,6 +1338,9 @@ function HomePage() {
                     const isEditing = swimmerEditingIndex === originalIdx && canSwimmerEdit;
                     const assigneeIds = workout.assignee_ids?.length ? workout.assignee_ids : (workout.assigned_to ? [workout.assigned_to] : []);
                     const conflictIds = swimmerIdsInTimeframeExcludingSwimmer(originalIdx);
+                    const viewerInWorkout = user?.id ? isViewerInWorkout(workout, user.id, swimmers) : false;
+                    const teammateLine = teammateNames(workout, swimmers, user?.id, Array.from(conflictIds));
+                    const assignedLine = !viewerInWorkout ? assignedToNames(workout, swimmers, Array.from(conflictIds)) : null;
                     const swimmerEditShowsFeedback = assigneeIds.every((id) => id === user?.id);
                     return (
                       <Card key={workout.id || `new-${originalIdx}`} className="relative py-4">
@@ -1256,8 +1456,11 @@ function HomePage() {
                                   </Button>
                                 )}
                               </div>
-                              {assignedToNames(workout, swimmers, Array.from(conflictIds)) && (
-                                <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedToNames(workout, swimmers, Array.from(conflictIds))}</p>
+                              {teammateLine != null && (
+                                <p className="text-xs text-muted-foreground text-right">{t("main.teammates")}: {teammateLine}</p>
+                              )}
+                              {teammateLine == null && assignedLine && (
+                                <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedLine}</p>
                               )}
                             </div>
                             <CardContent className={`pl-4 py-0 ${workout.content.trim() && canSwimmerEdit ? "pr-[4.5rem]" : workout.content.trim() || canSwimmerEdit ? "pr-12" : "pr-4"}`}>
@@ -1289,7 +1492,11 @@ function HomePage() {
           <Card className="flex flex-1 flex-col py-4">
             <input ref={imageFileInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
             <CardContent className="flex flex-1 flex-col gap-4 px-4 py-0">
-              {coachLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">{t("common.loading")}</p></div> : (
+              {coachLoading && coachWorkouts.length === 0 ? (
+                <div className="flex justify-center py-10" aria-busy="true">
+                  <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
+                </div>
+              ) : (
                 <div className="flex flex-1 flex-col gap-4">
                   {coachWorkouts.length > 0 && coachWorkouts.map((workout) => {
                     const originalIdx = coachWorkouts.indexOf(workout);
@@ -1492,6 +1699,11 @@ function HomePage() {
                                 assigneeNames={undefined}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly
                                 contentDisplay={coachCollapsed ? "preview" : "full"}
+                                onExpandPreview={
+                                  coachCollapsed && workout.content.trim()
+                                    ? () => setAggregatedDayExpandedWorkoutKey(workoutKey)
+                                    : undefined
+                                }
                                 aggregatedPdfBelowBanner={
                                   coachUsesWorkoutPreviews && workout.content.trim() && !coachCollapsed
                                     ? {
