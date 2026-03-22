@@ -36,9 +36,11 @@ interface WorkoutAnalysisProps {
   className?: string;
   viewerRole?: "coach" | "swimmer";
   onFeedbackChange?: () => void;
+  /** When true, only volume/duration analysis is shown (e.g. while editing a workout). */
+  hideFeedback?: boolean;
 }
 
-export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange }: WorkoutAnalysisProps) {
+export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange, hideFeedback = false }: WorkoutAnalysisProps) {
   const { user } = useAuth();
   const { t } = useTranslations();
   const readOnly = viewerRole === "coach";
@@ -61,6 +63,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
   const [userNames, setUserNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    if (hideFeedback) return;
     if (!date) return;
     if (!workoutId) {
       setFeedback([]);
@@ -96,7 +99,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
       } else setUserNames({});
     }
     fetchFeedback();
-  }, [date, workoutId, refreshKey, readOnly, user?.id]);
+  }, [date, workoutId, refreshKey, readOnly, user?.id, hideFeedback]);
 
   const startEdit = (fb: Feedback) => {
     setError(null);
@@ -187,7 +190,8 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
   const hasAnalysis = analysis.totalMeters > 0;
   const hasFeedback = feedback && feedback.length > 0;
   const hasLoadedFeedback = feedback !== null;
-  const showFeedbackSection = date && (hasFeedback || hasLoadedFeedback || !readOnly) && (!readOnly || !!workoutId);
+  const showFeedbackSection =
+    !hideFeedback && date && (hasFeedback || hasLoadedFeedback || !readOnly) && (!readOnly || !!workoutId);
 
   const unit = poolSize === "SCY" ? "yd" : "m";
 

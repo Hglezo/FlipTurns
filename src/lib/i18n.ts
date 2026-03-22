@@ -35,6 +35,8 @@ const TRANSLATIONS_EN = {
   "login.emailPlaceholder": "you@example.com",
   "login.password": "Password",
   "login.passwordPlaceholder": "••••••••",
+  "login.confirmPassword": "Confirm password",
+  "login.confirmPasswordPlaceholder": "••••••••",
   "login.iAmA": "I am a",
   "login.swimmer": "Swimmer",
   "login.coach": "Coach",
@@ -76,6 +78,8 @@ const TRANSLATIONS_EN = {
   "main.weekWorkoutsPlural": "workouts",
   "main.previous": "Previous",
   "main.next": "Next",
+  "main.expandWorkout": "Expand workout",
+  "main.collapseWorkout": "Collapse workout",
 
   // Settings
   "settings.profile": "Profile",
@@ -309,6 +313,8 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "login.emailPlaceholder": "tu@ejemplo.com",
   "login.password": "Contraseña",
   "login.passwordPlaceholder": "••••••••",
+  "login.confirmPassword": "Confirmar contraseña",
+  "login.confirmPasswordPlaceholder": "••••••••",
   "login.iAmA": "Soy",
   "login.swimmer": "Nadador/a",
   "login.coach": "Entrenador/a",
@@ -350,6 +356,8 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "main.weekWorkoutsPlural": "entrenamientos",
   "main.previous": "Anterior",
   "main.next": "Siguiente",
+  "main.expandWorkout": "Desplegar entrenamiento",
+  "main.collapseWorkout": "Contraer entrenamiento",
 
   // Settings
   "settings.profile": "Perfil",

@@ -36,48 +36,95 @@ import {
   assignmentLabel, assignedToNames, teammateNames, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
+import { cn } from "@/lib/utils";
 
-const badgeClass = "inline-flex items-center rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue";
-const badgeClassMuted = "inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground";
+const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
+const badgeClassMuted = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground max-md:text-[10px] max-md:px-1.5";
 const WORKOUT_SELECT = "id, date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_at, updated_at, created_by";
+
+function workoutListKey(workout: Workout, index: number): string {
+  return workout.id ? String(workout.id) : `idx-${index}`;
+}
 
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
   assigneeLabel, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
-  className = "mt-4", readOnly, compact, t,
+  className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner,
 }: {
   workout: Workout; dateKey: string; showLabel: boolean; feedbackRefreshKey: number;
   onFeedbackChange?: () => void; assigneeLabel?: string | null; assigneeNames?: string | null;
   teammateNames?: string | null; className?: string; readOnly?: boolean; compact?: boolean;
+  contentDisplay?: "full" | "preview";
+  /** PDF below chip row (after swap with collapse); collapse lives in card header */
+  aggregatedPdfBelowBanner?: {
+    show: boolean;
+    onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+    exportTitle: string;
+    exportAria: string;
+  };
   t: (key: import("@/lib/i18n").TranslationKey) => string;
 }) {
   const { role: viewerProfileRole } = useAuth();
   const feedbackViewerRole = viewerProfileRole === "coach" ? "coach" : "swimmer";
-  const hasAssignment = workout.assigned_to_group?.trim() || workout.assigned_to;
   const sessionLabel = workout.session?.trim() === "AM" || workout.session?.trim() === "PM" ? workout.session.trim() : t("main.anytime");
   const namesLine = readOnly ? assigneeNamesStr && `${t("main.assignedTo")} ${assigneeNamesStr}` : teammateNamesStr != null && `${t("main.teammates")}: ${teammateNamesStr}`;
   return (
     <div className={compact ? "space-y-2" : "space-y-4"}>
-      <div className="flex items-start justify-between gap-2">
-        <div className={`flex flex-wrap items-center gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:gap-1 max-md:pb-0.5 ${compact ? "mb-1" : "mb-2"}`}>
-          {assigneeLabel && <span className={`${badgeClass} max-md:shrink-0 max-md:text-[10px] max-md:px-1.5`}>{assigneeLabel}</span>}
-          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase max-md:shrink-0 max-md:text-[10px] max-md:px-1.5 ${
+      <div
+        className={cn(
+          "flex w-full min-w-0 flex-nowrap items-center gap-1.5 max-md:gap-1",
+          compact ? "mb-1" : "mb-2",
+        )}
+      >
+        {assigneeLabel && <span className={badgeClass}>{assigneeLabel}</span>}
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase max-md:shrink-0 max-md:px-1.5 max-md:text-[10px]",
             sessionLabel === "AM" ? "bg-amber-400/15 text-amber-600 dark:text-amber-400"
               : sessionLabel === "PM" ? "bg-indigo-400/15 text-indigo-600 dark:text-indigo-400"
-                : "bg-muted text-muted-foreground"
-          }`}>{sessionLabel}</span>
-        </div>
-        {(workout.workout_category?.trim() || workout.pool_size) && (
-          <div className={`flex flex-wrap justify-end gap-1.5 max-md:flex-nowrap max-md:overflow-x-auto max-md:gap-1 ${compact ? "mb-1" : "mb-2"}`}>
-            {workout.pool_size && <span className={`${badgeClassMuted} max-md:shrink-0 max-md:text-[10px] max-md:px-1.5`}>{getPoolLabel(workout.pool_size, t)}</span>}
-            {workout.workout_category?.trim() && <span className={`${badgeClassMuted} max-md:shrink-0 max-md:text-[10px] max-md:px-1.5`}>{getCategoryLabel(workout.workout_category.trim(), t)}</span>}
-          </div>
+                : "bg-muted text-muted-foreground",
+          )}
+        >
+          {sessionLabel}
+        </span>
+        {workout.pool_size && <span className={badgeClassMuted}>{getPoolLabel(workout.pool_size, t)}</span>}
+        {workout.workout_category?.trim() && (
+          <span className={badgeClassMuted}>{getCategoryLabel(workout.workout_category.trim(), t)}</span>
         )}
       </div>
-      {namesLine && <div className="flex w-full justify-end -mt-1 mb-2"><p className="text-xs text-muted-foreground text-right">{namesLine}</p></div>}
-      <pre className={`whitespace-pre-wrap font-sans leading-relaxed text-foreground/90 ${compact ? "text-[14px]" : "text-[15px]"}`}>{workout.content}</pre>
-      <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id} poolSize={workout.pool_size} refreshKey={feedbackRefreshKey}
-        onFeedbackChange={onFeedbackChange} className={className} viewerRole={feedbackViewerRole} />
+      {aggregatedPdfBelowBanner?.show && (
+        <div className="-mt-1 mb-2 flex justify-start">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 -ml-2"
+            title={aggregatedPdfBelowBanner.exportTitle}
+            aria-label={aggregatedPdfBelowBanner.exportAria}
+            onClick={aggregatedPdfBelowBanner.onClick}
+          >
+            <Printer className="size-4" />
+          </Button>
+        </div>
+      )}
+      {namesLine && (
+        <div className="mb-2 flex w-full min-w-0 justify-end">
+          <p className="max-w-full text-right text-xs text-muted-foreground break-words">{namesLine}</p>
+        </div>
+      )}
+      <div
+        className={cn(
+          "whitespace-pre-wrap font-sans leading-relaxed text-foreground/90",
+          compact ? "text-[14px]" : "text-[15px]",
+          contentDisplay === "preview" && "line-clamp-4 max-h-[6.25rem] overflow-hidden",
+        )}
+      >
+        {workout.content}
+      </div>
+      {contentDisplay === "full" && (
+        <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id} poolSize={workout.pool_size} refreshKey={feedbackRefreshKey}
+          onFeedbackChange={onFeedbackChange} className={className} viewerRole={feedbackViewerRole} />
+      )}
     </div>
   );
 }
@@ -172,6 +219,7 @@ export default function Home() {
   const [expandedWeekKey, setExpandedWeekKey] = useState<string | null>(null);
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const [expandedMonthDayKey, setExpandedMonthDayKey] = useState<string | null>(null);
+  const [aggregatedDayExpandedWorkoutKey, setAggregatedDayExpandedWorkoutKey] = useState<string | null>(null);
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
   const [editingWorkoutIndex, setEditingWorkoutIndex] = useState<number | null>(null);
   const [editingWorkoutSnapshot, setEditingWorkoutSnapshot] = useState<Workout | null>(null);
@@ -206,6 +254,10 @@ export default function Home() {
   );
 
   useEffect(() => { if (!authLoading && !user) router.push("/login"); }, [authLoading, user, router]);
+
+  useEffect(() => {
+    setAggregatedDayExpandedWorkoutKey(null);
+  }, [dateKey, selectedCoachSwimmerId, selectedViewSwimmerId, viewMode]);
 
   useEffect(() => {
     if (!role) return;
@@ -468,6 +520,19 @@ export default function Home() {
   const isSwimmerOwnView = !isCoach && (selectedViewSwimmerId === null || selectedViewSwimmerId === user?.id);
   const isSwimmerMyView = isSwimmerOwnView && viewMode === "day";
 
+  const coachUsesWorkoutPreviews =
+    isCoach &&
+    viewMode === "day" &&
+    (selectedCoachSwimmerId === ALL_ID || selectedCoachSwimmerId === ONLY_GROUPS_ID || selectedCoachSwimmerId === null) &&
+    coachWorkouts.length > 1;
+
+  const swimmerUsesWorkoutPreviews =
+    !isCoach &&
+    viewMode === "day" &&
+    !isSwimmerMyView &&
+    (selectedViewSwimmerId === ALL_ID || selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) &&
+    viewWorkouts.length > 1;
+
   async function saveSingleWorkoutSwimmer(index: number) {
     if (!dateKey || !user || index < 0 || index >= swimmerWorkouts.length) return;
     const workout = swimmerWorkouts[index];
@@ -678,7 +743,7 @@ export default function Home() {
   const workoutsForRange = viewMode === "week" ? weekWorkouts : monthWorkouts;
   const previewDefault = getPreviewDefault();
 
-  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean }) => {
+  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; aggregatedPdfBelowBanner?: { show: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
     const rawLabel = assignmentLabel(workout, swimmers);
     const label = rawLabel && GROUP_KEYS[rawLabel] ? t(GROUP_KEYS[rawLabel]) : rawLabel;
     return (
@@ -686,7 +751,8 @@ export default function Home() {
         feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
         className={opts.compact ? "mt-1" : "mt-4"} compact={opts.compact} readOnly={opts.readOnly} assigneeLabel={label}
         assigneeNames={opts.namesInHeader ? undefined : (opts.readOnly ? assignedToNames(workout, swimmers, opts.excludeIds) : undefined)}
-        teammateNames={!opts.readOnly ? teammateNames(workout, swimmers, user?.id) : undefined} t={t} />
+        teammateNames={!opts.readOnly ? teammateNames(workout, swimmers, user?.id) : undefined}
+        contentDisplay={opts.contentDisplay ?? "full"} aggregatedPdfBelowBanner={opts.aggregatedPdfBelowBanner} t={t} />
     );
   };
 
@@ -898,24 +964,89 @@ export default function Home() {
             {swimmerLoading ? <div className="flex flex-1 items-center justify-center py-12"><p className="text-muted-foreground">{t("common.loading")}</p></div>
               : viewWorkouts.length > 0 ? (
                 <div className="space-y-4">
-                  {viewWorkouts.map((workout, i) => (
-                    <Card key={workout.id || i} className="relative py-4">
+                  {viewWorkouts.map((workout, i) => {
+                    const browseKey = workoutListKey(workout, i);
+                    const browseCollapsed = swimmerUsesWorkoutPreviews && aggregatedDayExpandedWorkoutKey !== browseKey;
+                    const swimBrowsePr =
+                      swimmerUsesWorkoutPreviews
+                        ? workout.content.trim() ? "pr-12" : "pr-4"
+                        : workout.content.trim() ? "pr-12" : "";
+                    return (
+                      <Card
+                        key={workout.id || i}
+                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", browseCollapsed && "cursor-pointer")}
+                        tabIndex={browseCollapsed ? 0 : undefined}
+                        onClick={
+                          browseCollapsed
+                            ? (e) => {
+                                if ((e.target as HTMLElement).closest("button, a")) return;
+                                setAggregatedDayExpandedWorkoutKey(browseKey);
+                              }
+                            : undefined
+                        }
+                        onKeyDown={
+                          browseCollapsed
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setAggregatedDayExpandedWorkoutKey(browseKey);
+                                }
+                              }
+                            : undefined
+                        }
+                      >
                         <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
-                          {workout.content.trim() && (
-                            <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0"
-                              title={t("main.exportPdfTitle")} aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
-                              <Printer className="size-4" />
-                            </Button>
-                          )}
+                          <div className="flex shrink-0 justify-end gap-0.5">
+                            {swimmerUsesWorkoutPreviews ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-8 shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAggregatedDayExpandedWorkoutKey(browseCollapsed ? browseKey : null);
+                                }}
+                                aria-label={browseCollapsed ? t("main.expandWorkout") : t("main.collapseWorkout")}
+                              >
+                                {browseCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+                              </Button>
+                            ) : (
+                              workout.content.trim() && (
+                                <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0"
+                                  title={t("main.exportPdfTitle")} aria-label={t("main.exportPdf")}
+                                  onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
+                                  <Printer className="size-4" />
+                                </Button>
+                              )
+                            )}
+                          </div>
                           {assignedToNames(workout, swimmers) && (
                             <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedToNames(workout, swimmers)}</p>
                           )}
                         </div>
-                      <CardContent className={`px-4 py-0 ${workout.content.trim() ? "pr-12" : ""}`}>
-                        {renderWorkoutBlock(workout, dateKey, { compact: false, namesInHeader: true })}
-                      </CardContent>
-                    </Card>
-                  ))}
+                        <CardContent className={cn("px-4 py-0", swimBrowsePr)}>
+                          {renderWorkoutBlock(workout, dateKey, {
+                            compact: false,
+                            namesInHeader: true,
+                            contentDisplay: browseCollapsed ? "preview" : "full",
+                            aggregatedPdfBelowBanner:
+                              swimmerUsesWorkoutPreviews && workout.content.trim() && !browseCollapsed
+                                ? {
+                                    show: true,
+                                    onClick: (e) => {
+                                      e.stopPropagation();
+                                      downloadWorkoutPdf([workout]);
+                                    },
+                                    exportTitle: t("main.exportPdfTitle"),
+                                    exportAria: t("main.exportPdf"),
+                                  }
+                                : undefined,
+                          })}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               ) : <div className="flex flex-1 flex-col items-center justify-center py-12 text-center"><p className="text-muted-foreground">{t("main.noWorkoutForDay")}</p></div>}
           </div>
@@ -936,6 +1067,7 @@ export default function Home() {
                     const isEditing = swimmerEditingIndex === originalIdx && canSwimmerEdit;
                     const assigneeIds = workout.assignee_ids?.length ? workout.assignee_ids : (workout.assigned_to ? [workout.assigned_to] : []);
                     const conflictIds = swimmerIdsInTimeframeExcludingSwimmer(originalIdx);
+                    const swimmerEditShowsFeedback = assigneeIds.every((id) => id === user?.id);
                     return (
                       <Card key={workout.id || `new-${originalIdx}`} className="relative py-4">
                         {isEditing ? (
@@ -1011,7 +1143,18 @@ export default function Home() {
                                 )}
                               </div>
                               <Textarea placeholder="Warm-up: 200 free..." value={workout.content} onChange={(e) => updateSwimmerWorkout(originalIdx, { content: e.target.value })} className="min-h-[200px] resize-none" />
-                              {workout.content && <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id || undefined} refreshKey={feedbackRefreshKey} viewerRole="swimmer" />}
+                              {workout.content && (
+                                <WorkoutAnalysis
+                                  content={workout.content}
+                                  date={dateKey}
+                                  workoutId={workout.id || undefined}
+                                  poolSize={workout.pool_size}
+                                  refreshKey={feedbackRefreshKey}
+                                  viewerRole="swimmer"
+                                  hideFeedback={!swimmerEditShowsFeedback}
+                                  onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                                />
+                              )}
                               <div className="flex gap-2 pt-2">
                                 <Button type="button" size="sm" onClick={() => saveSingleWorkoutSwimmer(originalIdx)} disabled={loading || swimmerLoading}>{saved ? t("main.saved") : t("common.save")}</Button>
                                 <button type="button" onClick={() => {
@@ -1028,15 +1171,15 @@ export default function Home() {
                         ) : (
                           <>
                             <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
-                              <div className="flex items-center gap-0.5">
+                              <div className="flex items-center justify-end gap-0.5">
+                                {canSwimmerEdit && (
+                                  <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                                )}
                                 {workout.content.trim() && (
                                   <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
                                     aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
                                     <Printer className="size-4" />
                                   </Button>
-                                )}
-                                {canSwimmerEdit && (
-                                  <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
                                 )}
                               </div>
                               {assignedToNames(workout, swimmers, Array.from(conflictIds)) && (
@@ -1079,8 +1222,36 @@ export default function Home() {
                     const rawLabel = assignmentLabel(workout, swimmers);
                     const label = rawLabel && GROUP_KEYS[rawLabel] ? t(GROUP_KEYS[rawLabel]) : rawLabel;
                     const isEditing = editingWorkoutIndex === originalIdx;
+                    const workoutKey = workoutListKey(workout, originalIdx);
+                    const coachCollapsed = coachUsesWorkoutPreviews && aggregatedDayExpandedWorkoutKey !== workoutKey;
+                    /* Same pr + action strip width collapsed vs expanded so badges / layout don't shift */
+                    const coachReadPr = coachUsesWorkoutPreviews
+                      ? workout.content.trim() ? "pr-[4.75rem]" : "pr-20"
+                      : workout.content.trim() ? "pr-[4.5rem]" : "pr-12";
                     return (
-                      <Card key={workout.id || `new-${originalIdx}`} className="relative py-4">
+                      <Card
+                        key={workout.id || `new-${originalIdx}`}
+                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", coachCollapsed && "cursor-pointer")}
+                        tabIndex={coachCollapsed ? 0 : undefined}
+                        onClick={
+                          coachCollapsed
+                            ? (e) => {
+                                if ((e.target as HTMLElement).closest("button, a")) return;
+                                setAggregatedDayExpandedWorkoutKey(workoutKey);
+                              }
+                            : undefined
+                        }
+                        onKeyDown={
+                          coachCollapsed
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setAggregatedDayExpandedWorkoutKey(workoutKey);
+                                }
+                              }
+                            : undefined
+                        }
+                      >
                         {isEditing ? (
                           <CardContent className="pl-4 pr-4 py-0">
                             <div className="space-y-2">
@@ -1175,7 +1346,18 @@ export default function Home() {
                               </div>
                               <Textarea placeholder="Warm-up: 200 free, 4×50 kick...&#10;Main set: 8×100 @ 1:30...&#10;Cool-down: 200 easy"
                                 value={workout.content} onChange={(e) => updateCoachWorkout(originalIdx, { content: e.target.value })} className="min-h-[200px] resize-none" />
-                              {workout.content && <WorkoutAnalysis content={workout.content} date={dateKey} workoutId={workout.id || undefined} refreshKey={feedbackRefreshKey} viewerRole="coach" />}
+                              {workout.content && (
+                                <WorkoutAnalysis
+                                  content={workout.content}
+                                  date={dateKey}
+                                  workoutId={workout.id || undefined}
+                                  poolSize={workout.pool_size}
+                                  refreshKey={feedbackRefreshKey}
+                                  viewerRole="coach"
+                                  hideFeedback
+                                  onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                                />
+                              )}
                               <div className="flex gap-2 pt-2">
                                 <Button type="button" size="sm" onClick={() => saveSingleWorkout(originalIdx)} disabled={loading || coachLoading}>{saved ? t("main.saved") : t("common.save")}</Button>
                                 <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancelEditingWorkout(); }} disabled={loading}
@@ -1187,23 +1369,69 @@ export default function Home() {
                         ) : (
                           <>
                             <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
-                              <div className="flex items-center gap-0.5">
-                                {workout.content.trim() && (
-                                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
-                                    aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
-                                    <Printer className="size-4" />
-                                  </Button>
+                              <div className="flex shrink-0 justify-end gap-0.5">
+                                {coachUsesWorkoutPreviews ? (
+                                  <>
+                                    {coachCollapsed && <span className="size-8 shrink-0" aria-hidden />}
+                                    {!coachCollapsed && (
+                                      <Button variant="ghost" size="icon" className="size-8 shrink-0"
+                                        onClick={(e) => { e.stopPropagation(); startEditingWorkout(originalIdx); }} aria-label="Edit workout">
+                                        <Pencil className="size-4" />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-8 shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setAggregatedDayExpandedWorkoutKey(coachCollapsed ? workoutKey : null);
+                                      }}
+                                      aria-label={coachCollapsed ? t("main.expandWorkout") : t("main.collapseWorkout")}
+                                    >
+                                      {coachCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {workout.content.trim() && (
+                                      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
+                                        aria-label={t("main.exportPdf")}
+                                        onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
+                                        <Printer className="size-4" />
+                                      </Button>
+                                    )}
+                                    <Button variant="ghost" size="icon" className="size-8 shrink-0"
+                                      onClick={(e) => { e.stopPropagation(); startEditingWorkout(originalIdx); }} aria-label="Edit workout">
+                                      <Pencil className="size-4" />
+                                    </Button>
+                                  </>
                                 )}
-                                <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => startEditingWorkout(originalIdx)} aria-label="Edit workout"><Pencil className="size-4" /></Button>
                               </div>
                               {assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx))) && (
                                 <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx)))}</p>
                               )}
                             </div>
-                            <CardContent className={`pl-4 py-0 ${workout.content.trim() ? "pr-[4.5rem]" : "pr-12"}`}>
+                            <CardContent className={cn("pl-4 py-0", coachReadPr)}>
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={coachWorkouts.length > 1} assigneeLabel={label}
                                 assigneeNames={undefined}
-                                feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly t={t} />
+                                feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly
+                                contentDisplay={coachCollapsed ? "preview" : "full"}
+                                aggregatedPdfBelowBanner={
+                                  coachUsesWorkoutPreviews && workout.content.trim() && !coachCollapsed
+                                    ? {
+                                        show: true,
+                                        onClick: (e) => {
+                                          e.stopPropagation();
+                                          downloadWorkoutPdf([workout]);
+                                        },
+                                        exportTitle: t("main.exportPdfTitle"),
+                                        exportAria: t("main.exportPdf"),
+                                      }
+                                    : undefined
+                                }
+                                t={t} />
                             </CardContent>
                           </>
                         )}
