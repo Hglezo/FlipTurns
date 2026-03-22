@@ -186,6 +186,11 @@ function parseMetersInText(text: string): number {
   return total;
 }
 
+/** True when this line starts a named set block (same rules as volume analysis). */
+export function lineIsWorkoutSetHeader(line: string): boolean {
+  return findSetName(line) !== null;
+}
+
 function findSetName(line: string): string | null {
   const trimmed = line.trim();
   for (const pattern of SET_NAME_PATTERNS) {

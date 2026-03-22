@@ -647,6 +647,15 @@ export function getSetNameLabel(name: string, t: (k: TranslationKey) => string):
   return key ? t(key) + suffix : name;
 }
 
+/** Human-readable duration for workout analysis (PDF + UI). */
+export function formatAnalysisDurationMinutes(minutes: number, t: (k: TranslationKey) => string): string {
+  if (minutes < 60) return `${minutes} ${t("feedback.min")}`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (m === 0) return `${h}${t("feedback.h")}`;
+  return `${h}${t("feedback.h")} ${m} ${t("feedback.min")}`;
+}
+
 /** Session value to translation key */
 export const SESSION_KEYS: Record<string, TranslationKey> = {
   AM: "session.am",

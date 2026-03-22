@@ -158,8 +158,17 @@ export default function TeamManagementPage() {
           <div className="flex shrink-0 items-center gap-1 justify-end">
             <ThemeToggle />
             {role && user?.id && (
-              <NotificationBell role={role} userId={user.id} swimmerGroup={profile?.swimmer_group ?? null} swimmers={teamSwimmers}
-                onWorkoutNotificationClick={role === "swimmer" ? (_, date) => { router.push("/?date=" + date); } : undefined} />
+              <NotificationBell
+                role={role}
+                userId={user.id}
+                swimmerGroup={profile?.swimmer_group ?? null}
+                swimmers={teamSwimmers}
+                onNotificationNavigate={(info) => {
+                  const q = new URLSearchParams({ date: info.date });
+                  if (info.workoutId) q.set("workout", info.workoutId);
+                  router.push(`/?${q.toString()}`);
+                }}
+              />
             )}
             <Link href="/settings"><Button variant="ghost" size="icon" className="size-9" aria-label="Settings"><Settings className="size-5" /></Button></Link>
             <SignOutDropdown trigger={<Button variant="ghost" size="icon" className="size-9" aria-label="Sign out"><LogOut className="size-5" /></Button>} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import {
   format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -14,7 +14,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
@@ -193,7 +193,9 @@ function MonthCalendar({
   );
 }
 
-export default function Home() {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function HomePage() {
   const prefs = usePreferences();
   const { t, formatDate } = useTranslations();
   const weekStartsOn = prefs?.weekStartsOn ?? (1 as 0 | 1);
@@ -201,6 +203,10 @@ export default function Home() {
   const { user, profile, role, signOut, loading: authLoading } = useAuth();
   const swimmerGroup = profile?.role === "swimmer" ? profile?.swimmer_group : null;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pendingNotificationFocusRef = useRef<{ date: string; workoutId: string | null } | null>(null);
+  const appliedUrlQueryRef = useRef<string>("");
+  const [notificationFocusNonce, setNotificationFocusNonce] = useState(0);
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [coachWorkouts, setCoachWorkouts] = useState<Workout[]>([]);
@@ -254,6 +260,40 @@ export default function Home() {
   );
 
   useEffect(() => { if (!authLoading && !user) router.push("/login"); }, [authLoading, user, router]);
+
+  const handleNotificationDeepLink = useCallback(
+    (info: { date: string; workoutId: string | null }) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(info.date)) return;
+      pendingNotificationFocusRef.current = info;
+      setSelectedDate(parseISO(info.date + "T12:00:00"));
+      setViewMode("day");
+      if (role === "coach") setSelectedCoachSwimmerId(ALL_ID);
+      if (role === "swimmer") setSelectedViewSwimmerId(null);
+      setNotificationFocusNonce((n) => n + 1);
+    },
+    [role],
+  );
+
+  useEffect(() => {
+    if (authLoading || !role) return;
+    const sp = new URLSearchParams(searchParams.toString());
+    const date = sp.get("date");
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      appliedUrlQueryRef.current = "";
+      return;
+    }
+    const workoutRaw = sp.get("workout");
+    const workoutId = workoutRaw && UUID_RE.test(workoutRaw) ? workoutRaw : null;
+    const key = `${date}|${workoutRaw ?? ""}`;
+    if (appliedUrlQueryRef.current === key) return;
+    appliedUrlQueryRef.current = key;
+    pendingNotificationFocusRef.current = { date, workoutId };
+    setSelectedDate(parseISO(date + "T12:00:00"));
+    setViewMode("day");
+    if (role === "coach") setSelectedCoachSwimmerId(ALL_ID);
+    if (role === "swimmer") setSelectedViewSwimmerId(null);
+    setNotificationFocusNonce((n) => n + 1);
+  }, [searchParams, authLoading, role]);
 
   useEffect(() => {
     setAggregatedDayExpandedWorkoutKey(null);
@@ -519,6 +559,40 @@ export default function Home() {
 
   const isSwimmerOwnView = !isCoach && (selectedViewSwimmerId === null || selectedViewSwimmerId === user?.id);
   const isSwimmerMyView = isSwimmerOwnView && viewMode === "day";
+
+  useEffect(() => {
+    const p = pendingNotificationFocusRef.current;
+    if (!p || viewMode !== "day" || p.date !== dateKey) return;
+    if (role === "coach") {
+      if (coachLoading) return;
+      if (p.workoutId && coachWorkouts.some((w) => w.id === p.workoutId)) {
+        setAggregatedDayExpandedWorkoutKey(p.workoutId);
+      }
+      pendingNotificationFocusRef.current = null;
+      return;
+    }
+    if (role === "swimmer") {
+      if (swimmerLoading) return;
+      if (isSwimmerMyView) {
+        pendingNotificationFocusRef.current = null;
+        return;
+      }
+      if (p.workoutId && viewWorkouts.some((w) => w.id === p.workoutId)) {
+        setAggregatedDayExpandedWorkoutKey(p.workoutId);
+      }
+      pendingNotificationFocusRef.current = null;
+    }
+  }, [
+    notificationFocusNonce,
+    dateKey,
+    viewMode,
+    role,
+    coachLoading,
+    coachWorkouts,
+    swimmerLoading,
+    viewWorkouts,
+    isSwimmerMyView,
+  ]);
 
   const coachUsesWorkoutPreviews =
     isCoach &&
@@ -908,7 +982,7 @@ export default function Home() {
           <div className="flex shrink-0 items-center gap-1">
             {role && user?.id && (
               <NotificationBell role={role} userId={user.id} swimmerGroup={swimmerGroup ?? null} swimmers={swimmers}
-              onWorkoutNotificationClick={role === "swimmer" ? (_, date) => { setSelectedDate(parseISO(date + "T12:00:00")); setViewMode("day"); } : undefined} />
+                onNotificationNavigate={handleNotificationDeepLink} />
             )}
             <Link href="/settings"><Button variant="ghost" size="icon" className="size-9" aria-label="Settings"><Settings className="size-5" /></Button></Link>
             <SignOutDropdown trigger={<Button variant="ghost" size="icon" className="size-9" aria-label="Sign out"><LogOut className="size-5" /></Button>} />
@@ -1465,5 +1539,19 @@ export default function Home() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-dvh items-center justify-center bg-background">
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        </div>
+      }
+    >
+      <HomePage />
+    </Suspense>
   );
 }

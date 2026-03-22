@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FlipTurnsLogo } from "@/components/flipturns-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useTranslations } from "@/components/i18n-provider";
 import { usePreferences } from "@/components/preferences-provider";
 import { LOCALES, type Locale } from "@/lib/i18n";
@@ -90,41 +91,44 @@ export default function LoginPage() {
         </div>
 
         <Card>
-          <CardHeader className="!flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
-            <div className="w-[4.5rem] shrink-0" aria-hidden />
-            <CardTitle className="min-w-0 flex-1 text-center">
+          <CardHeader className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 space-y-0 pb-4">
+            <div className="min-w-0" aria-hidden />
+            <CardTitle className="min-w-0 text-center">
               {formMode === "signin" ? t("login.signIn") : t("login.createAccount")}
             </CardTitle>
-            <div
-              className="flex shrink-0 items-center justify-end gap-1.5"
-              role="group"
-              aria-label={t("settings.language")}
-            >
-              {LOCALES.map((opt) => {
-                const active = locale === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => prefs?.setPreferences({ locale: opt.value })}
-                    className={cn(
-                      "flex size-8 items-center justify-center rounded-sm p-0 transition-opacity",
-                      active ? "opacity-100" : "opacity-45 hover:opacity-90",
-                    )}
-                    aria-pressed={active}
-                    aria-label={opt.label}
-                  >
-                    <img
-                      src={LOCALE_FLAG_SRC[opt.value]}
-                      alt=""
-                      width={22}
-                      height={22}
-                      draggable={false}
-                      className="pointer-events-none size-[22px] select-none object-contain"
-                    />
-                  </button>
-                );
-              })}
+            <div className="flex min-w-0 items-center justify-end gap-0.5">
+              <ThemeToggle className="size-8 shrink-0" />
+              <div
+                className="flex shrink-0 items-center justify-end gap-1.5"
+                role="group"
+                aria-label={t("settings.language")}
+              >
+                {LOCALES.map((opt) => {
+                  const active = locale === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => prefs?.setPreferences({ locale: opt.value })}
+                      className={cn(
+                        "flex size-8 items-center justify-center rounded-sm p-0 transition-opacity",
+                        active ? "opacity-100" : "opacity-45 hover:opacity-90",
+                      )}
+                      aria-pressed={active}
+                      aria-label={opt.label}
+                    >
+                      <img
+                        src={LOCALE_FLAG_SRC[opt.value]}
+                        alt=""
+                        width={22}
+                        height={22}
+                        draggable={false}
+                        className="pointer-events-none size-[22px] select-none object-contain"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </CardHeader>
           <CardContent>

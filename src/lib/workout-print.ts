@@ -2,14 +2,26 @@ import { parseISO } from "date-fns";
 import { jsPDF } from "jspdf";
 import type { Workout, SwimmerProfile } from "./types";
 import { assignmentLabel, assignedToNames } from "./workouts";
+import { analyzeWorkout, lineIsWorkoutSetHeader } from "./workout-analyzer";
 import {
   GROUP_KEYS,
   getCategoryLabel,
   getPoolLabel,
+  getSetNameLabel,
   formatPdfWorkoutHeaderDate,
+  formatAnalysisDurationMinutes,
   type Locale,
   type TranslationKey,
 } from "./i18n";
+
+/** Parsed volume summary for PDF layout (aligned rows, typography). */
+export type PdfWorkoutAnalysisBlock = {
+  volumeLine: string;
+  sets: { label: string; meters: number }[];
+  unit: string;
+  durationText: string | null;
+  numberLocale: string;
+};
 
 export type WorkoutPrintSection = {
   headerLine1: string;
@@ -17,6 +29,7 @@ export type WorkoutPrintSection = {
   categoryPoolLine: string;
   assignedLine: string | null;
   content: string;
+  pdfAnalysis: PdfWorkoutAnalysisBlock | null;
 };
 
 type T = (key: TranslationKey, params?: Record<string, string>) => string;
@@ -54,16 +67,17 @@ export function buildWorkoutPrintSections(
     const when = formatPdfWorkoutHeaderDate(workoutDate(w), w.session, ctx.locale, t);
     const headerLine1 = `${teamOrApp} — ${when}`;
 
-    const parts: string[] = [];
-    if (w.workout_category?.trim()) parts.push(getCategoryLabel(w.workout_category.trim(), t));
-    if (w.pool_size) {
-      const pl = getPoolLabel(w.pool_size, t);
-      if (pl) parts.push(pl);
-    }
-    const categoryPoolLine = parts.join(" ");
+    const poolPart = w.pool_size ? getPoolLabel(w.pool_size, t) : "";
+    const categoryPart = w.workout_category?.trim() ? getCategoryLabel(w.workout_category.trim(), t) : "";
+    const categoryPoolLine =
+      ctx.locale === "es-ES"
+        ? [categoryPart, poolPart].filter(Boolean).join(" ")
+        : [poolPart, categoryPart].filter(Boolean).join(" ");
 
     const assigned = assignedToNames(w, swimmers);
     const assignedLine = assigned ? `${t("main.assignedTo")} ${assigned}` : null;
+
+    const pdfAnalysis = buildPdfAnalysisBlock(w.content.trim(), w.pool_size, t, ctx.locale);
 
     return {
       headerLine1,
@@ -71,8 +85,32 @@ export function buildWorkoutPrintSections(
       categoryPoolLine,
       assignedLine,
       content: w.content.trim(),
+      pdfAnalysis,
     };
   });
+}
+
+function buildPdfAnalysisBlock(
+  content: string,
+  poolSize: Workout["pool_size"],
+  t: T,
+  locale: Locale,
+): PdfWorkoutAnalysisBlock | null {
+  const analysis = analyzeWorkout(content);
+  if (analysis.totalMeters <= 0) return null;
+  const unit = poolSize === "SCY" ? "yd" : "m";
+  const numberLocale = locale === "es-ES" ? "es-ES" : "en-US";
+  const volWord = t("feedback.volume").toUpperCase();
+  const volumeLine = `${volWord} ${analysis.totalMeters.toLocaleString(numberLocale)} ${unit}`;
+  const sets = analysis.sets.map((s) => ({
+    label: getSetNameLabel(s.name, t),
+    meters: s.meters,
+  }));
+  let durationText: string | null = null;
+  if (analysis.estimatedDurationMinutes > 0) {
+    durationText = `${t("feedback.duration")}: ${formatAnalysisDurationMinutes(analysis.estimatedDurationMinutes, t)}`;
+  }
+  return { volumeLine, sets, unit, durationText, numberLocale };
 }
 
 function sanitizeFilenameBase(s: string): string {
@@ -89,9 +127,45 @@ const PDF_SIZES = {
   metaLeading: 3.9,
   body: 9,
   bodyLeading: 4.1,
+  analysis: 7,
+  analysisLeading: 3.35,
+  analysisPad: 2.8,
+  /** Blank band after volume line and before duration */
+  analysisSectionGap: 3.6,
+  analysisDuration: 5.5,
+  analysisDurationLeading: 2.65,
+  /** Gap after set name before distance (~4–5 character spaces at analysis font size) */
+  analysisInlineNumberGapMm: 5,
 } as const;
 
 const META_RGB: [number, number, number] = [45, 45, 45];
+
+/** Shared label wrap + one right edge for all set distances (aligned column, small gap after longest last line). */
+function computeAnalysisSetLayout(
+  doc: jsPDF,
+  block: PdfWorkoutAnalysisBlock,
+  innerW: number,
+  leftX: number,
+  fs: number,
+  gapMm: number,
+) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(fs);
+  const fmtNum = (m: number) => `${m.toLocaleString(block.numberLocale)}${block.unit}`;
+  let maxNumW = 10;
+  for (const s of block.sets) {
+    maxNumW = Math.max(maxNumW, doc.getTextWidth(fmtNum(s.meters)));
+  }
+  const labelMaxW = Math.max(20, innerW - maxNumW - gapMm);
+  let maxLastLineW = 0;
+  for (const s of block.sets) {
+    const lines = doc.splitTextToSize(s.label, labelMaxW) as string[];
+    const last = lines[lines.length - 1] ?? "";
+    maxLastLineW = Math.max(maxLastLineW, doc.getTextWidth(last));
+  }
+  const numRightX = leftX + maxLastLineW + gapMm + maxNumW;
+  return { fmtNum, labelMaxW, numRightX };
+}
 
 export function downloadWorkoutsPdf(options: {
   sections: WorkoutPrintSection[];
@@ -135,6 +209,131 @@ export function downloadWorkoutsPdf(options: {
     }
   };
 
+  const writeBodyParagraph = (para: string) => {
+    const underline = lineIsWorkoutSetHeader(para);
+    doc.setFont("courier", "normal");
+    doc.setFontSize(PDF_SIZES.body);
+    doc.setTextColor(0, 0, 0);
+    const segments = doc.splitTextToSize(para, maxW);
+    for (const segment of segments) {
+      ensureSpace(PDF_SIZES.bodyLeading);
+      doc.text(segment, margin, y, { baseline: "top", align: "left" });
+      if (underline) {
+        const tw = doc.getTextWidth(segment);
+        doc.setDrawColor(55, 55, 55);
+        doc.setLineWidth(0.12);
+        const uy = y + PDF_SIZES.bodyLeading * 0.68;
+        doc.line(margin, uy, margin + tw, uy);
+      }
+      y += PDF_SIZES.bodyLeading;
+    }
+    y += 1;
+  };
+
+  const measurePdfAnalysisBox = (block: PdfWorkoutAnalysisBlock): number => {
+    const pad = PDF_SIZES.analysisPad;
+    const innerW = maxW - pad * 2;
+    const fs = PDF_SIZES.analysis;
+    const lead = PDF_SIZES.analysisLeading;
+    const gap = PDF_SIZES.analysisSectionGap;
+    const dfs = PDF_SIZES.analysisDuration;
+    const dlead = PDF_SIZES.analysisDurationLeading;
+    const gapMm = PDF_SIZES.analysisInlineNumberGapMm;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(fs);
+    const volRows = (doc.splitTextToSize(block.volumeLine, innerW) as string[]).length;
+    let contentH = volRows * lead + gap;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(fs);
+    const leftXM = margin + pad;
+    const lay = computeAnalysisSetLayout(doc, block, innerW, leftXM, fs, gapMm);
+    for (const s of block.sets) {
+      const labelLines = doc.splitTextToSize(s.label, lay.labelMaxW) as string[];
+      contentH += labelLines.length * lead;
+    }
+
+    if (block.durationText) {
+      contentH += gap;
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(dfs);
+      const dRows = (doc.splitTextToSize(block.durationText, innerW) as string[]).length;
+      contentH += dRows * dlead;
+    }
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(fs);
+    return contentH + pad * 2;
+  };
+
+  const drawPdfAnalysisBox = (block: PdfWorkoutAnalysisBlock) => {
+    const boxH = measurePdfAnalysisBox(block);
+    if (y + boxH > pageBottom) {
+      doc.addPage();
+      y = margin;
+    }
+    const pad = PDF_SIZES.analysisPad;
+    const innerW = maxW - pad * 2;
+    const leftX = margin + pad;
+    const fs = PDF_SIZES.analysis;
+    const lead = PDF_SIZES.analysisLeading;
+    const gap = PDF_SIZES.analysisSectionGap;
+    const dfs = PDF_SIZES.analysisDuration;
+    const dlead = PDF_SIZES.analysisDurationLeading;
+    const gapMm = PDF_SIZES.analysisInlineNumberGapMm;
+
+    doc.setDrawColor(110, 110, 110);
+    doc.setFillColor(248, 248, 248);
+    doc.setLineWidth(0.28);
+    doc.rect(margin, y, maxW, boxH, "FD");
+
+    let ty = y + pad;
+    doc.setTextColor(...META_RGB);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(fs);
+    for (const row of doc.splitTextToSize(block.volumeLine, innerW) as string[]) {
+      doc.text(row, leftX, ty, { baseline: "top" });
+      ty += lead;
+    }
+
+    ty += gap;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(fs);
+    const lay = computeAnalysisSetLayout(doc, block, innerW, leftX, fs, gapMm);
+
+    for (const s of block.sets) {
+      const numText = lay.fmtNum(s.meters);
+      const labelLines = doc.splitTextToSize(s.label, lay.labelMaxW) as string[];
+      for (let li = 0; li < labelLines.length; li++) {
+        const line = labelLines[li]!;
+        const isLast = li === labelLines.length - 1;
+        doc.text(line, leftX, ty, { baseline: "top" });
+        if (isLast) {
+          doc.text(numText, lay.numRightX, ty, { baseline: "top", align: "right" });
+        }
+        ty += lead;
+      }
+    }
+
+    if (block.durationText) {
+      ty += gap;
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(dfs);
+      for (const row of doc.splitTextToSize(block.durationText, innerW) as string[]) {
+        doc.text(row, leftX, ty, { baseline: "top" });
+        ty += dlead;
+      }
+    }
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(fs);
+    doc.setTextColor(0, 0, 0);
+    y += boxH + 4;
+  };
+
   sections.forEach((s, i) => {
     if (i > 0) {
       y += 5;
@@ -164,9 +363,12 @@ export function downloadWorkoutsPdf(options: {
         y += 3;
         ensureSpace(3);
       } else {
-        writeWrapped(para, PDF_SIZES.body, "courier", "normal", PDF_SIZES.bodyLeading);
-        y += 1;
+        writeBodyParagraph(para);
       }
+    }
+
+    if (s.pdfAnalysis) {
+      drawPdfAnalysisBox(s.pdfAnalysis);
     }
   });
 

@@ -5,18 +5,10 @@ import { analyzeWorkout } from "@/lib/workout-analyzer";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
 import { useTranslations } from "@/components/i18n-provider";
-import { getSetNameLabel } from "@/lib/i18n";
+import { getSetNameLabel, formatAnalysisDurationMinutes } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Pencil, Trash2, MessageSquare } from "lucide-react";
-
-function formatDuration(minutes: number, t: (k: import("@/lib/i18n").TranslationKey) => string): string {
-  if (minutes < 60) return `${minutes} ${t("feedback.min")}`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (m === 0) return `${h}${t("feedback.h")}`;
-  return `${h}${t("feedback.h")} ${m} ${t("feedback.min")}`;
-}
 
 interface Feedback {
   id: string;
@@ -250,7 +242,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
           )}
           {analysis.estimatedDurationMinutes > 0 && (
             <p className="mt-2 pt-2 text-muted-foreground text-xs border-t border-border/60">
-              {t("feedback.duration")}: {formatDuration(analysis.estimatedDurationMinutes, t)}
+              {t("feedback.duration")}: {formatAnalysisDurationMinutes(analysis.estimatedDurationMinutes, t)}
             </p>
           )}
         </div>

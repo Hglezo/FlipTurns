@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { supabase } from "@/lib/supabase";
 import { loadAndMergeWorkouts } from "@/lib/workouts";
 import type { Workout, SwimmerProfile, SwimmerGroup } from "@/lib/types";
+import { normDate } from "@/lib/types";
 import { parseISO } from "date-fns";
 import { useTranslations } from "@/components/i18n-provider";
 import { formatNotificationWorkoutDate, formatNotificationFeedbackDate } from "@/lib/i18n";
@@ -45,17 +46,24 @@ interface NotificationItem {
   title: string;
   subtitle?: string;
   workoutDate?: string;
+  /** Calendar date (yyyy-MM-dd) to open in day view */
+  navDate: string;
+  /** Workout to expand when multiple cards use previews; null = day-level (e.g. feedback with no workout) */
+  navWorkoutId: string | null;
 }
+
+export type NotificationNavigatePayload = { date: string; workoutId: string | null };
 
 interface NotificationBellProps {
   role: "coach" | "swimmer";
   userId: string;
   swimmerGroup: SwimmerGroup | null;
   swimmers: SwimmerProfile[];
-  onWorkoutNotificationClick?: (workoutId: string, date: string) => void;
+  /** Opens home day view and expands the workout when applicable (coach + swimmer). */
+  onNotificationNavigate?: (info: NotificationNavigatePayload) => void;
 }
 
-export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorkoutNotificationClick }: NotificationBellProps) {
+export function NotificationBell({ role, userId, swimmerGroup, swimmers, onNotificationNavigate }: NotificationBellProps) {
   const { t, locale } = useTranslations();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -103,6 +111,7 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
               const isForMe = w.assigned_to === userId || (w.assignee_ids ?? []).includes(userId);
               title = isForMe ? t("notif.swimmerWroteYourWorkout", { name: creatorName }) : t("notif.swimmerWroteOwnWorkout", { name: creatorName });
             }
+            const d = normDate(w.date) ?? w.date;
             return {
               id: w.id,
               type: "workout_saved" as const,
@@ -110,6 +119,8 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
               title,
               subtitle: dateLine,
               workoutDate: w.date,
+              navDate: d,
+              navWorkoutId: w.id || null,
             };
           })
         );
@@ -135,12 +146,15 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
           const swimmerName = f.anonymous ? "Someone" : (nameMap.get(f.user_id ?? "") ?? "Someone");
           const session = f.workout_id ? sessionByWorkout.get(f.workout_id) ?? null : null;
           const dateLine = formatNotificationFeedbackDate(parseISO(f.date + "T12:00:00"), session, locale as Locale, t);
+          const navD = normDate(f.date) ?? f.date;
           return {
             id: f.id,
             type: "feedback_added" as const,
             date: f.created_at,
             title: swimmerName === "Someone" ? t("notif.someoneAddedFeedback") : t("notif.personAddedFeedback", { name: swimmerName }),
             subtitle: dateLine,
+            navDate: navD,
+            navWorkoutId: f.workout_id ?? null,
           };
         });
         const swimmerWorkouts = (swimmerWorkoutsRes.data ?? []) as { id: string; date: string; session: string | null; updated_at: string; created_by: string }[];
@@ -149,6 +163,7 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
           .map((w) => {
             const creatorName = getCoachFirstName(nameMap.get(w.created_by) ?? null) ?? "Someone";
             const dateLine = formatNotificationWorkoutDate(parseISO(w.date + "T12:00:00"), w.session ?? null, locale as Locale, t);
+            const d = normDate(w.date) ?? w.date;
             return {
               id: w.id,
               type: "workout_saved" as const,
@@ -156,6 +171,8 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
               title: t("notif.swimmerWroteWorkout", { name: creatorName }),
               subtitle: dateLine,
               workoutDate: w.date,
+              navDate: d,
+              navWorkoutId: w.id,
             };
           });
         setNotifications([...swimmerWorkoutNotifs, ...feedbackNotifs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
@@ -212,16 +229,15 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onWorko
             </div>
           ) : (
             undismissed.map((n) => {
-              const isWorkout = n.type === "workout_saved" && n.workoutDate;
-              const isClickable = isWorkout && role === "swimmer" && onWorkoutNotificationClick;
+              const canNavigate = !!onNotificationNavigate && !!n.navDate;
               return (
                 <div key={n.id} className="relative">
                   <button
                     type="button"
-                    className={`w-full px-3 py-2.5 pr-10 text-left text-sm ${isClickable ? "hover:bg-accent cursor-pointer" : "cursor-default"}`}
+                    className={`w-full px-3 py-2.5 pr-10 text-left text-sm ${canNavigate ? "hover:bg-accent cursor-pointer" : "cursor-default"}`}
                     onClick={() => {
-                      if (isClickable && n.workoutDate) {
-                        onWorkoutNotificationClick(n.id, n.workoutDate);
+                      if (canNavigate) {
+                        onNotificationNavigate({ date: n.navDate, workoutId: n.navWorkoutId });
                         setOpen(false);
                       }
                     }}
