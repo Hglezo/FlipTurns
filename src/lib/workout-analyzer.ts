@@ -3,6 +3,8 @@
  * Recognizes: fly/fl, back/bk, breast/br, free/fr, uw (underwater)
  */
 
+import { stripWorkoutInlineMarkers } from "./workout-inline-format";
+
 export interface WorkoutSet {
   name: string;
   meters: number;
@@ -191,6 +193,23 @@ export function lineIsWorkoutSetHeader(line: string): boolean {
   return findSetName(line) !== null;
 }
 
+/**
+ * Split a logical line for display: leading whitespace, set-title prefix (underline in UI), remainder.
+ * Uses the same header patterns as volume analysis.
+ */
+export function splitWorkoutSetTitleLine(line: string): { leading: string; title: string; rest: string } | null {
+  const t = line.trimStart();
+  if (!t) return null;
+  const leading = line.slice(0, line.length - t.length);
+  for (const pattern of SET_NAME_PATTERNS) {
+    const m = t.match(pattern);
+    if (m && m.index === 0 && m[0].length > 0) {
+      return { leading, title: m[0], rest: t.slice(m[0].length) };
+    }
+  }
+  return null;
+}
+
 function findSetName(line: string): string | null {
   const trimmed = line.trim();
   for (const pattern of SET_NAME_PATTERNS) {
@@ -208,7 +227,8 @@ function findSetName(line: string): string | null {
 
 export function analyzeWorkout(content: string): WorkoutAnalysis {
   const sets: WorkoutSet[] = [];
-  const lines = content.split(/\r?\n/);
+  const normalized = stripWorkoutInlineMarkers(content);
+  const lines = normalized.split(/\r?\n/);
 
   let currentSetName = "Workout";
   let currentSetLines: string[] = [];

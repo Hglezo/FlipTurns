@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import type { Workout, SwimmerProfile } from "./types";
 import { assignmentLabel, assignedToNames } from "./workouts";
 import { analyzeWorkout, lineIsWorkoutSetHeader } from "./workout-analyzer";
+import { stripWorkoutInlineMarkers } from "./workout-inline-format";
 import {
   GROUP_KEYS,
   getCategoryLabel,
@@ -368,7 +369,7 @@ export function downloadWorkoutsPdf(options: {
     doc.setTextColor(0, 0, 0);
     y += 5;
 
-    for (const para of s.content.split(/\r?\n/)) {
+    for (const para of stripWorkoutInlineMarkers(s.content).split(/\r?\n/)) {
       if (para === "") {
         y += 3;
         ensureSpace(3);

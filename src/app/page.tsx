@@ -23,6 +23,8 @@ import {
 import { FlipTurnsLogo } from "@/components/flipturns-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
+import { WorkoutContentTextarea } from "@/components/workout-content-textarea";
+import { formatWorkoutInlineText } from "@/components/workout-inline-formatted";
 import { SignOutDropdown } from "@/components/sign-out-dropdown";
 import { NotificationBell } from "@/components/notification-bell";
 import { usePreferences } from "@/components/preferences-provider";
@@ -36,6 +38,7 @@ import {
   assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
+import { splitWorkoutSetTitleLine } from "@/lib/workout-analyzer";
 import { cn } from "@/lib/utils";
 
 const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
@@ -107,6 +110,8 @@ function weekDayCollapsedPreviewLabel(
   return `${sessionSuffix} - ${translatedCategory}`;
 }
 
+const SET_TITLE_UNDERLINE = "underline underline-offset-[3px] decoration-foreground/75";
+
 /** One block per newline in the workout: each starts at the left margin; soft-wrapped lines inside a block indent. */
 function WorkoutTextWithWrapIndent({
   content,
@@ -118,18 +123,31 @@ function WorkoutTextWithWrapIndent({
   const segments = content.split(/\r?\n/);
   return (
     <>
-      {segments.map((segment, i) => (
-        <div
-          key={i}
-          className={cn(
-            "min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap pl-[1.75em] -indent-[1.75em]",
-            segment === "" && "min-h-[1lh]",
-            segmentClassName,
-          )}
-        >
-          {segment === "" ? "\u00a0" : segment}
-        </div>
-      ))}
+      {segments.map((segment, i) => {
+        const split = segment === "" ? null : splitWorkoutSetTitleLine(segment);
+        return (
+          <div
+            key={i}
+            className={cn(
+              "min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap pl-[1.75em] -indent-[1.75em]",
+              segment === "" && "min-h-[1lh]",
+              segmentClassName,
+            )}
+          >
+            {segment === "" ? (
+              "\u00a0"
+            ) : split ? (
+              <>
+                {split.leading}
+                <span className={SET_TITLE_UNDERLINE}>{formatWorkoutInlineText(split.title)}</span>
+                {formatWorkoutInlineText(split.rest)}
+              </>
+            ) : (
+              formatWorkoutInlineText(segment)
+            )}
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -551,6 +569,12 @@ function HomePage() {
     };
   }, [dateKey, role, viewMode, user?.id, selectedViewSwimmerId, swimmerGroup, swimmers]);
 
+  /** So notification deep-link logic sees `coachLoading` before passive effects run (avoids clearing pending while workouts are still the previous day). */
+  useLayoutEffect(() => {
+    if (!dateKey || !isCoach || viewMode !== "day" || !user) return;
+    setCoachLoading(true);
+  }, [dateKey, isCoach, viewMode, user?.id, selectedCoachSwimmerId]);
+
   // Coach day fetch
   useEffect(() => {
     if (!dateKey || !isCoach || viewMode !== "day" || !user) return;
@@ -561,7 +585,6 @@ function HomePage() {
     }
     let cancelled = false;
     (async () => {
-      setCoachLoading(true);
       const { data, error } = await supabase.rpc("get_workouts_for_date", { p_date: dateKey });
       let rows: Workout[];
       if (error?.message?.includes("function") && error?.message?.includes("does not exist")) {
@@ -813,8 +836,11 @@ function HomePage() {
     if (!p || viewMode !== "day" || p.date !== dateKey) return;
     if (role === "coach") {
       if (coachLoading) return;
-      if (p.workoutId && coachWorkouts.some((w) => w.id === p.workoutId)) {
-        setAggregatedDayExpandedWorkoutKey(p.workoutId);
+      const rowDate = (w: Workout) => normDate(w.date) ?? "";
+      if (coachWorkouts.some((w) => rowDate(w) !== dateKey)) return;
+      const wid = p.workoutId;
+      if (wid && coachWorkouts.some((w) => w.id === wid)) {
+        setAggregatedDayExpandedWorkoutKey(wid);
       }
       pendingNotificationFocusRef.current = null;
       return;
@@ -1444,8 +1470,8 @@ function HomePage() {
                     return (
                       <Card key={workout.id || `new-${originalIdx}`} className="relative py-4">
                         {isEditing ? (
-                          <CardContent className="pl-4 pr-4 py-0">
-                            <div className="space-y-2">
+                          <CardContent className="w-full min-w-0 px-4 py-0">
+                            <div className="w-full min-w-0 space-y-2">
                               <div className="flex flex-wrap gap-2">
                                 <select className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                                   value={assigneeIds.length === 1 ? `swimmer:${assigneeIds[0]}` : assigneeIds.length > 1 ? `swimmer:${assigneeIds[0]}` : ""}
@@ -1515,7 +1541,11 @@ function HomePage() {
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}
                               </div>
-                              <Textarea placeholder="Warm-up: 200 free..." value={workout.content} onChange={(e) => updateSwimmerWorkout(originalIdx, { content: e.target.value })} className="min-h-[200px] resize-none" />
+                              <WorkoutContentTextarea
+                                placeholder="Warm-up: 200 free..."
+                                value={workout.content}
+                                onChange={(next) => updateSwimmerWorkout(originalIdx, { content: next })}
+                              />
                               {workout.content && (
                                 <WorkoutAnalysis
                                   content={workout.content}
@@ -1526,6 +1556,7 @@ function HomePage() {
                                   viewerRole="swimmer"
                                   hideFeedback={!swimmerEditShowsFeedback}
                                   onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                                  className="mt-4 w-full min-w-0"
                                 />
                               )}
                               <div className="flex gap-2 pt-2">
@@ -1633,8 +1664,8 @@ function HomePage() {
                         }
                       >
                         {isEditing ? (
-                          <CardContent className="pl-4 pr-4 py-0">
-                            <div className="space-y-2">
+                          <CardContent className="w-full min-w-0 px-4 py-0">
+                            <div className="w-full min-w-0 space-y-2">
                               <div className="flex flex-wrap gap-2">
                                 <select className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                                   value={workout.assigned_to ? `swimmer:${workout.assigned_to}` : workout.assigned_to_group ? `group:${workout.assigned_to_group}` : ""}
@@ -1724,8 +1755,11 @@ function HomePage() {
                                   <button type="button" onClick={() => setImageFromWorkoutError(null)} className="text-xs text-muted-foreground hover:underline">Dismiss</button>
                                 )}
                               </div>
-                              <Textarea placeholder="Warm-up: 200 free, 4×50 kick...&#10;Main set: 8×100 @ 1:30...&#10;Cool-down: 200 easy"
-                                value={workout.content} onChange={(e) => updateCoachWorkout(originalIdx, { content: e.target.value })} className="min-h-[200px] resize-none" />
+                              <WorkoutContentTextarea
+                                placeholder={"Warm-up: 200 free, 4×50 kick...\nMain set: 8×100 @ 1:30...\nCool-down: 200 easy"}
+                                value={workout.content}
+                                onChange={(next) => updateCoachWorkout(originalIdx, { content: next })}
+                              />
                               {workout.content && (
                                 <WorkoutAnalysis
                                   content={workout.content}
@@ -1736,6 +1770,7 @@ function HomePage() {
                                   viewerRole="coach"
                                   hideFeedback
                                   onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
+                                  className="mt-4 w-full min-w-0"
                                 />
                               )}
                               <div className="flex gap-2 pt-2">
