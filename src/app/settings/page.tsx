@@ -20,9 +20,10 @@ import {
 import { LOCALES, GROUP_KEYS, getPoolLabel, type Locale } from "@/lib/i18n";
 import { useTranslations } from "@/components/i18n-provider";
 import { usePreferences } from "@/components/preferences-provider";
+import { useViewportPreview } from "@/components/viewport-preview-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { SwimmerGroup } from "@/lib/types";
-import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Pencil } from "lucide-react";
+import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Pencil, Smartphone, Monitor } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import {
@@ -51,6 +52,43 @@ const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
   { value: "Middle distance", label: "Middle distance" },
   { value: "Distance", label: "Distance" },
 ];
+
+function ViewportPreviewButtons() {
+  const { t } = useTranslations();
+  const viewport = useViewportPreview();
+  if (!viewport) return null;
+  const { previewViewport, setPreviewViewport } = viewport;
+  return (
+    <>
+      <Button
+        variant={previewViewport === "mobile" ? "default" : "outline"}
+        size="sm"
+        onClick={() => setPreviewViewport("mobile")}
+        className="gap-1.5"
+      >
+        <Smartphone className="size-3.5" />
+        {t("settings.viewportMobile")}
+      </Button>
+      <Button
+        variant={previewViewport === "desktop" ? "default" : "outline"}
+        size="sm"
+        onClick={() => setPreviewViewport("desktop")}
+        className="gap-1.5"
+      >
+        <Monitor className="size-3.5" />
+        {t("settings.viewportDesktop")}
+      </Button>
+      <Button
+        variant={previewViewport === null ? "default" : "outline"}
+        size="sm"
+        onClick={() => setPreviewViewport(null)}
+        className="gap-1.5"
+      >
+        {t("settings.viewportAuto")}
+      </Button>
+    </>
+  );
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -177,7 +215,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div className="mx-auto flex max-w-md flex-col px-5 pb-8 pt-6">
+      <div className="app-shell mx-auto flex max-w-md flex-col px-5 pb-8 pt-6 lg:max-w-lg lg:px-6">
         <div className="mb-6 flex items-center justify-between gap-4">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>
@@ -431,6 +469,21 @@ export default function SettingsPage() {
                 </div>
               )}
               <div className="space-y-2">
+                <Label>{t("settings.firstDayOfWeek")}</Label>
+                <div className="flex gap-2">
+                  {WEEK_OPTIONS.map((opt) => (
+                    <Button
+                      key={opt.value}
+                      variant={prefs?.firstDayOfWeek === opt.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleSavePrefs({ firstDayOfWeek: opt.value })}
+                    >
+                      {opt.value === 1 ? t("settings.monday") : t("settings.sunday")}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label>{t("settings.poolSize")}</Label>
                 <div className="flex gap-2">
                   {POOL_OPTIONS.map((opt) => (
@@ -446,18 +499,9 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>{t("settings.firstDayOfWeek")}</Label>
-                <div className="flex gap-2">
-                  {WEEK_OPTIONS.map((opt) => (
-                    <Button
-                      key={opt.value}
-                      variant={prefs?.firstDayOfWeek === opt.value ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleSavePrefs({ firstDayOfWeek: opt.value })}
-                    >
-                      {opt.value === 1 ? t("settings.monday") : t("settings.sunday")}
-                    </Button>
-                  ))}
+                <Label>{t("settings.viewportPreview")}</Label>
+                <div className="flex gap-2 flex-wrap">
+                  <ViewportPreviewButtons />
                 </div>
               </div>
             </CardContent>

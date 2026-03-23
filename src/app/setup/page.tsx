@@ -327,7 +327,7 @@ export default function SetupPage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div className="mx-auto flex max-w-md flex-col px-5 pb-8 pt-6">
+      <div className="app-shell mx-auto flex max-w-md flex-col px-5 pb-8 pt-6 lg:max-w-lg lg:px-6">
         <div className="mb-6 flex items-center gap-4">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label="Back">

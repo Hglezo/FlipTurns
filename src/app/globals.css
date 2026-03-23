@@ -127,3 +127,32 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Viewport preview overrides (settings → Mobile / Desktop view) */
+body[data-viewport-preview="mobile"] .app-shell {
+  max-width: 28rem !important;
+  padding-left: 1.25rem !important;
+  padding-right: 1.25rem !important;
+}
+
+body[data-viewport-preview="desktop"] .app-shell {
+  max-width: 32rem !important;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+}
+
+body[data-viewport-preview="mobile"] .month-view-container {
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+}
+
+body[data-viewport-preview="mobile"] .month-view-container .month-view-week-list {
+  width: 100%;
+  min-width: 0;
+  align-self: stretch;
+}

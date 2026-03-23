@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { PreferencesProvider } from "@/components/preferences-provider";
+import { ViewportPreviewProvider } from "@/components/viewport-preview-provider";
 import { I18nProvider } from "@/components/i18n-provider";
 import { LangAttribute } from "@/components/lang-attribute";
 import { AuthProvider } from "@/components/auth-provider";
@@ -41,10 +42,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <AuthProvider>
           <PreferencesProvider>
-            <I18nProvider>
+            <ViewportPreviewProvider>
+              <I18nProvider>
               <LangAttribute />
               {children}
-            </I18nProvider>
+              </I18nProvider>
+            </ViewportPreviewProvider>
           </PreferencesProvider>
         </AuthProvider>
       </body>

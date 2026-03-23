@@ -107,6 +107,33 @@ function weekDayCollapsedPreviewLabel(
   return `${sessionSuffix} - ${translatedCategory}`;
 }
 
+/** One block per newline in the workout: each starts at the left margin; soft-wrapped lines inside a block indent. */
+function WorkoutTextWithWrapIndent({
+  content,
+  segmentClassName,
+}: {
+  content: string;
+  segmentClassName?: string;
+}) {
+  const segments = content.split(/\r?\n/);
+  return (
+    <>
+      {segments.map((segment, i) => (
+        <div
+          key={i}
+          className={cn(
+            "min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap pl-[1.75em] -indent-[1.75em]",
+            segment === "" && "min-h-[1lh]",
+            segmentClassName,
+          )}
+        >
+          {segment === "" ? "\u00a0" : segment}
+        </div>
+      ))}
+    </>
+  );
+}
+
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
   assigneeLabel, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
@@ -217,11 +244,11 @@ function WorkoutBlock({
           <div
             ref={previewBodyRef}
             className={cn(
-              "w-full overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-sans leading-relaxed text-foreground/90",
+              "w-full overflow-hidden font-sans leading-relaxed text-foreground/90",
               compact ? "max-h-[4.27rem] text-[14px]" : "max-h-[4.57rem] text-[15px]",
             )}
           >
-            {workout.content}
+            <WorkoutTextWithWrapIndent content={workout.content} />
           </div>
           {previewTruncated && workout.content.trim() && onExpandPreview && (
             <button
@@ -239,11 +266,11 @@ function WorkoutBlock({
       ) : (
         <div
           className={cn(
-            "whitespace-pre-wrap font-sans leading-relaxed text-foreground/90",
+            "w-full min-w-0 font-sans leading-relaxed text-foreground/90",
             compact ? "text-[14px]" : "text-[15px]",
           )}
         >
-          {workout.content}
+          <WorkoutTextWithWrapIndent content={workout.content} />
         </div>
       )}
       {contentDisplay === "full" && (
@@ -1126,10 +1153,10 @@ function HomePage() {
       const weekWorkoutsList = monthWorkouts.filter((w) => isWithinInterval(new Date(w.date + "T12:00:00"), { start, end }));
       const isExpanded = expandedWeekKey === key;
       return (
-        <div key={key} className="rounded-lg border bg-card overflow-hidden">
-          <button type="button" className="flex w-full items-center justify-between px-3 py-2 text-left"
+        <div key={key} className="w-full min-w-0 rounded-lg border bg-card overflow-hidden">
+          <button type="button" className="flex w-full min-w-0 items-center justify-between gap-2 px-3 py-2 text-left"
             onClick={() => { setExpandedWeekKey(isExpanded ? null : key); setExpandedMonthDayKey(null); }}>
-            <span className="text-xs font-medium">{t("settings.week")} {weeks.findIndex((w) => w.key === key) + 1}: {formatDate(start, "weekRange", end)}</span>
+            <span className="min-w-0 flex-1 text-xs font-medium">{t("settings.week")} {weeks.findIndex((w) => w.key === key) + 1}: {formatDate(start, "weekRange", end)}</span>
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
               {weekWorkoutsList.length} {weekWorkoutsList.length !== 1 ? t("main.weekWorkoutsPlural") : t("main.weekWorkouts")}
               {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
@@ -1189,7 +1216,7 @@ function HomePage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div className="mx-auto flex max-w-md flex-col px-5 py-5 w-full min-w-0">
+      <div className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-lg lg:px-6">
         {/* Header */}
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -1816,10 +1843,12 @@ function HomePage() {
 
         {/* Month view (shared) */}
         {viewMode === "month" && (
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-            <MonthCalendar selectedDate={selectedDate} weekStartsOn={weekStartsOn} monthWorkouts={monthWorkouts}
-              onSelect={handleMonthCalendarSelect} onMonthChange={(d) => { setSelectedDate(d); setExpandedWeekKey(null); setExpandedMonthDayKey(null); }} />
-            <div className="flex flex-1 flex-col gap-2">{renderMonthView()}</div>
+          <div className="month-view-container flex w-full min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+            <div className="month-view-calendar w-full shrink-0">
+              <MonthCalendar selectedDate={selectedDate} weekStartsOn={weekStartsOn} monthWorkouts={monthWorkouts}
+                onSelect={handleMonthCalendarSelect} onMonthChange={(d) => { setSelectedDate(d); setExpandedWeekKey(null); setExpandedMonthDayKey(null); }} />
+            </div>
+            <div className="month-view-week-list flex w-full min-w-0 flex-1 flex-col gap-2">{renderMonthView()}</div>
           </div>
         )}
       </div>
