@@ -136,6 +136,8 @@ const PDF_SIZES = {
   analysisDurationLeading: 2.65,
   /** Gap after set name before distance (~4–5 character spaces at analysis font size) */
   analysisInlineNumberGapMm: 5,
+  /** Hanging indent for soft-wrapped lines in courier body. */
+  bodyWrapIndentEm: 3.5,
 } as const;
 
 const META_RGB: [number, number, number] = [45, 45, 45];
@@ -214,7 +216,15 @@ export function downloadWorkoutsPdf(options: {
     doc.setFont("courier", "normal");
     doc.setFontSize(PDF_SIZES.body);
     doc.setTextColor(0, 0, 0);
-    const segments = doc.splitTextToSize(para, maxW);
+    /** Hanging indent: first line full width; soft-wrapped continuations indented (see split_text_to_size.js textIndent + lineIndent). */
+    const wrapIndentMm = doc.getTextWidth("M") * PDF_SIZES.bodyWrapIndentEm;
+    const spaceMm = doc.getTextWidth(" ");
+    const nSpaces = Math.max(1, Math.round(wrapIndentMm / spaceMm));
+    const lineIndentOpt = nSpaces + 1;
+    const segments = doc.splitTextToSize(para, maxW, {
+      textIndent: -wrapIndentMm,
+      lineIndent: lineIndentOpt,
+    }) as string[];
     for (const segment of segments) {
       ensureSpace(PDF_SIZES.bodyLeading);
       doc.text(segment, margin, y, { baseline: "top", align: "left" });
