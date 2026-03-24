@@ -409,6 +409,8 @@ function HomePage() {
   const [selectedCoachSwimmerId, setSelectedCoachSwimmerId] = useState<string | null>(null);
   const [imageFromWorkoutLoading, setImageFromWorkoutLoading] = useState(false);
   const [imageFromWorkoutError, setImageFromWorkoutError] = useState<string | null>(null);
+  /** Set when coach day fetch finishes for `dateKey` so notification deep-link can tell [] vs still loading. */
+  const coachDayListReadyForKeyRef = useRef<string | null>(null);
   const addWorkoutForDateRef = useRef<string | null>(null);
   const imageFromWorkoutIdxRef = useRef<number | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
@@ -477,7 +479,7 @@ function HomePage() {
     setNotificationFocusNonce((n) => n + 1);
   }, [searchParams, authLoading, role]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setAggregatedDayExpandedWorkoutKey(null);
   }, [dateKey, selectedCoachSwimmerId, selectedViewSwimmerId, viewMode]);
 
@@ -584,6 +586,7 @@ function HomePage() {
   useEffect(() => {
     if (!dateKey || !isCoach || viewMode !== "day" || !user) return;
     const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
+    coachDayListReadyForKeyRef.current = null;
     if (!isAddingWorkout) {
       setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null);
       setCoachWorkouts([]);
@@ -596,7 +599,10 @@ function HomePage() {
         const { data: fallback } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
         rows = await loadAndMergeWorkouts((fallback ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[], swimmers);
       } else if (error) {
-        if (!cancelled) setCoachLoading(false);
+        if (!cancelled) {
+          coachDayListReadyForKeyRef.current = dateKey;
+          setCoachLoading(false);
+        }
         return;
       } else {
         rows = await loadAndMergeWorkouts((data ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey })), swimmers);
@@ -626,7 +632,10 @@ function HomePage() {
       } else {
         setCoachWorkouts(sortedRows);
       }
-      if (!cancelled) setCoachLoading(false);
+      if (!cancelled) {
+        coachDayListReadyForKeyRef.current = dateKey;
+        setCoachLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -836,7 +845,7 @@ function HomePage() {
   const isSwimmerOwnView = !isCoach && (selectedViewSwimmerId === null || selectedViewSwimmerId === user?.id);
   const isSwimmerMyView = isSwimmerOwnView && viewMode === "day";
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const p = pendingNotificationFocusRef.current;
     if (!p || viewMode !== "day" || p.date !== dateKey) return;
     if (role === "coach") {
@@ -844,8 +853,20 @@ function HomePage() {
       const rowDate = (w: Workout) => normDate(w.date) ?? "";
       if (coachWorkouts.some((w) => rowDate(w) !== dateKey)) return;
       const wid = p.workoutId;
-      if (wid && coachWorkouts.some((w) => w.id === wid)) {
-        setAggregatedDayExpandedWorkoutKey(wid);
+      if (wid) {
+        if (coachWorkouts.length === 0) {
+          if (coachDayListReadyForKeyRef.current !== dateKey) return;
+          pendingNotificationFocusRef.current = null;
+          return;
+        }
+        const match = coachWorkouts.find((w) => String(w.id) === String(wid));
+        if (match) {
+          const sid = String(match.id);
+          setAggregatedDayExpandedWorkoutKey(sid);
+          requestAnimationFrame(() => {
+            document.getElementById(`workout-notification-focus-${sid}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          });
+        }
       }
       pendingNotificationFocusRef.current = null;
       return;
@@ -856,8 +877,21 @@ function HomePage() {
         pendingNotificationFocusRef.current = null;
         return;
       }
-      if (p.workoutId && viewWorkouts.some((w) => w.id === p.workoutId)) {
-        setAggregatedDayExpandedWorkoutKey(p.workoutId);
+      const wid = p.workoutId;
+      if (wid) {
+        if (viewWorkouts.length === 0) {
+          if (swimmerLoading) return;
+          pendingNotificationFocusRef.current = null;
+          return;
+        }
+        const match = viewWorkouts.find((w) => String(w.id) === String(wid));
+        if (match) {
+          const browseKey = workoutListKey(match, viewWorkouts.findIndex((w) => w.id === match.id));
+          setAggregatedDayExpandedWorkoutKey(browseKey);
+          requestAnimationFrame(() => {
+            document.getElementById(`workout-notification-focus-${String(match.id)}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          });
+        }
       }
       pendingNotificationFocusRef.current = null;
     }
@@ -1364,6 +1398,7 @@ function HomePage() {
                     return (
                       <Card
                         key={workout.id || i}
+                        id={workout.id ? `workout-notification-focus-${workout.id}` : undefined}
                         className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", browseCollapsed && "cursor-pointer")}
                         tabIndex={browseCollapsed ? 0 : undefined}
                         onClick={
@@ -1649,6 +1684,7 @@ function HomePage() {
                     return (
                       <Card
                         key={workout.id || `new-${originalIdx}`}
+                        id={workout.id ? `workout-notification-focus-${workout.id}` : undefined}
                         className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", coachCollapsed && "cursor-pointer")}
                         tabIndex={coachCollapsed ? 0 : undefined}
                         onClick={
