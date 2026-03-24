@@ -92,6 +92,14 @@ alter table public.feedback
   alter column muscle_intensity drop not null,
   alter column cardio_intensity drop not null;`;
 
+// SQL: widen checks from legacy 1–5 to 1–10 (app scale). Run in Supabase if ratings 6–10 fail to save.
+const FEEDBACK_INTENSITY_1_TO_10_SQL = `alter table public.feedback drop constraint if exists feedback_muscle_intensity_check;
+alter table public.feedback drop constraint if exists feedback_cardio_intensity_check;
+
+alter table public.feedback
+  add constraint feedback_muscle_intensity_check check (muscle_intensity is null or (muscle_intensity >= 1 and muscle_intensity <= 10)),
+  add constraint feedback_cardio_intensity_check check (cardio_intensity is null or (cardio_intensity >= 1 and cardio_intensity <= 10));`;
+
 const WORKOUTS_SETUP_SQL = `alter table public.workouts drop constraint if exists workouts_date_key;
 alter table public.workouts add column if not exists session text default '';
 alter table public.workouts add column if not exists workout_type text default '';
@@ -537,6 +545,26 @@ export default function SetupPage() {
               <Button variant="outline" size="sm" className="absolute right-2 top-2 gap-1" onClick={() => copy(FEEDBACK_OPTIONAL_INTENSITY_SQL)}>
                 {copied === FEEDBACK_OPTIONAL_INTENSITY_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
                 {copied === FEEDBACK_OPTIONAL_INTENSITY_SQL ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base">Feedback intensity 1–10 (ratings 6–10 won&apos;t save)</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              The app uses a 1–10 scale. Older databases only allowed 1–5, which triggers a check constraint error for muscle or cardio ratings 6–10. Run this once in the SQL Editor to update the rules (safe to re-run).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 text-xs">
+                <code>{FEEDBACK_INTENSITY_1_TO_10_SQL}</code>
+              </pre>
+              <Button variant="outline" size="sm" className="absolute right-2 top-2 gap-1" onClick={() => copy(FEEDBACK_INTENSITY_1_TO_10_SQL)}>
+                {copied === FEEDBACK_INTENSITY_1_TO_10_SQL ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copied === FEEDBACK_INTENSITY_1_TO_10_SQL ? "Copied" : "Copy"}
               </Button>
             </div>
           </CardContent>

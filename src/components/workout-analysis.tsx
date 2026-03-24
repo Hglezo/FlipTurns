@@ -49,6 +49,13 @@ interface WorkoutAnalysisProps {
 export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange, hideFeedback = false }: WorkoutAnalysisProps) {
   const { user } = useAuth();
   const { t } = useTranslations();
+  const formatFeedbackSaveError = (message: string | undefined, fallback: string) => {
+    const base = message || fallback;
+    if (base.includes("feedback_cardio_intensity_check") || base.includes("feedback_muscle_intensity_check")) {
+      return `${base} ${t("feedback.intensityDbOutdated")}`;
+    }
+    return base;
+  };
   const readOnly = viewerRole === "coach";
   const analysis = analyzeWorkout(content);
   const [feedback, setFeedback] = useState<Feedback[] | null>(null);
@@ -145,7 +152,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     setSaving(false);
     if (error) {
       console.error("Failed to update feedback:", error);
-      setError(error.message || "Update failed. Run the feedback policies migration in Supabase SQL Editor.");
+      setError(formatFeedbackSaveError(error.message, "Update failed. Run the feedback policies migration in Supabase SQL Editor."));
       return;
     }
     setError(null);
@@ -190,7 +197,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     setAddSaving(false);
     if (error) {
       console.error("Failed to save feedback:", error.message || error.code || error);
-      setError(error.message || "Could not save feedback. Check database policies in Setup.");
+      setError(formatFeedbackSaveError(error.message, "Could not save feedback. Check database policies in Setup."));
       return;
     }
     setError(null);

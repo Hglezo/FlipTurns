@@ -170,6 +170,8 @@ const TRANSLATIONS_EN = {
   "feedback.noFeedbackYet": "No feedback yet.",
   "feedback.submitAnonymous": "Submit anonymously (coach won't see your name)",
   "feedback.fixInSetup": "Fix in Database setup →",
+  "feedback.intensityDbOutdated":
+    "Your database still limits intensity to 1–5. In Database setup, run the “Feedback intensity 1–10” SQL block (ratings 6–10).",
 
   // Volume analytics
   "volume.weekLabel": "Week {n}",
@@ -455,6 +457,8 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "feedback.noFeedbackYet": "Aún no hay comentarios.",
   "feedback.submitAnonymous": "Enviar de forma anónima (el entrenador no verá tu nombre)",
   "feedback.fixInSetup": "Arreglar en Configuración de base de datos →",
+  "feedback.intensityDbOutdated":
+    "Tu base de datos aún limita la intensidad a 1–5. En Configuración de base de datos, ejecuta el bloque SQL «Feedback intensity 1–10» (valoraciones 6–10).",
 
   // Volume analytics
   "volume.weekLabel": "Semana {n}",
