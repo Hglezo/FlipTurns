@@ -156,6 +156,7 @@ function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
   assigneeLabel, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
   className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner, onExpandPreview, namesRowClassName, analysisBleedClassName,
+  offsetWorkoutBodyForCornerAssignee,
 }: {
   workout: Workout; dateKey: string; showLabel: boolean; feedbackRefreshKey: number;
   onFeedbackChange?: () => void; assigneeLabel?: string | null; assigneeNames?: string | null;
@@ -174,6 +175,8 @@ function WorkoutBlock({
   namesRowClassName?: string;
   /** Widen analysis to the card’s symmetric horizontal inset when CardContent uses extra `pr-*` for icons. */
   analysisBleedClassName?: string;
+  /** When assignee/teammate names render in the card’s absolute top-right stack, add top margin on workout text so it clears icons + wrapped names. */
+  offsetWorkoutBodyForCornerAssignee?: boolean;
   t: (key: import("@/lib/i18n").TranslationKey) => string;
 }) {
   const { role: viewerProfileRole } = useAuth();
@@ -264,6 +267,7 @@ function WorkoutBlock({
             className={cn(
               "w-full overflow-hidden font-sans leading-relaxed text-foreground/90",
               compact ? "max-h-[4.27rem] text-[14px]" : "max-h-[4.57rem] text-[15px]",
+              offsetWorkoutBodyForCornerAssignee && "mt-12",
             )}
           >
             <WorkoutTextWithWrapIndent content={workout.content} />
@@ -286,6 +290,7 @@ function WorkoutBlock({
           className={cn(
             "w-full min-w-0 font-sans leading-relaxed text-foreground/90",
             compact ? "text-[14px]" : "text-[15px]",
+            offsetWorkoutBodyForCornerAssignee && "mt-12",
           )}
         >
           <WorkoutTextWithWrapIndent content={workout.content} />
@@ -1587,15 +1592,16 @@ function HomePage() {
                                 )}
                               </div>
                               {teammateLine != null && (
-                                <p className="text-xs text-muted-foreground text-right">{t("main.teammates")}: {teammateLine}</p>
+                                <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{t("main.teammates")}: {teammateLine}</p>
                               )}
                               {teammateLine == null && assignedLine && (
-                                <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedLine}</p>
+                                <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{t("main.assignedTo")} {assignedLine}</p>
                               )}
                             </div>
                             <CardContent className={`pl-4 py-0 ${workout.content.trim() && canSwimmerEdit ? "pr-[4.5rem]" : workout.content.trim() || canSwimmerEdit ? "pr-12" : "pr-4"}`}>
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={swimmerWorkouts.length > 1} assigneeLabel={label}
                                 assigneeNames={undefined}
+                                offsetWorkoutBodyForCornerAssignee={teammateLine != null || !!assignedLine}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly t={t} />
                             </CardContent>
                           </>
@@ -1639,6 +1645,7 @@ function HomePage() {
                     const coachReadPr = coachUsesWorkoutPreviews
                       ? workout.content.trim() ? "pr-[4.75rem]" : "pr-20"
                       : workout.content.trim() ? "pr-[4.5rem]" : "pr-12";
+                    const coachReadAssigneeNames = assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx)));
                     return (
                       <Card
                         key={workout.id || `new-${originalIdx}`}
@@ -1824,13 +1831,14 @@ function HomePage() {
                                   </>
                                 )}
                               </div>
-                              {assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx))) && (
-                                <p className="text-xs text-muted-foreground text-right">{t("main.assignedTo")} {assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx)))}</p>
+                              {coachReadAssigneeNames && (
+                                <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{t("main.assignedTo")} {coachReadAssigneeNames}</p>
                               )}
                             </div>
                             <CardContent className={cn("pl-4 py-0", coachReadPr)}>
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={coachWorkouts.length > 1} assigneeLabel={label}
                                 assigneeNames={undefined}
+                                offsetWorkoutBodyForCornerAssignee={!!coachReadAssigneeNames}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly
                                 contentDisplay={coachCollapsed ? "preview" : "full"}
                                 onExpandPreview={
