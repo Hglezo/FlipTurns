@@ -1,5 +1,6 @@
 import { analyzeWorkout } from "./workout-analyzer";
 import type { SwimmerGroup } from "./types";
+import { PERSONAL_ASSIGNMENT } from "./types";
 
 export type { SwimmerGroup };
 export type Aggregation = "day" | "week" | "month";
@@ -9,7 +10,7 @@ export interface WorkoutRow {
   date: string;
   content: string;
   assigned_to: string | null;
-  assigned_to_group: SwimmerGroup | null;
+  assigned_to_group: SwimmerGroup | typeof PERSONAL_ASSIGNMENT | null;
   assignee_ids?: string[];
   pool_size?: "LCM" | "SCM" | "SCY" | null;
 }
@@ -47,6 +48,9 @@ export function computeSwimmerVolumes(workouts: WorkoutRow[], swimmers: SwimmerP
       const personal = dayWorkouts.filter((w) => w.assigned_to === swimmer.id);
       const group = dayWorkouts.filter((w) => {
         if (!w.assigned_to_group) return false;
+        if (w.assigned_to_group === PERSONAL_ASSIGNMENT) {
+          return Boolean(w.assignee_ids?.length && w.assignee_ids.includes(swimmer.id));
+        }
         return (w.assignee_ids?.length && w.assignee_ids.includes(swimmer.id)) ||
           (!w.assignee_ids?.length && w.assigned_to_group === swimmer.swimmer_group);
       });

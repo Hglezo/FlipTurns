@@ -1,7 +1,14 @@
 export type SwimmerGroup = "Sprint" | "Middle distance" | "Distance";
+/** Multi-assignee workouts not tied to a training group (stored in `assigned_to_group`). */
+export const PERSONAL_ASSIGNMENT = "Personal" as const;
+export type AssignedToGroupValue = SwimmerGroup | typeof PERSONAL_ASSIGNMENT;
 export type ViewMode = "day" | "week" | "month";
 
 export const SWIMMER_GROUPS: SwimmerGroup[] = ["Sprint", "Middle distance", "Distance"];
+
+export function isTrainingSwimmerGroup(g: AssignedToGroupValue | null | undefined): g is SwimmerGroup {
+  return g != null && g !== PERSONAL_ASSIGNMENT && SWIMMER_GROUPS.includes(g as SwimmerGroup);
+}
 export const ALL_GROUPS_ID = "__all_groups__" as const;
 export const ALL_ID = "__all__" as const;
 export const ONLY_GROUPS_ID = "__only_groups__" as const;
@@ -23,7 +30,7 @@ export interface Workout {
   workout_category?: string | null;
   pool_size?: PoolSize | null;
   assigned_to?: string | null;
-  assigned_to_group?: SwimmerGroup | null;
+  assigned_to_group?: AssignedToGroupValue | null;
   assignee_ids?: string[];
   updated_at?: string | null;
   created_by?: string | null;

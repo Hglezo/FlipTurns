@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import type { Workout, SwimmerProfile, SwimmerGroup } from "./types";
-import { SWIMMER_GROUPS, normDate, getTimeframe } from "./types";
+import { SWIMMER_GROUPS, PERSONAL_ASSIGNMENT, isTrainingSwimmerGroup, normDate, getTimeframe } from "./types";
 
 export async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
@@ -20,7 +20,12 @@ export function mergeAssigneesIntoWorkouts(workouts: Workout[], assigneesByWorko
     if (!w.id) return w;
     const ids = assigneesByWorkout.get(w.id);
     if (w.assigned_to_group) {
-      const assigneeIds = ids !== undefined ? ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
+      const assigneeIds =
+        ids !== undefined
+          ? ids
+          : w.assigned_to_group === PERSONAL_ASSIGNMENT
+            ? (w.assignee_ids ?? [])
+            : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
       return { ...w, assignee_ids: assigneeIds };
     }
     if (ids !== undefined) return ids.length > 0 ? { ...w, assignee_ids: ids } : { ...w, assignee_ids: [] };
@@ -44,7 +49,7 @@ export function orAssignFilter(userId: string, group: string | null | undefined)
 export function filterWorkoutsForSwimmer(workouts: Workout[], swimmerId: string, swimmerGroup: SwimmerGroup | null): Workout[] {
   if (swimmerId === "__all__") return workouts;
   if (swimmerId === "__all_groups__" || swimmerId === "__only_groups__") {
-    return workouts.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
+    return workouts.filter((w) => isTrainingSwimmerGroup(w.assigned_to_group));
   }
   const byDate = new Map<string, Workout[]>();
   for (const w of workouts) {
@@ -68,6 +73,9 @@ export function filterWorkoutsForSwimmer(workouts: Workout[], swimmerId: string,
         if (w.assigned_to === swimmerId) return true;
         if (wc.created_by === swimmerId) return true;
         if ((w.assignee_ids ?? []).includes(swimmerId)) return true;
+        if (w.assigned_to_group === PERSONAL_ASSIGNMENT) {
+          return (w.assignee_ids ?? []).includes(swimmerId);
+        }
         if (w.assigned_to_group && swimmerGroup) {
           if (Array.isArray(w.assignee_ids)) {
             if (w.assignee_ids.length === 0) return false;
@@ -95,7 +103,11 @@ export function sortCoachWorkouts(workouts: Workout[], swimmers: SwimmerProfile[
     if (isGroup(a) !== isGroup(b)) return isGroup(a) ? -1 : 1;
     const aSession = sessionOrder(a), bSession = sessionOrder(b);
     if (aSession !== bSession) return aSession - bSession;
-    const order = (w: Workout) => w.assigned_to_group ? SWIMMER_GROUPS.indexOf(w.assigned_to_group) : -1;
+    const order = (w: Workout) => {
+      if (!w.assigned_to_group) return -1;
+      if (w.assigned_to_group === PERSONAL_ASSIGNMENT) return SWIMMER_GROUPS.length;
+      return SWIMMER_GROUPS.indexOf(w.assigned_to_group);
+    };
     const aIdx = order(a), bIdx = order(b);
     if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
     if (aIdx >= 0) return -1;
@@ -128,6 +140,15 @@ function formatSwimmerDisplayName(fullName: string | null, swimmers: SwimmerProf
 }
 
 export function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): string | null {
+  if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {
+    const ids = workout.assignee_ids ?? [];
+    if (ids.length > 1) return PERSONAL_ASSIGNMENT;
+    if (ids.length === 1) {
+      const assignee = swimmers.find((s) => s.id === ids[0]);
+      return assignee ? formatSwimmerDisplayName(assignee.full_name, swimmers) : "Swimmer";
+    }
+    return PERSONAL_ASSIGNMENT;
+  }
   if (workout.assigned_to_group) return workout.assigned_to_group;
   if (workout.assigned_to) {
     const assignee = swimmers.find((s) => s.id === workout.assigned_to);
@@ -145,12 +166,19 @@ export function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): s
 
 export function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], excludeUserIds?: string[]): string | null {
   if (!workout.assigned_to_group) return assignmentLabel(workout, swimmers);
-  const defaultGroupIds = swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+  const defaultGroupIds =
+    workout.assigned_to_group === PERSONAL_ASSIGNMENT
+      ? []
+      : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
   const ids = Array.isArray(workout.assignee_ids) ? workout.assignee_ids : defaultGroupIds;
   let assignees = swimmers.filter((s) => ids.includes(s.id));
   if (excludeUserIds?.length) assignees = assignees.filter((s) => !excludeUserIds.includes(s.id));
-  const groupOrder = (g: SwimmerGroup | null | undefined) =>
-    g === workout.assigned_to_group ? 0 : g == null ? 4 : SWIMMER_GROUPS.indexOf(g) + 1;
+  const groupOrder = (g: SwimmerGroup | null | undefined) => {
+    if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {
+      return g == null ? 4 : SWIMMER_GROUPS.indexOf(g) + 1;
+    }
+    return g === workout.assigned_to_group ? 0 : g == null ? 4 : SWIMMER_GROUPS.indexOf(g) + 1;
+  };
   const sorted = [...assignees].sort((a, b) => {
     const diff = groupOrder(a.swimmer_group) - groupOrder(b.swimmer_group);
     return diff !== 0 ? diff : (a.full_name ?? "").localeCompare(b.full_name ?? "");
@@ -164,6 +192,9 @@ export function isViewerInWorkout(workout: Workout, viewerId: string | undefined
   if (!viewerId) return false;
   if (workout.assigned_to === viewerId) return true;
   if (workout.assignee_ids?.includes(viewerId)) return true;
+  if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {
+    return (workout.assignee_ids ?? []).includes(viewerId);
+  }
   if (workout.assigned_to_group) {
     if (Array.isArray(workout.assignee_ids)) return workout.assignee_ids.includes(viewerId);
     const ids = swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
@@ -175,9 +206,12 @@ export function isViewerInWorkout(workout: Workout, viewerId: string | undefined
 export function teammateNames(workout: Workout, swimmers: SwimmerProfile[], currentUserId: string | undefined, excludeUserIds?: string[]): string | null {
   if (!currentUserId || !isViewerInWorkout(workout, currentUserId, swimmers)) return null;
   if (!workout.assigned_to_group) return null;
-  const ids = Array.isArray(workout.assignee_ids)
-    ? workout.assignee_ids
-    : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+  const ids =
+    workout.assigned_to_group === PERSONAL_ASSIGNMENT
+      ? (workout.assignee_ids ?? [])
+      : Array.isArray(workout.assignee_ids)
+        ? workout.assignee_ids
+        : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
   let assignees = swimmers.filter((s) => ids.includes(s.id) && s.id !== currentUserId);
   if (excludeUserIds?.length) assignees = assignees.filter((s) => !excludeUserIds.includes(s.id));
   const names = assignees
@@ -195,6 +229,9 @@ export function dayPreviewLabel(workout: Workout, swimmers: SwimmerProfile[], de
 /** Group workouts: persist explicit `assignee_ids` when set; if still `undefined`, treat as full group roster (editor default). */
 export function resolvedGroupAssigneeIdsForSave(workout: Workout, swimmers: SwimmerProfile[]): string[] {
   if (!workout.assigned_to_group) return [];
+  if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {
+    return Array.isArray(workout.assignee_ids) ? workout.assignee_ids : [];
+  }
   if (Array.isArray(workout.assignee_ids)) return workout.assignee_ids;
   return swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
 }

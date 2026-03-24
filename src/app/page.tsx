@@ -24,6 +24,7 @@ import { FlipTurnsLogo } from "@/components/flipturns-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
 import { WorkoutContentTextarea } from "@/components/workout-content-textarea";
+import { WorkoutAssignPicker } from "@/components/workout-assign-picker";
 import { formatWorkoutInlineText } from "@/components/workout-inline-formatted";
 import { SignOutDropdown } from "@/components/sign-out-dropdown";
 import { NotificationBell } from "@/components/notification-bell";
@@ -31,7 +32,10 @@ import { usePreferences } from "@/components/preferences-provider";
 import { useTranslations } from "@/components/i18n-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { Workout, SwimmerProfile, ViewMode, SwimmerGroup } from "@/lib/types";
-import { SWIMMER_GROUPS, ALL_GROUPS_ID, ALL_ID, ONLY_GROUPS_ID, WORKOUT_CATEGORIES, SESSION_OPTIONS, POOL_SIZE_OPTIONS, normDate, getTimeframe } from "@/lib/types";
+import {
+  SWIMMER_GROUPS, ALL_GROUPS_ID, ALL_ID, ONLY_GROUPS_ID, WORKOUT_CATEGORIES, SESSION_OPTIONS, POOL_SIZE_OPTIONS,
+  normDate, getTimeframe, PERSONAL_ASSIGNMENT, isTrainingSwimmerGroup,
+} from "@/lib/types";
 import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i18n";
 import {
   loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
@@ -271,6 +275,7 @@ function WorkoutBlock({
               "w-full overflow-hidden font-sans leading-relaxed text-foreground/90",
               compact ? "max-h-[4.27rem] text-[14px]" : "max-h-[4.57rem] text-[15px]",
               offsetWorkoutBodyForCornerAssignee && (workoutBodyCornerOffsetClassName ?? "mt-12"),
+              analysisBleedClassName,
             )}
           >
             <WorkoutTextWithWrapIndent content={workout.content} />
@@ -294,6 +299,7 @@ function WorkoutBlock({
             "w-full min-w-0 font-sans leading-relaxed text-foreground/90",
             compact ? "text-[14px]" : "text-[15px]",
             offsetWorkoutBodyForCornerAssignee && (workoutBodyCornerOffsetClassName ?? "mt-12"),
+            analysisBleedClassName,
           )}
         >
           <WorkoutTextWithWrapIndent content={workout.content} />
@@ -611,13 +617,7 @@ function HomePage() {
     (async () => {
       let query = supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
       if (isOnlyGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-      else if (!isAll && filterId) {
-        if (filterId === userId) {
-          query = query;
-        } else {
-          query = filterGroup ? query.or(orAssignFilter(filterId, filterGroup)) : query.eq("assigned_to", filterId);
-        }
-      }
+      /* Else: load full day; filterWorkoutsForSwimmer applies visibility (includes Personal assignee lists). */
       const { data } = await query;
       if (cancelled) return;
       let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[];
@@ -667,11 +667,14 @@ function HomePage() {
       }
       if (cancelled) return;
       if (selectedCoachSwimmerId === ONLY_GROUPS_ID) {
-        rows = rows.filter((w) => w.assigned_to_group != null && SWIMMER_GROUPS.includes(w.assigned_to_group));
+        rows = rows.filter((w) => isTrainingSwimmerGroup(w.assigned_to_group));
       } else if (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID) {
         const coachFilterGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
         rows = rows.filter((w) => {
           if (w.assigned_to === selectedCoachSwimmerId) return true;
+          if (w.assigned_to_group === PERSONAL_ASSIGNMENT) {
+            return (w.assignee_ids ?? []).includes(selectedCoachSwimmerId);
+          }
           if (w.assigned_to_group && coachFilterGroup) {
             const ids = Array.isArray(w.assignee_ids) ? w.assignee_ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
             return ids.includes(selectedCoachSwimmerId);
@@ -982,14 +985,47 @@ function HomePage() {
     (selectedViewSwimmerId === ALL_ID || selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) &&
     viewWorkouts.length > 1;
 
+  /** My workouts day view: collapse list when 2+ workouts (same idea as coach day aggregated list). */
+  const swimmerMyUsesWorkoutPreviews = isSwimmerMyView && swimmerWorkouts.length > 1;
+
   async function saveSingleWorkoutSwimmer(index: number) {
     if (!dateKey || !user || index < 0 || index >= swimmerWorkouts.length) return;
     const workout = swimmerWorkouts[index];
     setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null);
     setLoading(true); setSaved(false);
     const poolSizeToSave = workout.pool_size ?? defaultPoolSize ?? null;
-    const assigneeIds = workout.assignee_ids?.length ? workout.assignee_ids : (workout.assigned_to ? [workout.assigned_to] : []);
-    const singleAssignee = assigneeIds.length === 1 ? assigneeIds[0]! : null;
+    const isPersonal = workout.assigned_to_group === PERSONAL_ASSIGNMENT;
+    const assigneeIds = isPersonal
+      ? resolvedGroupAssigneeIdsForSave(workout, swimmers)
+      : workout.assignee_ids?.length
+        ? workout.assignee_ids
+        : workout.assigned_to
+          ? [workout.assigned_to]
+          : [];
+    const singleAssignee = !isPersonal && assigneeIds.length === 1 ? assigneeIds[0]! : null;
+
+    const syncPersonalOrGroupAssignees = async (savedId: string): Promise<boolean> => {
+      const tf = getTimeframe(workout);
+      const otherIds = swimmerWorkouts.filter((w) => w.id && w.assigned_to_group && w.id !== savedId && getTimeframe(w) === tf).map((w) => w.id!);
+      try {
+        await saveAssigneesForGroupWorkout(savedId, resolvedGroupAssigneeIdsForSave(workout, swimmers), otherIds);
+      } catch (e) {
+        alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees");
+        return false;
+      }
+      for (const w of swimmerWorkouts) {
+        if (!w.assigned_to_group || !w.id || w.id === savedId) continue;
+        const tfW = getTimeframe(w);
+        const otherIdsForW = swimmerWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === tfW).map((x) => x.id!);
+        try {
+          await saveAssigneesForGroupWorkout(w.id, resolvedGroupAssigneeIdsForSave(w, swimmers), otherIdsForW);
+        } catch (e) {
+          alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees");
+          return false;
+        }
+      }
+      return true;
+    };
 
     if (workout.id) {
       const { error } = await supabase.rpc("update_workout_swimmer", {
@@ -999,18 +1035,30 @@ function HomePage() {
         p_workout_category: workout.workout_category || null,
         p_pool_size: poolSizeToSave,
         p_assigned_to: singleAssignee,
+        p_assigned_to_group: isPersonal ? PERSONAL_ASSIGNMENT : null,
       });
       if (error) {
         if (error.message?.includes("function") && error.message?.includes("does not exist")) {
           const { error: updErr } = await supabase.from("workouts").update({
             content: workout.content, session: workout.session || null, workout_category: workout.workout_category,
-            pool_size: poolSizeToSave, assigned_to: singleAssignee, assigned_to_group: null, updated_at: new Date().toISOString(),
+            pool_size: poolSizeToSave,
+            assigned_to: isPersonal ? null : singleAssignee,
+            assigned_to_group: isPersonal ? PERSONAL_ASSIGNMENT : null,
+            updated_at: new Date().toISOString(),
           }).eq("id", workout.id).eq("created_by", user.id);
           if (updErr) { alert(updErr.message); setLoading(false); return; }
         } else { alert(error.message); setLoading(false); return; }
       }
-      if (assigneeIds.length > 1) {
-        try { await saveAssigneesForIndividualWorkout(workout.id, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
+      if (isPersonal) {
+        if (!(await syncPersonalOrGroupAssignees(workout.id))) { setLoading(false); return; }
+      } else {
+        try {
+          await saveAssigneesForIndividualWorkout(workout.id, assigneeIds);
+        } catch (e) {
+          alert("Failed to save assignees");
+          setLoading(false);
+          return;
+        }
       }
     } else {
       const { data: newId, error } = await supabase.rpc("insert_workout_swimmer", {
@@ -1020,21 +1068,32 @@ function HomePage() {
         p_workout_category: workout.workout_category || null,
         p_pool_size: poolSizeToSave,
         p_assigned_to: singleAssignee,
+        p_assigned_to_group: isPersonal ? PERSONAL_ASSIGNMENT : null,
       });
       if (error) {
         if (error.message?.includes("function") && error.message?.includes("does not exist")) {
           const { data: inserted, error: insErr } = await supabase.from("workouts").insert({
             date: dateKey, content: workout.content, session: workout.session || null, workout_category: workout.workout_category,
-            pool_size: poolSizeToSave, assigned_to: singleAssignee, assigned_to_group: null, created_by: user.id, updated_at: new Date().toISOString(),
+            pool_size: poolSizeToSave,
+            assigned_to: isPersonal ? null : singleAssignee,
+            assigned_to_group: isPersonal ? PERSONAL_ASSIGNMENT : null,
+            created_by: user.id, updated_at: new Date().toISOString(),
           }).select().single();
           if (insErr) { alert(insErr.message); setLoading(false); return; }
-          if (assigneeIds.length > 1) {
-            try { await saveAssigneesForIndividualWorkout(inserted.id, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
+          const sid = inserted.id;
+          if (isPersonal) {
+            if (!(await syncPersonalOrGroupAssignees(sid))) { setLoading(false); return; }
+          } else if (assigneeIds.length > 1) {
+            try { await saveAssigneesForIndividualWorkout(sid, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
           }
           setSwimmerWorkouts((prev) => prev.map((w, i) => i === index ? { ...inserted, date: dateKey, assignee_ids: workout.assignee_ids } : w));
         } else { alert(error.message); setLoading(false); return; }
-      } else if (newId && assigneeIds.length > 1) {
-        try { await saveAssigneesForIndividualWorkout(newId, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
+      } else if (newId) {
+        if (isPersonal) {
+          if (!(await syncPersonalOrGroupAssignees(newId))) { setLoading(false); return; }
+        } else if (assigneeIds.length > 1) {
+          try { await saveAssigneesForIndividualWorkout(newId, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
+        }
       }
     }
 
@@ -1068,7 +1127,20 @@ function HomePage() {
   }
 
   function updateSwimmerWorkout(index: number, updates: Partial<Workout>) {
-    setSwimmerWorkouts((prev) => prev.map((w, i) => i === index ? { ...w, ...updates } : w));
+    setSwimmerWorkouts((prev) => {
+      let next = prev.map((w, i) => (i === index ? { ...w, ...updates } : w));
+      if (updates.assignee_ids && prev[index]?.assigned_to_group) {
+        const addedIds = updates.assignee_ids;
+        const currentTf = getTimeframe(prev[index]!);
+        next = next.map((w, i) => {
+          if (i === index || !w.assigned_to_group || !w.assignee_ids?.length || getTimeframe(w) !== currentTf) {
+            return i === index ? next[index] : w;
+          }
+          return { ...w, assignee_ids: w.assignee_ids.filter((id) => !addedIds.includes(id)) };
+        });
+      }
+      return next;
+    });
   }
 
   function swimmerIdsInTimeframeExcludingSwimmer(workoutIdx: number): Set<string> {
@@ -1077,8 +1149,18 @@ function HomePage() {
     const out = new Set<string>();
     swimmerWorkouts.forEach((ow, i) => {
       if (i === workoutIdx || getTimeframe(ow) !== tf) return;
-      if (ow.assigned_to) out.add(ow.assigned_to);
-      (ow.assignee_ids ?? []).forEach((id) => out.add(id));
+      if (ow.assigned_to && !ow.assigned_to_group) out.add(ow.assigned_to);
+      if (ow.assigned_to_group) {
+        const ids =
+          ow.assigned_to_group === PERSONAL_ASSIGNMENT
+            ? (ow.assignee_ids ?? [])
+            : ow.assignee_ids?.length
+              ? ow.assignee_ids
+              : swimmers.filter((s) => s.swimmer_group === ow.assigned_to_group).map((s) => s.id);
+        ids.forEach((id) => out.add(id));
+      } else {
+        (ow.assignee_ids ?? []).forEach((id) => out.add(id));
+      }
     });
     return out;
   }
@@ -1162,7 +1244,13 @@ function HomePage() {
       if (i === workoutIdx || getTimeframe(ow) !== tf) return;
       if (ow.assigned_to && !ow.assigned_to_group) out.add(ow.assigned_to);
       else if (ow.assigned_to_group) {
-        (ow.assignee_ids?.length ? ow.assignee_ids : swimmers.filter((s) => s.swimmer_group === ow.assigned_to_group).map((s) => s.id)).forEach((id) => out.add(id));
+        const ids =
+          ow.assigned_to_group === PERSONAL_ASSIGNMENT
+            ? (ow.assignee_ids ?? [])
+            : ow.assignee_ids?.length
+              ? ow.assignee_ids
+              : swimmers.filter((s) => s.swimmer_group === ow.assigned_to_group).map((s) => s.id);
+        ids.forEach((id) => out.add(id));
       }
     });
     return out;
@@ -1548,49 +1636,111 @@ function HomePage() {
 
         {/* Day view - swimmer editor (my workouts) */}
         {viewMode === "day" && isSwimmerMyView && (
-          <Card className="flex flex-1 flex-col py-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
             <input ref={imageFileInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
-            <CardContent className="flex flex-1 flex-col gap-4 px-4 py-0">
               {swimmerLoading && swimmerWorkouts.length === 0 ? (
                 <div className="flex justify-center py-10" aria-busy="true">
                   <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
                 </div>
               ) : (
-                <div className="flex flex-1 flex-col gap-4">
+                <div className="flex min-w-0 flex-1 flex-col gap-4">
                   {swimmerWorkouts.length > 0 && swimmerWorkouts.map((workout) => {
                     const originalIdx = swimmerWorkouts.indexOf(workout);
                     const canSwimmerEdit = !workout.id || workout.created_by === user?.id;
                     const rawLabel = assignmentLabel(workout, swimmers);
                     const label = rawLabel && GROUP_KEYS[rawLabel as keyof typeof GROUP_KEYS] ? t(GROUP_KEYS[rawLabel as keyof typeof GROUP_KEYS]) : rawLabel;
                     const isEditing = swimmerEditingIndex === originalIdx && canSwimmerEdit;
-                    const assigneeIds = workout.assignee_ids?.length ? workout.assignee_ids : (workout.assigned_to ? [workout.assigned_to] : []);
+                    const assigneeIds =
+                      workout.assigned_to_group === PERSONAL_ASSIGNMENT
+                        ? (workout.assignee_ids ?? [])
+                        : workout.assignee_ids?.length
+                          ? workout.assignee_ids
+                          : workout.assigned_to
+                            ? [workout.assigned_to]
+                            : [];
                     const conflictIds = swimmerIdsInTimeframeExcludingSwimmer(originalIdx);
                     const viewerInWorkout = user?.id ? isViewerInWorkout(workout, user.id, swimmers) : false;
                     const teammateLine = teammateNames(workout, swimmers, user?.id, Array.from(conflictIds));
                     const assignedLine = !viewerInWorkout ? assignedToNames(workout, swimmers, Array.from(conflictIds)) : null;
-                    const swimmerEditShowsFeedback = assigneeIds.every((id) => id === user?.id);
+                    const swimmerEditShowsFeedback =
+                      assigneeIds.length > 0 && assigneeIds.every((id) => id === user?.id);
+                    const workoutKey = workoutListKey(workout, originalIdx);
+                    const swimmerMyCollapsed = swimmerMyUsesWorkoutPreviews && aggregatedDayExpandedWorkoutKey !== workoutKey;
+                    const swimmerDayReadPr = swimmerMyUsesWorkoutPreviews
+                      ? swimmerMyCollapsed
+                        ? "pr-12"
+                        : canSwimmerEdit
+                          ? workout.content.trim()
+                            ? "pr-[4.75rem]"
+                            : "pr-20"
+                          : workout.content.trim()
+                            ? "pr-[4.75rem]"
+                            : "pr-12"
+                      : workout.content.trim() && canSwimmerEdit
+                        ? "pr-[4.5rem]"
+                        : workout.content.trim() || canSwimmerEdit
+                          ? "pr-12"
+                          : "pr-4";
                     return (
-                      <Card key={workout.id || `new-${originalIdx}`} className="relative py-4">
+                      <Card
+                        key={workout.id || `new-${originalIdx}`}
+                        id={workout.id ? `workout-notification-focus-${workout.id}` : undefined}
+                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", swimmerMyCollapsed && "cursor-pointer")}
+                        tabIndex={swimmerMyCollapsed ? 0 : undefined}
+                        onClick={
+                          swimmerMyCollapsed
+                            ? (e) => {
+                                if ((e.target as HTMLElement).closest("button, a")) return;
+                                setAggregatedDayExpandedWorkoutKey(workoutKey);
+                              }
+                            : undefined
+                        }
+                        onKeyDown={
+                          swimmerMyCollapsed
+                            ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setAggregatedDayExpandedWorkoutKey(workoutKey);
+                                }
+                              }
+                            : undefined
+                        }
+                      >
                         {isEditing ? (
                           <CardContent className="w-full min-w-0 px-4 py-0">
                             <div className="w-full min-w-0 space-y-2">
                               <div className="flex flex-wrap gap-2">
-                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                  value={assigneeIds.length === 1 ? `swimmer:${assigneeIds[0]}` : assigneeIds.length > 1 ? `swimmer:${assigneeIds[0]}` : ""}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    if (v.startsWith("swimmer:")) {
+                                <WorkoutAssignPicker
+                                  mode="swimmer"
+                                  value={
+                                    workout.assigned_to_group === PERSONAL_ASSIGNMENT
+                                      ? "personal"
+                                      : user?.id &&
+                                          !workout.assigned_to_group &&
+                                          (workout.assigned_to === user.id ||
+                                            (assigneeIds.length === 1 && assigneeIds[0] === user.id))
+                                        ? `swimmer:${user.id}`
+                                        : ""
+                                  }
+                                  onValueChange={(v) => {
+                                    if (v === "personal") {
+                                      updateSwimmerWorkout(originalIdx, {
+                                        assigned_to: null,
+                                        assigned_to_group: PERSONAL_ASSIGNMENT,
+                                        assignee_ids: [],
+                                      });
+                                    } else if (v.startsWith("swimmer:")) {
                                       const id = v.slice(8) || null;
                                       updateSwimmerWorkout(originalIdx, { assigned_to: id, assigned_to_group: null, assignee_ids: id ? [id] : undefined });
                                     } else {
                                       updateSwimmerWorkout(originalIdx, { assigned_to: null, assigned_to_group: null, assignee_ids: undefined });
                                     }
-                                  }}>
-                                  <option value="">{t("main.assignTo")}</option>
-                                  <optgroup label={t("coach.swimmer")}>
-                                    {swimmers.map((s) => <option key={s.id} value={`swimmer:${s.id}`}>{s.full_name || s.id}</option>)}
-                                  </optgroup>
-                                </select>
+                                  }}
+                                  swimmers={swimmers}
+                                  t={t}
+                                  userId={user?.id}
+                                  selfLabel={profile?.full_name ?? swimmers.find((s) => s.id === user?.id)?.full_name ?? null}
+                                />
                                 <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.session || ""}
                                   onChange={(e) => updateSwimmerWorkout(originalIdx, { session: e.target.value || null })}>
                                   {SESSION_OPTIONS.map((v) => <option key={v || "any"} value={v}>{v === "AM" ? t("session.am") : v === "PM" ? t("session.pm") : t("main.anytime")}</option>)}
@@ -1605,34 +1755,53 @@ function HomePage() {
                                   {POOL_SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{getPoolLabel(opt.value, t)}</option>)}
                                 </select>
                               </div>
-                              <div className="space-y-1.5">
-                                <p className="text-xs font-medium text-muted-foreground">{t("coach.swimmersInWorkout")}</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {swimmers.map((s) => {
-                                    const isIn = assigneeIds.includes(s.id);
-                                    const hasConflict = conflictIds.has(s.id);
-                                    return (
-                                      <button key={s.id} type="button"
-                                        onClick={() => {
-                                          if (isIn) {
-                                            const next = assigneeIds.filter((id) => id !== s.id);
-                                            updateSwimmerWorkout(originalIdx, { assignee_ids: next, assigned_to: next.length === 1 ? next[0]! : null });
-                                          } else if (!hasConflict) {
-                                            const next = [...assigneeIds, s.id];
-                                            updateSwimmerWorkout(originalIdx, { assignee_ids: next, assigned_to: next.length === 1 ? next[0]! : null });
-                                          }
-                                        }}
-                                        title={hasConflict ? t("coach.workoutConflict") : undefined}
-                                        className={hasConflict ? "rounded-md border border-red-400/80 bg-red-400/10 text-red-800 dark:text-red-200 dark:bg-red-500/15 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium"
-                                          : isIn ? "rounded-md border px-2.5 py-1.5 text-xs font-medium border-primary bg-primary/10"
-                                            : "rounded-md border px-2.5 py-1.5 text-xs font-medium border-input bg-background text-muted-foreground hover:bg-accent"}>
-                                        {hasConflict && <AlertCircle className="size-3.5 shrink-0" />}
-                                        {s.full_name || s.id.slice(0, 8)}
-                                      </button>
-                                    );
-                                  })}
+                              {(workout.assigned_to_group === PERSONAL_ASSIGNMENT ||
+                                (!workout.assigned_to_group && assigneeIds.length > 1)) && (
+                                <div className="space-y-1.5">
+                                  <p className="text-xs font-medium text-muted-foreground">{t("coach.swimmersInWorkout")}</p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {swimmers.map((s) => {
+                                      const isIn = assigneeIds.includes(s.id);
+                                      const hasConflict = conflictIds.has(s.id);
+                                      return (
+                                        <button key={s.id} type="button"
+                                          onClick={() => {
+                                            if (isIn) {
+                                              const next = assigneeIds.filter((id) => id !== s.id);
+                                              updateSwimmerWorkout(originalIdx, {
+                                                assignee_ids: next,
+                                                assigned_to:
+                                                  workout.assigned_to_group === PERSONAL_ASSIGNMENT
+                                                    ? null
+                                                    : next.length === 1
+                                                      ? next[0]!
+                                                      : null,
+                                              });
+                                            } else if (!hasConflict) {
+                                              const next = [...assigneeIds, s.id];
+                                              updateSwimmerWorkout(originalIdx, {
+                                                assignee_ids: next,
+                                                assigned_to:
+                                                  workout.assigned_to_group === PERSONAL_ASSIGNMENT
+                                                    ? null
+                                                    : next.length === 1
+                                                      ? next[0]!
+                                                      : null,
+                                              });
+                                            }
+                                          }}
+                                          title={hasConflict ? t("coach.workoutConflict") : undefined}
+                                          className={hasConflict ? "rounded-md border border-red-400/80 bg-red-400/10 text-red-800 dark:text-red-200 dark:bg-red-500/15 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium"
+                                            : isIn ? "rounded-md border px-2.5 py-1.5 text-xs font-medium border-primary bg-primary/10"
+                                              : "rounded-md border px-2.5 py-1.5 text-xs font-medium border-input bg-background text-muted-foreground hover:bg-accent"}>
+                                          {hasConflict && <AlertCircle className="size-3.5 shrink-0" />}
+                                          {s.full_name || s.id.slice(0, 8)}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                               <div className="flex flex-wrap items-center gap-2">
                                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
                                   onClick={() => { imageFromWorkoutIdxRef.current = originalIdx; imageFileInputRef.current?.click(); }}>
@@ -1677,15 +1846,58 @@ function HomePage() {
                         ) : (
                           <DayCardCornerAssigneeStack
                             iconsRow={(
-                              <div className="flex items-center justify-end gap-0.5">
-                                {canSwimmerEdit && (
-                                  <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                              <div
+                                className={cn(
+                                  "flex shrink-0 items-center gap-0.5",
+                                  swimmerMyUsesWorkoutPreviews && !swimmerMyCollapsed && !canSwimmerEdit && workout.content.trim()
+                                    ? "w-[4.75rem] justify-between"
+                                    : "justify-end",
                                 )}
-                                {workout.content.trim() && (
-                                  <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
-                                    aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
-                                    <Printer className="size-4" />
-                                  </Button>
+                              >
+                                {swimmerMyUsesWorkoutPreviews ? (
+                                  <>
+                                    {!swimmerMyCollapsed && !canSwimmerEdit && workout.content.trim() && (
+                                      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
+                                        aria-label={t("main.exportPdf")} onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
+                                        <Printer className="size-4" />
+                                      </Button>
+                                    )}
+                                    {!swimmerMyCollapsed && canSwimmerEdit && (
+                                      <Button variant="ghost" size="icon" className="size-8 shrink-0"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null);
+                                          setSwimmerEditingIndex(originalIdx);
+                                        }} aria-label="Edit workout">
+                                        <Pencil className="size-4" />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-8 shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setAggregatedDayExpandedWorkoutKey(swimmerMyCollapsed ? workoutKey : null);
+                                      }}
+                                      aria-label={swimmerMyCollapsed ? t("main.expandWorkout") : t("main.collapseWorkout")}
+                                    >
+                                      {swimmerMyCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {workout.content.trim() && (
+                                      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
+                                        aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
+                                        <Printer className="size-4" />
+                                      </Button>
+                                    )}
+                                    {canSwimmerEdit && (
+                                      <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             )}
@@ -1696,13 +1908,37 @@ function HomePage() {
                                   ? `${t("main.assignedTo")} ${assignedLine}`
                                   : null
                             }
-                            cardContentClassName={`pl-4 py-0 ${workout.content.trim() && canSwimmerEdit ? "pr-[4.5rem]" : workout.content.trim() || canSwimmerEdit ? "pr-12" : "pr-4"}`}
+                            cardContentClassName={`pl-4 py-0 ${swimmerDayReadPr}`}
                             renderBody={({ offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName }) => (
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={swimmerWorkouts.length > 1} assigneeLabel={label}
                                 assigneeNames={undefined}
                                 offsetWorkoutBodyForCornerAssignee={offsetWorkoutBodyForCornerAssignee}
                                 workoutBodyCornerOffsetClassName={workoutBodyCornerOffsetClassName}
-                                feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly t={t} />
+                                feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly
+                                contentDisplay={swimmerMyCollapsed ? "preview" : "full"}
+                                onExpandPreview={
+                                  swimmerMyCollapsed && workout.content.trim()
+                                    ? () => setAggregatedDayExpandedWorkoutKey(workoutKey)
+                                    : undefined
+                                }
+                                aggregatedPdfBelowBanner={
+                                  swimmerMyUsesWorkoutPreviews &&
+                                  canSwimmerEdit &&
+                                  workout.content.trim() &&
+                                  !swimmerMyCollapsed
+                                    ? {
+                                        show: true,
+                                        onClick: (e) => {
+                                          e.stopPropagation();
+                                          downloadWorkoutPdf([workout]);
+                                        },
+                                        exportTitle: t("main.exportPdfTitle"),
+                                        exportAria: t("main.exportPdf"),
+                                      }
+                                    : undefined
+                                }
+                                analysisBleedClassName={coachAnalysisBleedClass(swimmerDayReadPr)}
+                                t={t} />
                             )}
                           />
                         )}
@@ -1720,20 +1956,18 @@ function HomePage() {
                   {swimmerWorkouts.length === 0 && <p className="text-center text-muted-foreground py-4">{t("main.noWorkoutForDay")}</p>}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         )}
 
         {viewMode === "day" && isCoach && (
-          <Card className="flex flex-1 flex-col py-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
             <input ref={imageFileInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
-            <CardContent className="flex flex-1 flex-col gap-4 px-4 py-0">
               {coachLoading && coachWorkouts.length === 0 ? (
                 <div className="flex justify-center py-10" aria-busy="true">
                   <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
                 </div>
               ) : (
-                <div className="flex flex-1 flex-col gap-4">
+                <div className="flex min-w-0 flex-1 flex-col gap-4">
                   {coachWorkouts.length > 0 && coachWorkouts.map((workout) => {
                     const originalIdx = coachWorkouts.indexOf(workout);
                     const rawLabel = assignmentLabel(workout, swimmers);
@@ -1775,18 +2009,44 @@ function HomePage() {
                           <CardContent className="w-full min-w-0 px-4 py-0">
                             <div className="w-full min-w-0 space-y-2">
                               <div className="flex flex-wrap gap-2">
-                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                  value={workout.assigned_to ? `swimmer:${workout.assigned_to}` : workout.assigned_to_group ? `group:${workout.assigned_to_group}` : ""}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    if (v.startsWith("swimmer:")) updateCoachWorkout(originalIdx, { assigned_to: v.slice(8) || null, assigned_to_group: null, assignee_ids: undefined });
-                                    else if (v.startsWith("group:")) updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: v.slice(6) as SwimmerGroup, assignee_ids: undefined });
-                                    else updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: null, assignee_ids: undefined });
-                                  }}>
-                                  <option value="">{t("main.assignTo")}</option>
-                                  <optgroup label={t("coach.swimmer")}>{swimmers.map((s) => <option key={s.id} value={`swimmer:${s.id}`}>{s.full_name || s.id}</option>)}</optgroup>
-                                  <optgroup label={t("coach.group")}>{SWIMMER_GROUPS.map((g) => <option key={g} value={`group:${g}`}>{t(GROUP_KEYS[g])}</option>)}</optgroup>
-                                </select>
+                                <WorkoutAssignPicker
+                                  mode="coach"
+                                  value={
+                                    workout.assigned_to
+                                      ? `swimmer:${workout.assigned_to}`
+                                      : workout.assigned_to_group === PERSONAL_ASSIGNMENT
+                                        ? `group:${PERSONAL_ASSIGNMENT}`
+                                        : workout.assigned_to_group
+                                          ? `group:${workout.assigned_to_group}`
+                                          : ""
+                                  }
+                                  onValueChange={(v) => {
+                                    if (v.startsWith("swimmer:")) {
+                                      updateCoachWorkout(originalIdx, { assigned_to: v.slice(8) || null, assigned_to_group: null, assignee_ids: undefined });
+                                    } else if (v.startsWith("group:")) {
+                                      const g = v.slice(6);
+                                      if (g === PERSONAL_ASSIGNMENT) {
+                                        updateCoachWorkout(originalIdx, {
+                                          assigned_to: null,
+                                          assigned_to_group: PERSONAL_ASSIGNMENT,
+                                          assignee_ids: [],
+                                        });
+                                      } else {
+                                        updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: g as SwimmerGroup, assignee_ids: undefined });
+                                      }
+                                    } else {
+                                      updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: null, assignee_ids: undefined });
+                                    }
+                                  }}
+                                  swimmers={swimmers}
+                                  t={t}
+                                  legacySwimmerId={workout.assigned_to && !workout.assigned_to_group ? workout.assigned_to : null}
+                                  legacySwimmerName={
+                                    workout.assigned_to && !workout.assigned_to_group
+                                      ? swimmers.find((s) => s.id === workout.assigned_to)?.full_name ?? null
+                                      : null
+                                  }
+                                />
                                 <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.session || ""}
                                   onChange={(e) => updateCoachWorkout(originalIdx, { session: e.target.value || null })}>
                                   {SESSION_OPTIONS.map((v) => <option key={v || "any"} value={v}>{v === "AM" ? t("session.am") : v === "PM" ? t("session.pm") : t("main.anytime")}</option>)}
@@ -1806,11 +2066,19 @@ function HomePage() {
                                   <div className="flex items-center gap-1.5">
                                     <p className="text-xs font-medium text-muted-foreground">{t("coach.swimmersInWorkout")}</p>
                                     <button type="button" onClick={() => {
-                                      const defaultGroupIds = swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+                                      const defaultGroupIds =
+                                        workout.assigned_to_group === PERSONAL_ASSIGNMENT
+                                          ? []
+                                          : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
                                       setCoachWorkouts((prev) => prev.map((w, i) => {
                                         if (i === originalIdx) return { ...w, assignee_ids: defaultGroupIds };
                                         if (w.assigned_to_group) {
-                                          const currentIds = Array.isArray(w.assignee_ids) ? w.assignee_ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
+                                          const currentIds =
+                                            w.assigned_to_group === PERSONAL_ASSIGNMENT
+                                              ? (w.assignee_ids ?? [])
+                                              : Array.isArray(w.assignee_ids)
+                                                ? w.assignee_ids
+                                                : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
                                           return { ...w, assignee_ids: currentIds.filter((id) => !defaultGroupIds.includes(id)) };
                                         }
                                         return w;
@@ -1822,13 +2090,21 @@ function HomePage() {
                                   <div className="flex flex-wrap gap-1.5">
                                     {(() => {
                                       const conflictIds = swimmerIdsInTimeframeExcluding(originalIdx);
-                                      const defaultGroupIds = swimmers.filter((x) => x.swimmer_group === workout.assigned_to_group).map((x) => x.id);
+                                      const defaultGroupIds =
+                                        workout.assigned_to_group === PERSONAL_ASSIGNMENT
+                                          ? []
+                                          : swimmers.filter((x) => x.swimmer_group === workout.assigned_to_group).map((x) => x.id);
                                       const currentIds = Array.isArray(workout.assignee_ids) ? workout.assignee_ids : defaultGroupIds;
-                                      return [...swimmers].sort((a, b) => {
-                                        const go = (g: SwimmerGroup | null | undefined) => g === workout.assigned_to_group ? 0 : g == null ? 4 : SWIMMER_GROUPS.indexOf(g) + 1;
-                                        const diff = go(a.swimmer_group) - go(b.swimmer_group);
-                                        return diff !== 0 ? diff : (a.full_name ?? "").localeCompare(b.full_name ?? "");
-                                      }).map((s) => {
+                                      const sortedSwimmers =
+                                        workout.assigned_to_group === PERSONAL_ASSIGNMENT
+                                          ? [...swimmers].sort((a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? ""))
+                                          : [...swimmers].sort((a, b) => {
+                                              const go = (g: SwimmerGroup | null | undefined) =>
+                                                g === workout.assigned_to_group ? 0 : g == null ? 4 : SWIMMER_GROUPS.indexOf(g) + 1;
+                                              const diff = go(a.swimmer_group) - go(b.swimmer_group);
+                                              return diff !== 0 ? diff : (a.full_name ?? "").localeCompare(b.full_name ?? "");
+                                            });
+                                      return sortedSwimmers.map((s) => {
                                         const isIn = currentIds.includes(s.id);
                                         const hasConflict = conflictIds.has(s.id);
                                         return (
@@ -1978,8 +2254,7 @@ function HomePage() {
                   {coachWorkouts.length === 0 && <p className="text-center text-muted-foreground py-4">{t("main.noWorkoutForDay")}</p>}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         )}
 
         {/* Week view (shared) */}

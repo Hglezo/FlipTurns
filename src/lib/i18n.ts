@@ -57,6 +57,7 @@ const TRANSLATIONS_EN = {
   "main.editDay": "Edit day",
   "main.addWorkout": "Add workout",
   "main.assignTo": "Assign to...",
+  "main.oneSwimmerAssignee": "One swimmer",
   "main.anytime": "Anytime",
   "main.category": "Category",
   "main.pool": "Pool",
@@ -215,6 +216,7 @@ const TRANSLATIONS_EN = {
   "group.sprint": "Sprinters",
   "group.middleDistance": "Middle Distance",
   "group.distance": "Distance",
+  "group.personal": "Personal",
   "group.notSet": "Not set",
 
   // Workout categories (display labels)
@@ -340,6 +342,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "main.editDay": "Editar día",
   "main.addWorkout": "Añadir entrenamiento",
   "main.assignTo": "Asignar a...",
+  "main.oneSwimmerAssignee": "Un nadador",
   "main.anytime": "Libre",
   "main.category": "Categoría",
   "main.pool": "Piscina",
@@ -498,6 +501,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "group.sprint": "Velocistas",
   "group.middleDistance": "Medio Fondo",
   "group.distance": "Fondistas",
+  "group.personal": "Personal",
   "group.notSet": "Sin asignar",
 
   // Workout categories
@@ -592,6 +596,7 @@ export const GROUP_KEYS: Record<string, TranslationKey> = {
   Sprint: "group.sprint",
   "Middle distance": "group.middleDistance",
   Distance: "group.distance",
+  Personal: "group.personal",
 };
 
 /** Pool size value to translation key */
