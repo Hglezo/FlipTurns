@@ -61,6 +61,14 @@ function ViewportPreviewButtons() {
   return (
     <>
       <Button
+        variant={previewViewport === null ? "default" : "outline"}
+        size="sm"
+        onClick={() => setPreviewViewport(null)}
+        className="gap-1.5"
+      >
+        {t("settings.viewportAuto")}
+      </Button>
+      <Button
         variant={previewViewport === "mobile" ? "default" : "outline"}
         size="sm"
         onClick={() => setPreviewViewport("mobile")}
@@ -77,14 +85,6 @@ function ViewportPreviewButtons() {
       >
         <Monitor className="size-3.5" />
         {t("settings.viewportDesktop")}
-      </Button>
-      <Button
-        variant={previewViewport === null ? "default" : "outline"}
-        size="sm"
-        onClick={() => setPreviewViewport(null)}
-        className="gap-1.5"
-      >
-        {t("settings.viewportAuto")}
       </Button>
     </>
   );
@@ -215,7 +215,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div className="app-shell mx-auto flex max-w-md flex-col px-5 pb-8 pt-6 lg:max-w-lg lg:px-6">
+      <div className="app-shell mx-auto flex max-w-md flex-col px-5 pb-8 pt-6 lg:max-w-[34rem] lg:px-6">
         <div className="mb-6 flex items-center justify-between gap-4">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>

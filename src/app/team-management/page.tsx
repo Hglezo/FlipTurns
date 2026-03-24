@@ -146,7 +146,7 @@ export default function TeamManagementPage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-lg lg:px-6">
+      <div className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6">
         {/* Header: back button left, title center, icons right */}
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <Link href="/" className="shrink-0">

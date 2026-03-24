@@ -128,7 +128,7 @@
   }
 }
 
-/* Viewport preview overrides (settings → Mobile / Desktop view) */
+/* Viewport preview overrides (settings → Default view) */
 body[data-viewport-preview="mobile"] .app-shell {
   max-width: 28rem !important;
   padding-left: 1.25rem !important;
@@ -136,7 +136,7 @@ body[data-viewport-preview="mobile"] .app-shell {
 }
 
 body[data-viewport-preview="desktop"] .app-shell {
-  max-width: 32rem !important;
+  max-width: 34rem !important;
   width: 100% !important;
   margin-left: auto !important;
   margin-right: auto !important;

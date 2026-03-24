@@ -11,6 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Pencil, Trash2, MessageSquare } from "lucide-react";
 
+const FEEDBACK_INTENSITY_MAX = 10;
+const INTENSITY_VALUES = Array.from({ length: FEEDBACK_INTENSITY_MAX }, (_, i) => i + 1);
+
 interface Feedback {
   id: string;
   feedback_text: string | null;
@@ -199,14 +202,14 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
   }) => (
     <div className="space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="flex gap-1.5">
-        {[1, 2, 3, 4, 5].map((n) => (
+      <div className="flex flex-wrap gap-1.5">
+        {INTENSITY_VALUES.map((n) => (
           <Button
             key={n}
             type="button"
             variant={value === n ? "default" : "outline"}
             size="icon"
-            className="size-8 shrink-0 text-xs"
+            className="size-7 shrink-0 text-[11px] sm:size-8 sm:text-xs"
             onClick={() => onChange(value === n ? null : n)}
           >
             {n}
@@ -296,8 +299,16 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
                         )}
                         {(fb.muscle_intensity != null || fb.cardio_intensity != null) && (
                           <div className="mt-1 flex gap-4 text-muted-foreground text-xs">
-                            {fb.muscle_intensity != null && <span>Muscle: {fb.muscle_intensity}/5</span>}
-                            {fb.cardio_intensity != null && <span>Cardio: {fb.cardio_intensity}/5</span>}
+                            {fb.muscle_intensity != null && (
+                              <span>
+                                {t("feedback.muscleIntensity")}: {fb.muscle_intensity}/{FEEDBACK_INTENSITY_MAX}
+                              </span>
+                            )}
+                            {fb.cardio_intensity != null && (
+                              <span>
+                                {t("feedback.cardioIntensity")}: {fb.cardio_intensity}/{FEEDBACK_INTENSITY_MAX}
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>

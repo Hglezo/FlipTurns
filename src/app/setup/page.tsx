@@ -15,8 +15,8 @@ create table if not exists public.feedback (
   id uuid primary key default gen_random_uuid(),
   date date not null,
   feedback_text text,
-  muscle_intensity smallint not null check (muscle_intensity >= 1 and muscle_intensity <= 5),
-  cardio_intensity smallint not null check (cardio_intensity >= 1 and cardio_intensity <= 5),
+  muscle_intensity smallint not null check (muscle_intensity >= 1 and muscle_intensity <= 10),
+  cardio_intensity smallint not null check (cardio_intensity >= 1 and cardio_intensity <= 10),
   created_at timestamptz default now()
 );
 
@@ -327,7 +327,7 @@ export default function SetupPage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div className="app-shell mx-auto flex max-w-md flex-col px-5 pb-8 pt-6 lg:max-w-lg lg:px-6">
+      <div className="app-shell mx-auto flex max-w-md flex-col px-5 pb-8 pt-6 lg:max-w-[34rem] lg:px-6">
         <div className="mb-6 flex items-center gap-4">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label="Back">
@@ -526,7 +526,7 @@ export default function SetupPage() {
           <CardHeader>
             <CardTitle className="text-base">Optional intensity ratings</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Allows swimmers to add feedback without rating muscle/cardio intensity (1–5).
+              Allows swimmers to add feedback without rating muscle/cardio intensity (1–10).
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
