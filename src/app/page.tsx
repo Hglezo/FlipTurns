@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, Suspense, type ReactNode } from "react";
 import {
   format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -36,6 +36,7 @@ import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i
 import {
   loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
   assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
+  resolvedGroupAssigneeIdsForSave,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { splitWorkoutSetTitleLine } from "@/lib/workout-analyzer";
@@ -156,7 +157,7 @@ function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
   assigneeLabel, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
   className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner, onExpandPreview, namesRowClassName, analysisBleedClassName,
-  offsetWorkoutBodyForCornerAssignee,
+  offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName,
 }: {
   workout: Workout; dateKey: string; showLabel: boolean; feedbackRefreshKey: number;
   onFeedbackChange?: () => void; assigneeLabel?: string | null; assigneeNames?: string | null;
@@ -177,6 +178,8 @@ function WorkoutBlock({
   analysisBleedClassName?: string;
   /** When assignee/teammate names render in the card’s absolute top-right stack, add top margin on workout text so it clears icons + wrapped names. */
   offsetWorkoutBodyForCornerAssignee?: boolean;
+  /** Tighter margin when the corner caption is a single line (day view); defaults to `mt-12`. */
+  workoutBodyCornerOffsetClassName?: string;
   t: (key: import("@/lib/i18n").TranslationKey) => string;
 }) {
   const { role: viewerProfileRole } = useAuth();
@@ -267,7 +270,7 @@ function WorkoutBlock({
             className={cn(
               "w-full overflow-hidden font-sans leading-relaxed text-foreground/90",
               compact ? "max-h-[4.27rem] text-[14px]" : "max-h-[4.57rem] text-[15px]",
-              offsetWorkoutBodyForCornerAssignee && "mt-12",
+              offsetWorkoutBodyForCornerAssignee && (workoutBodyCornerOffsetClassName ?? "mt-12"),
             )}
           >
             <WorkoutTextWithWrapIndent content={workout.content} />
@@ -290,7 +293,7 @@ function WorkoutBlock({
           className={cn(
             "w-full min-w-0 font-sans leading-relaxed text-foreground/90",
             compact ? "text-[14px]" : "text-[15px]",
-            offsetWorkoutBodyForCornerAssignee && "mt-12",
+            offsetWorkoutBodyForCornerAssignee && (workoutBodyCornerOffsetClassName ?? "mt-12"),
           )}
         >
           <WorkoutTextWithWrapIndent content={workout.content} />
@@ -301,6 +304,61 @@ function WorkoutBlock({
           onFeedbackChange={onFeedbackChange} className={cn(className, analysisBleedClassName)} viewerRole={feedbackViewerRole} />
       )}
     </div>
+  );
+}
+
+/** Day view: corner “Assigned to” / teammates line + measured top margin on workout body (tighter when the caption is one line). */
+function DayCardCornerAssigneeStack({
+  iconsRow,
+  captionLine,
+  cardContentClassName,
+  renderBody,
+}: {
+  iconsRow: ReactNode;
+  captionLine: string | null;
+  cardContentClassName: string;
+  renderBody: (args: { offsetWorkoutBodyForCornerAssignee: boolean; workoutBodyCornerOffsetClassName?: string }) => ReactNode;
+}) {
+  const capRef = useRef<HTMLParagraphElement>(null);
+  const [singleLineCaption, setSingleLineCaption] = useState(true);
+  const hasCaption = Boolean(captionLine?.length);
+
+  useLayoutEffect(() => {
+    const el = capRef.current;
+    if (!hasCaption || !el) {
+      setSingleLineCaption(true);
+      return;
+    }
+    const run = () => {
+      const lh = parseFloat(getComputedStyle(el).lineHeight);
+      const h = Number.isFinite(lh) && lh > 0 ? lh : 16;
+      setSingleLineCaption(el.scrollHeight <= h + 4);
+    };
+    run();
+    const ro = new ResizeObserver(run);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [captionLine, hasCaption]);
+
+  const marginClass = hasCaption ? (singleLineCaption ? "mt-8" : "mt-12") : undefined;
+
+  return (
+    <>
+      <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+        {iconsRow}
+        {hasCaption && (
+          <p ref={capRef} className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">
+            {captionLine}
+          </p>
+        )}
+      </div>
+      <CardContent className={cardContentClassName}>
+        {renderBody({
+          offsetWorkoutBodyForCornerAssignee: hasCaption,
+          workoutBodyCornerOffsetClassName: marginClass,
+        })}
+      </CardContent>
+    </>
   );
 }
 
@@ -774,12 +832,16 @@ function HomePage() {
     if (workout.assigned_to_group && savedId) {
       const tf = getTimeframe(workout);
       const otherIds = coachWorkouts.filter((w) => w.id && w.assigned_to_group && w.id !== workout.id && getTimeframe(w) === tf).map((w) => w.id!);
-      try { await saveAssigneesForGroupWorkout(savedId, workout.assignee_ids ?? [], otherIds); } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
+      try {
+        await saveAssigneesForGroupWorkout(savedId, resolvedGroupAssigneeIdsForSave(workout, swimmers), otherIds);
+      } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
       for (const w of coachWorkouts) {
         if (!w.assigned_to_group || !w.id || w.id === workout.id) continue;
         const tfW = getTimeframe(w);
         const otherIdsForW = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === tfW).map((x) => x.id!);
-        try { await saveAssigneesForGroupWorkout(w.id, w.assignee_ids ?? [], otherIdsForW); } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
+        try {
+          await saveAssigneesForGroupWorkout(w.id, resolvedGroupAssigneeIdsForSave(w, swimmers), otherIdsForW);
+        } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
       }
     }
 
@@ -1613,8 +1675,8 @@ function HomePage() {
                             </div>
                           </CardContent>
                         ) : (
-                          <>
-                            <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+                          <DayCardCornerAssigneeStack
+                            iconsRow={(
                               <div className="flex items-center justify-end gap-0.5">
                                 {canSwimmerEdit && (
                                   <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
@@ -1626,20 +1688,23 @@ function HomePage() {
                                   </Button>
                                 )}
                               </div>
-                              {teammateLine != null && (
-                                <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{t("main.teammates")}: {teammateLine}</p>
-                              )}
-                              {teammateLine == null && assignedLine && (
-                                <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{t("main.assignedTo")} {assignedLine}</p>
-                              )}
-                            </div>
-                            <CardContent className={`pl-4 py-0 ${workout.content.trim() && canSwimmerEdit ? "pr-[4.5rem]" : workout.content.trim() || canSwimmerEdit ? "pr-12" : "pr-4"}`}>
+                            )}
+                            captionLine={
+                              teammateLine != null
+                                ? `${t("main.teammates")}: ${teammateLine}`
+                                : assignedLine
+                                  ? `${t("main.assignedTo")} ${assignedLine}`
+                                  : null
+                            }
+                            cardContentClassName={`pl-4 py-0 ${workout.content.trim() && canSwimmerEdit ? "pr-[4.5rem]" : workout.content.trim() || canSwimmerEdit ? "pr-12" : "pr-4"}`}
+                            renderBody={({ offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName }) => (
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={swimmerWorkouts.length > 1} assigneeLabel={label}
                                 assigneeNames={undefined}
-                                offsetWorkoutBodyForCornerAssignee={teammateLine != null || !!assignedLine}
+                                offsetWorkoutBodyForCornerAssignee={offsetWorkoutBodyForCornerAssignee}
+                                workoutBodyCornerOffsetClassName={workoutBodyCornerOffsetClassName}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly t={t} />
-                            </CardContent>
-                          </>
+                            )}
+                          />
                         )}
                       </Card>
                     );
@@ -1825,8 +1890,8 @@ function HomePage() {
                             </div>
                           </CardContent>
                         ) : (
-                          <>
-                            <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+                          <DayCardCornerAssigneeStack
+                            iconsRow={(
                               <div className="flex shrink-0 justify-end gap-0.5">
                                 {coachUsesWorkoutPreviews ? (
                                   <>
@@ -1867,14 +1932,14 @@ function HomePage() {
                                   </>
                                 )}
                               </div>
-                              {coachReadAssigneeNames && (
-                                <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{t("main.assignedTo")} {coachReadAssigneeNames}</p>
-                              )}
-                            </div>
-                            <CardContent className={cn("pl-4 py-0", coachReadPr)}>
+                            )}
+                            captionLine={coachReadAssigneeNames ? `${t("main.assignedTo")} ${coachReadAssigneeNames}` : null}
+                            cardContentClassName={cn("pl-4 py-0", coachReadPr)}
+                            renderBody={({ offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName }) => (
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={coachWorkouts.length > 1} assigneeLabel={label}
                                 assigneeNames={undefined}
-                                offsetWorkoutBodyForCornerAssignee={!!coachReadAssigneeNames}
+                                offsetWorkoutBodyForCornerAssignee={offsetWorkoutBodyForCornerAssignee}
+                                workoutBodyCornerOffsetClassName={workoutBodyCornerOffsetClassName}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly
                                 contentDisplay={coachCollapsed ? "preview" : "full"}
                                 onExpandPreview={
@@ -1897,8 +1962,8 @@ function HomePage() {
                                 }
                                 analysisBleedClassName={coachAnalysisBleedClass(coachReadPr)}
                                 t={t} />
-                            </CardContent>
-                          </>
+                            )}
+                          />
                         )}
                       </Card>
                     );

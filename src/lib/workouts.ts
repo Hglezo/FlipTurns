@@ -4,6 +4,7 @@ import { SWIMMER_GROUPS, normDate, getTimeframe } from "./types";
 
 export async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
+  for (const id of workoutIds) map.set(id, []);
   if (workoutIds.length === 0) return map;
   const { data } = await supabase.from("workout_assignees").select("workout_id, user_id").in("workout_id", workoutIds);
   for (const row of data ?? []) {
@@ -16,12 +17,13 @@ export async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<M
 
 export function mergeAssigneesIntoWorkouts(workouts: Workout[], assigneesByWorkout: Map<string, string[]>, swimmers: SwimmerProfile[]): Workout[] {
   return workouts.map((w) => {
+    if (!w.id) return w;
     const ids = assigneesByWorkout.get(w.id);
     if (w.assigned_to_group) {
-      const assigneeIds = ids?.length ? ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
+      const assigneeIds = ids !== undefined ? ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
       return { ...w, assignee_ids: assigneeIds };
     }
-    if (ids?.length) return { ...w, assignee_ids: ids };
+    if (ids !== undefined) return ids.length > 0 ? { ...w, assignee_ids: ids } : { ...w, assignee_ids: [] };
     return w;
   });
 }
@@ -67,7 +69,11 @@ export function filterWorkoutsForSwimmer(workouts: Workout[], swimmerId: string,
         if (wc.created_by === swimmerId) return true;
         if ((w.assignee_ids ?? []).includes(swimmerId)) return true;
         if (w.assigned_to_group && swimmerGroup) {
-          return (!(w.assignee_ids && w.assignee_ids.length > 0) && w.assigned_to_group === swimmerGroup);
+          if (Array.isArray(w.assignee_ids)) {
+            if (w.assignee_ids.length === 0) return false;
+            return w.assignee_ids.includes(swimmerId);
+          }
+          return w.assigned_to_group === swimmerGroup;
         }
         return false;
       });
@@ -159,9 +165,8 @@ export function isViewerInWorkout(workout: Workout, viewerId: string | undefined
   if (workout.assigned_to === viewerId) return true;
   if (workout.assignee_ids?.includes(viewerId)) return true;
   if (workout.assigned_to_group) {
-    const ids = workout.assignee_ids?.length
-      ? workout.assignee_ids
-      : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+    if (Array.isArray(workout.assignee_ids)) return workout.assignee_ids.includes(viewerId);
+    const ids = swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
     return ids.includes(viewerId);
   }
   return false;
@@ -170,7 +175,9 @@ export function isViewerInWorkout(workout: Workout, viewerId: string | undefined
 export function teammateNames(workout: Workout, swimmers: SwimmerProfile[], currentUserId: string | undefined, excludeUserIds?: string[]): string | null {
   if (!currentUserId || !isViewerInWorkout(workout, currentUserId, swimmers)) return null;
   if (!workout.assigned_to_group) return null;
-  const ids = workout.assignee_ids?.length ? workout.assignee_ids : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+  const ids = Array.isArray(workout.assignee_ids)
+    ? workout.assignee_ids
+    : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
   let assignees = swimmers.filter((s) => ids.includes(s.id) && s.id !== currentUserId);
   if (excludeUserIds?.length) assignees = assignees.filter((s) => !excludeUserIds.includes(s.id));
   const names = assignees
@@ -183,6 +190,13 @@ export function dayPreviewLabel(workout: Workout, swimmers: SwimmerProfile[], de
   const assignee = assignmentLabel(workout, swimmers) ?? defaultAssignee;
   const category = workoutLabel(workout);
   return assignee ? `${assignee} - ${category}` : category;
+}
+
+/** Group workouts: persist explicit `assignee_ids` when set; if still `undefined`, treat as full group roster (editor default). */
+export function resolvedGroupAssigneeIdsForSave(workout: Workout, swimmers: SwimmerProfile[]): string[] {
+  if (!workout.assigned_to_group) return [];
+  if (Array.isArray(workout.assignee_ids)) return workout.assignee_ids;
+  return swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
 }
 
 export async function saveAssigneesForGroupWorkout(workoutId: string, assigneeIds: string[], otherGroupWorkoutIdsSameDay: string[]) {
