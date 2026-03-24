@@ -14,6 +14,16 @@ import { Pencil, Trash2, MessageSquare } from "lucide-react";
 const FEEDBACK_INTENSITY_MAX = 10;
 const INTENSITY_VALUES = Array.from({ length: FEEDBACK_INTENSITY_MAX }, (_, i) => i + 1);
 
+/** DB allows null or integers 1–10. Coerce 0, NaN, out-of-range, or empty string to null (avoids check constraint violations). */
+function normalizeFeedbackIntensity(value: number | string | null | undefined): number | null {
+  if (value === "" || value == null) return null;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const rounded = Math.round(n);
+  if (rounded < 1 || rounded > FEEDBACK_INTENSITY_MAX) return null;
+  return rounded;
+}
+
 interface Feedback {
   id: string;
   feedback_text: string | null;
@@ -108,8 +118,8 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     setError(null);
     setEditingId(fb.id);
     setEditText(fb.feedback_text ?? "");
-    setEditMuscle(fb.muscle_intensity ?? null);
-    setEditCardio(fb.cardio_intensity ?? null);
+    setEditMuscle(normalizeFeedbackIntensity(fb.muscle_intensity));
+    setEditCardio(normalizeFeedbackIntensity(fb.cardio_intensity));
     setEditAnonymous(!!fb.anonymous);
   };
 
@@ -124,10 +134,12 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
   const saveEdit = async () => {
     if (!editingId) return;
     setSaving(true);
+    const muscle = normalizeFeedbackIntensity(editMuscle);
+    const cardio = normalizeFeedbackIntensity(editCardio);
     const { error } = await supabase.from("feedback").update({
       feedback_text: editText || null,
-      muscle_intensity: editMuscle ?? null,
-      cardio_intensity: editCardio ?? null,
+      muscle_intensity: muscle,
+      cardio_intensity: cardio,
       anonymous: editAnonymous,
     }).eq("id", editingId);
     setSaving(false);
@@ -140,7 +152,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     setFeedback((prev) =>
       prev?.map((fb) =>
         fb.id === editingId
-          ? { ...fb, feedback_text: editText || null, muscle_intensity: editMuscle, cardio_intensity: editCardio, anonymous: editAnonymous }
+          ? { ...fb, feedback_text: editText || null, muscle_intensity: muscle, cardio_intensity: cardio, anonymous: editAnonymous }
           : fb
       ) ?? []
     );
@@ -166,7 +178,14 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
   const submitAdd = async () => {
     if (!date || !user?.id) return;
     setAddSaving(true);
-    const payload = { date, workout_id: workoutId || null, user_id: user.id, feedback_text: addText || null, muscle_intensity: addMuscle ?? null, cardio_intensity: addCardio ?? null };
+    const payload = {
+      date,
+      workout_id: workoutId || null,
+      user_id: user.id,
+      feedback_text: addText || null,
+      muscle_intensity: normalizeFeedbackIntensity(addMuscle),
+      cardio_intensity: normalizeFeedbackIntensity(addCardio),
+    };
     const { error } = await supabase.from("feedback").insert(addAnonymous ? { ...payload, anonymous: true } : payload);
     setAddSaving(false);
     if (error) {
