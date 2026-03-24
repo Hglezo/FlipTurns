@@ -8,7 +8,9 @@ alter table public.workouts add constraint workouts_assigned_to_group_check
 
 -- Swimmer workout RPCs: optional assigned_to_group (e.g. Personal)
 drop function if exists public.insert_workout_swimmer(date, text, text, text, text, uuid);
+drop function if exists public.insert_workout_swimmer(date, text, text, text, text, uuid, text);
 drop function if exists public.update_workout_swimmer(uuid, text, text, text, text, uuid);
+drop function if exists public.update_workout_swimmer(uuid, text, text, text, text, uuid, text);
 
 create or replace function public.insert_workout_swimmer(
   p_date date,

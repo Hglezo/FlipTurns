@@ -828,7 +828,15 @@ function HomePage() {
           setCoachWorkouts((prev) => prev.map((w, i) => i === index ? { ...inserted, date: normDate(inserted?.date) ?? dateKey, assignee_ids: w.assignee_ids } : w));
         } else { alert(error.message); setLoading(false); return; }
       } else {
-        savedId = newId ?? undefined;
+        const id = typeof newId === "string" && newId.length > 0 ? newId : null;
+        if (!id) {
+          alert(
+            "Save failed: the server did not return a new workout id. If personal/group saves fail, apply supabase/migrations/20260326120000_personal_assignment.sql on your Supabase project.",
+          );
+          setLoading(false);
+          return;
+        }
+        savedId = id;
       }
     }
 
@@ -1088,11 +1096,19 @@ function HomePage() {
           }
           setSwimmerWorkouts((prev) => prev.map((w, i) => i === index ? { ...inserted, date: dateKey, assignee_ids: workout.assignee_ids } : w));
         } else { alert(error.message); setLoading(false); return; }
-      } else if (newId) {
+      } else {
+        const id = typeof newId === "string" && newId.length > 0 ? newId : null;
+        if (!id) {
+          alert(
+            "Save failed: the server did not return a new workout id. If saving a personal workout, apply supabase/migrations/20260326120000_personal_assignment.sql on your Supabase project (adds Personal to assigned_to_group).",
+          );
+          setLoading(false);
+          return;
+        }
         if (isPersonal) {
-          if (!(await syncPersonalOrGroupAssignees(newId))) { setLoading(false); return; }
+          if (!(await syncPersonalOrGroupAssignees(id))) { setLoading(false); return; }
         } else if (assigneeIds.length > 1) {
-          try { await saveAssigneesForIndividualWorkout(newId, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
+          try { await saveAssigneesForIndividualWorkout(id, assigneeIds); } catch (e) { alert("Failed to save assignees"); setLoading(false); return; }
         }
       }
     }
