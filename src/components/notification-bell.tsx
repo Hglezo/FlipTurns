@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Bell, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -61,6 +61,155 @@ interface NotificationBellProps {
   swimmers: SwimmerProfile[];
   /** Opens home day view and expands the workout when applicable (coach + swimmer). */
   onNotificationNavigate?: (info: NotificationNavigatePayload) => void;
+}
+
+function rubberBandOffset(raw: number, width: number): number {
+  if (raw > 0) return raw * 0.35;
+  if (raw < -width) {
+    const over = raw + width;
+    return -width + over * 0.35;
+  }
+  return raw;
+}
+
+interface SwipeableNotificationRowProps {
+  notificationId: string;
+  canNavigate: boolean;
+  onNavigate: () => void;
+  onDismiss: (id: string) => void;
+  dismissLabel: string;
+  title: string;
+  subtitle?: string;
+}
+
+function SwipeableNotificationRow({
+  notificationId,
+  canNavigate,
+  onNavigate,
+  onDismiss,
+  dismissLabel,
+  title,
+  subtitle,
+}: SwipeableNotificationRowProps) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const pointerIdRef = useRef<number | null>(null);
+  const startClientXRef = useRef(0);
+  const startOffsetRef = useRef(0);
+  const dragOffsetRef = useRef(0);
+  const didDragRef = useRef(false);
+  const [offset, setOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [exiting, setExiting] = useState(false);
+
+  const computeOffset = useCallback((clientX: number) => {
+    const el = rowRef.current;
+    const w = el?.offsetWidth ?? 280;
+    const dx = clientX - startClientXRef.current;
+    return rubberBandOffset(startOffsetRef.current + dx, w);
+  }, []);
+
+  const finishPointer = useCallback(
+    (e: React.PointerEvent) => {
+      if (pointerIdRef.current !== e.pointerId) return;
+      const el = rowRef.current;
+      if (el?.hasPointerCapture(e.pointerId)) {
+        try {
+          el.releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+      pointerIdRef.current = null;
+      setIsDragging(false);
+
+      const w = el?.offsetWidth ?? 280;
+      const final = dragOffsetRef.current;
+      const threshold = Math.min(100, w * 0.38);
+      if (final < -threshold) {
+        setExiting(true);
+        setOffset(-w);
+      } else {
+        setOffset(0);
+      }
+    },
+    []
+  );
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (exiting) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    const el = rowRef.current;
+    if (!el) return;
+    pointerIdRef.current = e.pointerId;
+    startClientXRef.current = e.clientX;
+    startOffsetRef.current = offset;
+    dragOffsetRef.current = offset;
+    didDragRef.current = false;
+    setIsDragging(true);
+    el.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (pointerIdRef.current !== e.pointerId || exiting) return;
+    const next = computeOffset(e.clientX);
+    if (Math.abs(next - startOffsetRef.current) > 6) didDragRef.current = true;
+    dragOffsetRef.current = next;
+    setOffset(next);
+  };
+
+  const handleTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget || e.propertyName !== "transform") return;
+    if (!exiting) return;
+    onDismiss(notificationId);
+  };
+
+  return (
+    <div className="relative overflow-hidden">
+      <div
+        ref={rowRef}
+        role="presentation"
+        className={`relative flex w-full min-w-0 items-stretch touch-pan-y select-none ${
+          isDragging ? "" : "transition-[transform] duration-200 ease-out"
+        }`}
+        style={{
+          transform: `translateX(${offset}px)`,
+          touchAction: "pan-y",
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointer}
+        onPointerCancel={finishPointer}
+        onTransitionEnd={handleTransitionEnd}
+      >
+        <button
+          type="button"
+          className={`min-w-0 flex-1 px-3 py-2.5 pr-2 text-left text-sm ${
+            canNavigate ? "cursor-pointer hover:bg-accent" : "cursor-default"
+          }`}
+          onClick={() => {
+            if (didDragRef.current) return;
+            onNavigate();
+          }}
+        >
+          <p className="font-medium">{title}</p>
+          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+        </button>
+        <button
+          type="button"
+          className="shrink-0 mr-1 my-2 size-7 flex items-center justify-center rounded-md opacity-60 hover:opacity-100 hover:bg-accent self-center"
+          aria-label={dismissLabel}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDismiss(notificationId);
+          }}
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function NotificationBell({ role, userId, swimmerGroup, swimmers, onNotificationNavigate }: NotificationBellProps) {
@@ -197,12 +346,10 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onNotif
   const unreadCount = undismissed.length;
   const hasNew = unreadCount > 0;
 
-  const handleDismissNotification = (e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const dismissNotification = useCallback((id: string) => {
     addDismissedId(id);
     setDismissedIds((prev) => new Set([...prev, id]));
-  };
+  }, []);
 
   return (
     <Popover open={open} onOpenChange={handleOpen}>
@@ -231,29 +378,21 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onNotif
             undismissed.map((n) => {
               const canNavigate = !!onNotificationNavigate && !!n.navDate;
               return (
-                <div key={n.id} className="relative">
-                  <button
-                    type="button"
-                    className={`w-full px-3 py-2.5 pr-10 text-left text-sm ${canNavigate ? "hover:bg-accent cursor-pointer" : "cursor-default"}`}
-                    onClick={() => {
-                      if (canNavigate) {
-                        onNotificationNavigate({ date: n.navDate, workoutId: n.navWorkoutId });
-                        setOpen(false);
-                      }
-                    }}
-                  >
-                    <p className="font-medium">{n.title}</p>
-                    {n.subtitle && <p className="text-xs text-muted-foreground mt-0.5">{n.subtitle}</p>}
-                  </button>
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 size-7 flex items-center justify-center rounded-md opacity-60 hover:opacity-100 hover:bg-accent"
-                    aria-label={t("notif.dismiss")}
-                    onClick={(e) => handleDismissNotification(e, n.id)}
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
+                <SwipeableNotificationRow
+                  key={n.id}
+                  notificationId={n.id}
+                  canNavigate={canNavigate}
+                  dismissLabel={t("notif.dismiss")}
+                  title={n.title}
+                  subtitle={n.subtitle}
+                  onDismiss={dismissNotification}
+                  onNavigate={() => {
+                    if (canNavigate && onNotificationNavigate) {
+                      onNotificationNavigate({ date: n.navDate, workoutId: n.navWorkoutId });
+                      setOpen(false);
+                    }
+                  }}
+                />
               );
             })
           )}

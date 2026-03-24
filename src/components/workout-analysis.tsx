@@ -61,24 +61,31 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
   useEffect(() => {
     if (hideFeedback) return;
     if (!date) return;
-    if (!workoutId) {
-      setFeedback([]);
-      return;
-    }
     async function fetchFeedback() {
       const selectCols = readOnly ? "*" : "id, feedback_text, muscle_intensity, cardio_intensity, anonymous";
-      let query = supabase
-        .from("feedback")
-        .select(selectCols)
-        .eq("date", date)
-        .or(`workout_id.eq.${workoutId},workout_id.is.null`);
-      if (!readOnly && user?.id) query = query.eq("user_id", user.id);
+      /** New / unsaved workouts use `id: ""`; feedback is stored with `workout_id` null. Must still fetch so submit + refreshKey does not wipe the list. */
+      let query = supabase.from("feedback").select(selectCols).eq("date", date);
+      if (!workoutId) {
+        if (readOnly || !user?.id) {
+          setFeedback([]);
+          return;
+        }
+        query = query.eq("user_id", user.id).is("workout_id", null);
+      } else {
+        query = query.or(`workout_id.eq.${workoutId},workout_id.is.null`);
+        if (!readOnly && user?.id) query = query.eq("user_id", user.id);
+      }
       const { data: initialData, error: fetchError } = await query.order("created_at", { ascending: false });
       let data: unknown = initialData;
       if (fetchError?.message?.includes("anonymous")) {
         const fallbackCols = readOnly ? "id, feedback_text, muscle_intensity, cardio_intensity, user_id" : "id, feedback_text, muscle_intensity, cardio_intensity";
-        let fallbackQuery = supabase.from("feedback").select(fallbackCols).eq("date", date).or(`workout_id.eq.${workoutId},workout_id.is.null`);
-        if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id);
+        let fallbackQuery = supabase.from("feedback").select(fallbackCols).eq("date", date);
+        if (!workoutId) {
+          if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id).is("workout_id", null);
+        } else {
+          fallbackQuery = fallbackQuery.or(`workout_id.eq.${workoutId},workout_id.is.null`);
+          if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id);
+        }
         const { data: fallback } = await fallbackQuery.order("created_at", { ascending: false });
         data = fallback;
       }
@@ -164,8 +171,10 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     setAddSaving(false);
     if (error) {
       console.error("Failed to save feedback:", error.message || error.code || error);
+      setError(error.message || "Could not save feedback. Check database policies in Setup.");
       return;
     }
+    setError(null);
     setAddText("");
     setAddMuscle(null);
     setAddCardio(null);
@@ -367,11 +376,17 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
               <input type="checkbox" checked={addAnonymous} onChange={(e) => setAddAnonymous(e.target.checked)} className="rounded border-input" />
               <span className="text-muted-foreground">{t("feedback.submitAnonymous")}</span>
             </label>
+            {error && (
+              <div className="space-y-1">
+                <p className="text-sm text-destructive">{error}</p>
+                <a href="/setup" className="text-sm text-primary underline">{t("feedback.fixInSetup")}</a>
+              </div>
+            )}
             <div className="flex gap-2">
-              <Button size="sm" onClick={submitAdd} disabled={addSaving || !user?.id}>
+              <Button type="button" size="sm" onClick={submitAdd} disabled={addSaving || !user?.id}>
                 {addSaving ? t("settings.saving") : t("feedback.submit")}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setShowAddForm(false)} disabled={addSaving}>
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowAddForm(false)} disabled={addSaving}>
                 {t("common.cancel")}
               </Button>
             </div>
