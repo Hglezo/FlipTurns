@@ -40,7 +40,7 @@ import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i
 import {
   loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
   assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
-  resolvedGroupAssigneeIdsForSave,
+  resolvedGroupAssigneeIdsForSave, personalAssigneeUserIdsInTimeframe,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { splitWorkoutSetTitleLine } from "@/lib/workout-analyzer";
@@ -843,15 +843,21 @@ function HomePage() {
     if (workout.assigned_to_group && savedId) {
       const tf = getTimeframe(workout);
       const otherIds = coachWorkouts.filter((w) => w.id && w.assigned_to_group && w.id !== workout.id && getTimeframe(w) === tf).map((w) => w.id!);
+      const personalExSaved = personalAssigneeUserIdsInTimeframe(coachWorkouts, tf);
+      const idsForSaved =
+        workout.assigned_to_group === PERSONAL_ASSIGNMENT
+          ? resolvedGroupAssigneeIdsForSave(workout, swimmers)
+          : resolvedGroupAssigneeIdsForSave(workout, swimmers, personalExSaved);
       try {
-        await saveAssigneesForGroupWorkout(savedId, resolvedGroupAssigneeIdsForSave(workout, swimmers), otherIds);
+        await saveAssigneesForGroupWorkout(savedId, idsForSaved, otherIds);
       } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
       for (const w of coachWorkouts) {
         if (!w.assigned_to_group || !w.id || w.id === workout.id) continue;
         const tfW = getTimeframe(w);
+        const personalExW = personalAssigneeUserIdsInTimeframe(coachWorkouts, tfW);
         const otherIdsForW = coachWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === tfW).map((x) => x.id!);
         try {
-          await saveAssigneesForGroupWorkout(w.id, resolvedGroupAssigneeIdsForSave(w, swimmers), otherIdsForW);
+          await saveAssigneesForGroupWorkout(w.id, resolvedGroupAssigneeIdsForSave(w, swimmers, personalExW), otherIdsForW);
         } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
       }
     }
@@ -890,11 +896,22 @@ function HomePage() {
     setCoachWorkouts((prev) => {
       let next = prev.map((w, i) => i === index ? { ...w, ...updates } : w);
       if (updates.assignee_ids && prev[index]?.assigned_to_group) {
-        const addedIds = updates.assignee_ids;
         const currentTf = getTimeframe(prev[index]!);
+        const mergedEarly = prev.map((w, i) => (i === index ? { ...w, ...updates } : w));
+        const personalIds = personalAssigneeUserIdsInTimeframe(mergedEarly, currentTf);
+        const edited = mergedEarly[index]!;
+        const groupClaimed =
+          edited.assigned_to_group !== PERSONAL_ASSIGNMENT && isTrainingSwimmerGroup(edited.assigned_to_group)
+            ? new Set(updates.assignee_ids)
+            : new Set<string>();
+        const claimedIds = new Set<string>([...personalIds, ...groupClaimed]);
         next = next.map((w, i) => {
-          if (i === index || !w.assigned_to_group || !w.assignee_ids?.length || getTimeframe(w) !== currentTf) return i === index ? next[index] : w;
-          return { ...w, assignee_ids: w.assignee_ids.filter((id) => !addedIds.includes(id)) };
+          if (i === index) return next[index];
+          if (!w.assigned_to_group || getTimeframe(w) !== currentTf) return w;
+          if (w.assigned_to_group === PERSONAL_ASSIGNMENT) return w;
+          if (!isTrainingSwimmerGroup(w.assigned_to_group)) return w;
+          const base = resolvedGroupAssigneeIdsForSave(w, swimmers).filter((id) => !claimedIds.has(id));
+          return { ...w, assignee_ids: base };
         });
       }
       return next;
@@ -1015,8 +1032,13 @@ function HomePage() {
     const syncPersonalOrGroupAssignees = async (savedId: string): Promise<boolean> => {
       const tf = getTimeframe(workout);
       const otherIds = swimmerWorkouts.filter((w) => w.id && w.assigned_to_group && w.id !== savedId && getTimeframe(w) === tf).map((w) => w.id!);
+      const personalExSaved = personalAssigneeUserIdsInTimeframe(swimmerWorkouts, tf);
+      const idsForSaved =
+        workout.assigned_to_group === PERSONAL_ASSIGNMENT
+          ? resolvedGroupAssigneeIdsForSave(workout, swimmers)
+          : resolvedGroupAssigneeIdsForSave(workout, swimmers, personalExSaved);
       try {
-        await saveAssigneesForGroupWorkout(savedId, resolvedGroupAssigneeIdsForSave(workout, swimmers), otherIds);
+        await saveAssigneesForGroupWorkout(savedId, idsForSaved, otherIds);
       } catch (e) {
         alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees");
         return false;
@@ -1024,9 +1046,10 @@ function HomePage() {
       for (const w of swimmerWorkouts) {
         if (!w.assigned_to_group || !w.id || w.id === savedId) continue;
         const tfW = getTimeframe(w);
+        const personalExW = personalAssigneeUserIdsInTimeframe(swimmerWorkouts, tfW);
         const otherIdsForW = swimmerWorkouts.filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === tfW).map((x) => x.id!);
         try {
-          await saveAssigneesForGroupWorkout(w.id, resolvedGroupAssigneeIdsForSave(w, swimmers), otherIdsForW);
+          await saveAssigneesForGroupWorkout(w.id, resolvedGroupAssigneeIdsForSave(w, swimmers, personalExW), otherIdsForW);
         } catch (e) {
           alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees");
           return false;
@@ -1146,13 +1169,22 @@ function HomePage() {
     setSwimmerWorkouts((prev) => {
       let next = prev.map((w, i) => (i === index ? { ...w, ...updates } : w));
       if (updates.assignee_ids && prev[index]?.assigned_to_group) {
-        const addedIds = updates.assignee_ids;
         const currentTf = getTimeframe(prev[index]!);
+        const mergedEarly = prev.map((w, i) => (i === index ? { ...w, ...updates } : w));
+        const personalIds = personalAssigneeUserIdsInTimeframe(mergedEarly, currentTf);
+        const edited = mergedEarly[index]!;
+        const groupClaimed =
+          edited.assigned_to_group !== PERSONAL_ASSIGNMENT && isTrainingSwimmerGroup(edited.assigned_to_group)
+            ? new Set(updates.assignee_ids)
+            : new Set<string>();
+        const claimedIds = new Set<string>([...personalIds, ...groupClaimed]);
         next = next.map((w, i) => {
-          if (i === index || !w.assigned_to_group || !w.assignee_ids?.length || getTimeframe(w) !== currentTf) {
-            return i === index ? next[index] : w;
-          }
-          return { ...w, assignee_ids: w.assignee_ids.filter((id) => !addedIds.includes(id)) };
+          if (i === index) return next[index];
+          if (!w.assigned_to_group || getTimeframe(w) !== currentTf) return w;
+          if (w.assigned_to_group === PERSONAL_ASSIGNMENT) return w;
+          if (!isTrainingSwimmerGroup(w.assigned_to_group)) return w;
+          const base = resolvedGroupAssigneeIdsForSave(w, swimmers).filter((id) => !claimedIds.has(id));
+          return { ...w, assignee_ids: base };
         });
       }
       return next;

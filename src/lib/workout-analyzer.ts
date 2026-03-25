@@ -163,7 +163,8 @@ function parseMetersInText(text: string): number {
   let textForStandalone = linesForStandalone.join("\n");
   // Remove "word: number" patterns to avoid counting descriptive numbers (e.g. "odds: 25 swim, evens: 35 swim")
   textForStandalone = textForStandalone.replace(/\b[a-zA-Z]+\s*:\s*\d+/g, " ");
-  textForStandalone = textForStandalone.replace(/\bp\s*\d+(?:\/\d+)?\b/gi, " ");
+  // Use horizontal space only: \s* would match newlines and merge lines (e.g. "P+P" + newline + "25 MAX" → eats the 25 as "p 25").
+  textForStandalone = textForStandalone.replace(/\bp[ \t]*\d+(?:\/\d+)?\b/gi, " ");
   textForStandalone = textForStandalone.replace(/\bon\s+\d+["']?\s*/gi, " ");
   textForStandalone = textForStandalone.replace(/\bc\/\s*\S+/gi, " ");
   textForStandalone = textForStandalone.replace(/\d+[\u2018\u2019']\d+[\u201c\u201d""]?/g, " ");

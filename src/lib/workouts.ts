@@ -226,14 +226,34 @@ export function dayPreviewLabel(workout: Workout, swimmers: SwimmerProfile[], de
   return assignee ? `${assignee} - ${category}` : category;
 }
 
-/** Group workouts: persist explicit `assignee_ids` when set; if still `undefined`, treat as full group roster (editor default). */
-export function resolvedGroupAssigneeIdsForSave(workout: Workout, swimmers: SwimmerProfile[]): string[] {
+/** Swimmers listed on Personal workouts in the same session (AM/PM/Anytime) take priority over training-group assignment. */
+export function personalAssigneeUserIdsInTimeframe(workouts: Workout[], timeframe: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of workouts) {
+    if (w.assigned_to_group !== PERSONAL_ASSIGNMENT || getTimeframe(w) !== timeframe) continue;
+    for (const id of w.assignee_ids ?? []) out.add(id);
+  }
+  return out;
+}
+
+/** Group workouts: persist explicit `assignee_ids` when set; if still `undefined`, treat as full group roster (editor default).
+ * For training groups, `excludeUserIds` removes swimmers (e.g. those on a Personal workout in the same timeframe). */
+export function resolvedGroupAssigneeIdsForSave(
+  workout: Workout,
+  swimmers: SwimmerProfile[],
+  excludeUserIds?: ReadonlySet<string> | null,
+): string[] {
   if (!workout.assigned_to_group) return [];
   if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {
     return Array.isArray(workout.assignee_ids) ? workout.assignee_ids : [];
   }
-  if (Array.isArray(workout.assignee_ids)) return workout.assignee_ids;
-  return swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+  let ids: string[];
+  if (Array.isArray(workout.assignee_ids)) ids = [...workout.assignee_ids];
+  else ids = swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+  if (excludeUserIds && excludeUserIds.size > 0 && isTrainingSwimmerGroup(workout.assigned_to_group)) {
+    ids = ids.filter((id) => !excludeUserIds.has(id));
+  }
+  return ids;
 }
 
 export async function saveAssigneesForGroupWorkout(workoutId: string, assigneeIds: string[], otherGroupWorkoutIdsSameDay: string[]) {
