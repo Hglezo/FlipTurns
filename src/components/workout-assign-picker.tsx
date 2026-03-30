@@ -24,7 +24,7 @@ function triggerLabel(
   legacySwimmerName: string | undefined,
 ): string {
   if (value === "") return t("main.assignTo");
-  if (mode === "swimmer" && value === "personal") return t("group.personal");
+  if (mode === "swimmer" && value === "personal") return t("main.swimmerAssignOtherPeople");
   if (value === `group:${PERSONAL_ASSIGNMENT}`) return t("group.personal");
   if (value.startsWith("group:")) {
     const g = value.slice(6) as SwimmerGroup;
@@ -88,7 +88,7 @@ export function WorkoutAssignPicker({
         {mode === "swimmer" ? (
           <>
             <DropdownMenuItem className="font-semibold" onSelect={() => onValueChange("personal")}>
-              {t("group.personal")}
+              {t("main.swimmerAssignOtherPeople")}
             </DropdownMenuItem>
             {userId && (
               <DropdownMenuItem className="font-normal" onSelect={() => onValueChange(`swimmer:${userId}`)}>
