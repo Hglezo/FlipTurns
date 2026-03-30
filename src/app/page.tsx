@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, Suspense, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type ReactNode } from "react";
 import {
   format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -45,7 +45,7 @@ import {
 } from "@/lib/types";
 import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i18n";
 import {
-  loadAndMergeWorkouts, orAssignFilter, filterWorkoutsForSwimmer, sortCoachWorkouts,
+  loadAndMergeWorkouts, filterWorkoutsForSwimmer, filterWorkoutsForCoachSwimmerSelection, sortCoachWorkouts,
   assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
   resolvedGroupAssigneeIdsForSave,
 } from "@/lib/workouts";
@@ -453,6 +453,16 @@ function HomePage() {
   const dateKey = format(selectedDate, "yyyy-MM-dd");
   const isCoach = role === "coach";
 
+  /** Coach range fetch stores the full team week/month; scope to the dropdown selection here so it cannot drift from a stale cache key or in-flight response. */
+  const coachScopedWeekWorkouts = useMemo(
+    () => (isCoach ? filterWorkoutsForCoachSwimmerSelection(weekWorkouts, selectedCoachSwimmerId, swimmers) : weekWorkouts),
+    [isCoach, weekWorkouts, selectedCoachSwimmerId, swimmers],
+  );
+  const coachScopedMonthWorkouts = useMemo(
+    () => (isCoach ? filterWorkoutsForCoachSwimmerSelection(monthWorkouts, selectedCoachSwimmerId, swimmers) : monthWorkouts),
+    [isCoach, monthWorkouts, selectedCoachSwimmerId, swimmers],
+  );
+
   const downloadWorkoutPdf = useCallback(
     (workouts: Workout[]) => {
       const locale = (prefs?.preferences?.locale ?? "en-US") as Locale;
@@ -634,22 +644,7 @@ function HomePage() {
         rows = await loadAndMergeWorkouts((data ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey })), swimmers);
       }
       if (cancelled) return;
-      if (selectedCoachSwimmerId === ONLY_GROUPS_ID) {
-        rows = rows.filter((w) => isTrainingSwimmerGroup(w.assigned_to_group));
-      } else if (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID) {
-        const coachFilterGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
-        rows = rows.filter((w) => {
-          if (w.assigned_to === selectedCoachSwimmerId) return true;
-          if (w.assigned_to_group === PERSONAL_ASSIGNMENT) {
-            return (w.assignee_ids ?? []).includes(selectedCoachSwimmerId);
-          }
-          if (w.assigned_to_group && coachFilterGroup) {
-            const ids = Array.isArray(w.assignee_ids) ? w.assignee_ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
-            return ids.includes(selectedCoachSwimmerId);
-          }
-          return false;
-        });
-      }
+      rows = filterWorkoutsForCoachSwimmerSelection(rows, selectedCoachSwimmerId, swimmers);
       const sortedRows = sortCoachWorkouts(rows, swimmers);
       const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
       if (cancelled) return;
@@ -693,7 +688,8 @@ function HomePage() {
       user.id,
       role,
       selectedViewSwimmerId ?? "",
-      selectedCoachSwimmerId ?? "",
+      /* Coach: one range payload for the team; swimmer dropdown is applied in coachScopedWeek/MonthWorkouts. */
+      role === "coach" ? "" : (selectedCoachSwimmerId ?? ""),
       swimmerGroup ?? "",
       swimmers.length,
       weekStartsOn,
@@ -714,20 +710,13 @@ function HomePage() {
           .gte("date", format(rangeStart, "yyyy-MM-dd")).lte("date", format(rangeEnd, "yyyy-MM-dd"));
         if (modeAtStart === "week") query = query.order("date", { ascending: true });
 
-        if (role === "swimmer" && swimmerFilterId) {
-          if (swimmerWeekSelfOnly) {
-            query = filterGroup ? query.or(orAssignFilter(swimmerFilterId, filterGroup)) : query.eq("assigned_to", swimmerFilterId);
-          } else if (selectedViewSwimmerId === ALL_ID) { /* no filter - show all */ }
-          else if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-          else query = filterGroup ? query.or(orAssignFilter(swimmerFilterId, filterGroup)) : query.eq("assigned_to", swimmerFilterId);
-        }
-        if (isCoach && selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID) {
-          if (selectedCoachSwimmerId === ONLY_GROUPS_ID) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-          else {
-            const coachGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
-            query = coachGroup ? query.or(orAssignFilter(selectedCoachSwimmerId, coachGroup)) : query.eq("assigned_to", selectedCoachSwimmerId);
+        /* Match day view: broad range fetch + client filters (personal/group/assignee rows are not representable as assigned_to.eq alone). */
+        if (role === "swimmer") {
+          if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) {
+            query = query.in("assigned_to_group", SWIMMER_GROUPS);
           }
         }
+        /* Coach: always load full team range for the dates; dropdown filtering is client-side (coachScoped*). */
 
         const { data } = await query;
         if (cancelled) return;
@@ -1265,7 +1254,6 @@ function HomePage() {
     </div>
   );
 
-  const workoutsForRange = viewMode === "week" ? weekWorkouts : monthWorkouts;
   const previewDefault = getPreviewDefault();
 
   const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; onExpandPreview?: () => void; namesRowClassName?: string; analysisBleedClassName?: string; aggregatedPdfBelowBanner?: { show: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
@@ -1305,7 +1293,7 @@ function HomePage() {
     const days = eachDayOfInterval({ start: startOfWeek(selectedDate, { weekStartsOn }), end: endOfWeek(selectedDate, { weekStartsOn }) });
     return days.map((day) => {
       const dayKey = format(day, "yyyy-MM-dd");
-      const dayWorkouts = isCoach ? sortCoachWorkouts(weekWorkouts.filter((w) => normDate(w.date) === dayKey), swimmers) : weekWorkouts.filter((w) => normDate(w.date) === dayKey);
+      const dayWorkouts = isCoach ? sortCoachWorkouts(coachScopedWeekWorkouts.filter((w) => normDate(w.date) === dayKey), swimmers) : weekWorkouts.filter((w) => normDate(w.date) === dayKey);
       return (
         <ExpandableDay key={day.toISOString()} day={day} dayWorkouts={dayWorkouts}
           isExpanded={expandedDayKey === dayKey} onToggle={() => { setExpandedDayKey(expandedDayKey === dayKey ? null : dayKey); setSelectedDate(day); }}
@@ -1350,7 +1338,7 @@ function HomePage() {
       ws = addDays(we, 1);
     }
     return weeks.map(({ start, end, key }) => {
-      const weekWorkoutsList = monthWorkouts.filter((w) => isWithinInterval(new Date(w.date + "T12:00:00"), { start, end }));
+      const weekWorkoutsList = coachScopedMonthWorkouts.filter((w) => isWithinInterval(new Date(w.date + "T12:00:00"), { start, end }));
       const isExpanded = expandedWeekKey === key;
       return (
         <div key={key} className="w-full min-w-0 rounded-lg border bg-card overflow-hidden">
@@ -2276,7 +2264,7 @@ function HomePage() {
         {viewMode === "month" && (
           <div className="month-view-container flex w-full min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
             <div className="month-view-calendar w-full shrink-0">
-              <MonthCalendar selectedDate={selectedDate} weekStartsOn={weekStartsOn} monthWorkouts={monthWorkouts}
+              <MonthCalendar selectedDate={selectedDate} weekStartsOn={weekStartsOn} monthWorkouts={coachScopedMonthWorkouts}
                 onSelect={handleMonthCalendarSelect} onMonthChange={(d) => { setSelectedDate(d); setExpandedWeekKey(null); setExpandedMonthDayKey(null); }} />
             </div>
             <div className="month-view-week-list flex w-full min-w-0 flex-1 flex-col gap-2">{renderMonthView()}</div>

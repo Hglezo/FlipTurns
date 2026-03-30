@@ -56,9 +56,9 @@ function parseOutInMeters(text: string): number {
   if (standalone) meters += standalone.length * 25;
   return meters;
 }
-// Matches pool distances (multiples of 25 from 25–9975), optionally followed by m/meters or stroke.
-// Lookbehind (?<![:\d]) prevents matching numbers inside time formats like "1:25" or "2:50".
-const STANDALONE_DISTANCE_PATTERN = /(?<![:\d])\b(25|50|75|[1-9]\d{0,2}(?:00|25|50|75)|[1-9]\d{3})\s*(?:m|meters?|free|fr|fly|fl|back|bk|breast|br|uw|kick|drill|pull|easy|im)?\b/gi;
+// Pool distances (25–9975); optional stroke only — not `m`/`meters` (pace targets like p160, 50m, 100y are stripped earlier).
+// (?<![:\d]) avoids times like "1:25" / "2:50".
+const STANDALONE_DISTANCE_PATTERN = /(?<![:\d])\b(25|50|75|[1-9]\d{0,2}(?:00|25|50|75)|[1-9]\d{3})\s*(?:free|fr|fly|fl|back|bk|breast|br|uw|kick|drill|pull|easy|im)?\b/gi;
 // Matches "N:" at start of line (e.g. "25: swim @80%") - require 2+ digits to avoid "1:30" time format
 const LEADING_DISTANCE_PATTERN = /^\s*(\d{2,})\s*:/gm;
 
@@ -73,7 +73,12 @@ function parseMetersInText(text: string): number {
   const cleanedText = removeParentheticalContent(text);
   const textWithAsteriskStripped = cleanedText
     .split(/\r?\n/)
-    .map((line) => (/^\s*\*/.test(line) ? "" : line.replace(/\*[^*]*/g, " ").trim()))
+    .map((line) => {
+      if (/^\s*\*/.test(line)) return "";
+      let s = line;
+      if (s.includes("*") && s.includes("+")) s = s.slice(0, s.indexOf("+"));
+      return s.replace(/\*[^*]*/g, " ").trim();
+    })
     .join("\n");
   const lines = textWithAsteriskStripped.split(/\r?\n/);
 
@@ -161,9 +166,13 @@ function parseMetersInText(text: string): number {
   let textForStandalone = linesForStandalone.join("\n");
   // Remove "word: number" patterns to avoid counting descriptive numbers (e.g. "odds: 25 swim, evens: 35 swim")
   textForStandalone = textForStandalone.replace(/\b[a-zA-Z]+\s*:\s*\d+/g, " ");
-  textForStandalone = textForStandalone.replace(/\bp[ \t]*\d+(?:\/\d+)?\b/gi, " ");
+  textForStandalone = textForStandalone.replace(/\bp\d+(?:\/\d+)?\b/gi, " ");
+  textForStandalone = textForStandalone.replace(/\b\d+p\b/gi, " ");
+  textForStandalone = textForStandalone.replace(/\b\d+\s*meters?\b/gi, " ");
+  textForStandalone = textForStandalone.replace(/\b\d+\s*[my]\b/gi, " ");
   textForStandalone = textForStandalone.replace(/\bon\s+\d+["']?\s*/gi, " ");
-  textForStandalone = textForStandalone.replace(/\bc\/\s*\S+/gi, " ");
+  /* Same-line only: \s* must not match \n or "c/\n100" eats the next line's distance. */
+  textForStandalone = textForStandalone.replace(/\bc\/[ \t]*\S+/gi, " ");
   textForStandalone = textForStandalone.replace(/\d+[\u2018\u2019']\d+[\u201c\u201d""]?/g, " ");
   textForStandalone = textForStandalone.replace(/\d+:\d{2}(?:\d)?/g, " ");
 

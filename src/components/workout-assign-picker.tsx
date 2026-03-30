@@ -85,10 +85,6 @@ export function WorkoutAssignPicker({
         <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-[10rem] max-w-[min(100vw-2rem,20rem)]">
-        <DropdownMenuItem className="font-normal" onSelect={() => onValueChange("")}>
-          {t("main.assignTo")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         {mode === "swimmer" ? (
           <>
             <DropdownMenuItem className="font-semibold" onSelect={() => onValueChange("personal")}>
@@ -102,10 +98,6 @@ export function WorkoutAssignPicker({
           </>
         ) : (
           <>
-            <DropdownMenuItem className="font-semibold" onSelect={() => onValueChange(`group:${PERSONAL_ASSIGNMENT}`)}>
-              {t("group.personal")}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuLabel className="px-2 py-1.5 text-sm font-semibold text-foreground">
               {t("coach.group")}
             </DropdownMenuLabel>
@@ -114,6 +106,10 @@ export function WorkoutAssignPicker({
                 {t(GROUP_KEYS[g])}
               </DropdownMenuItem>
             ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="font-semibold" onSelect={() => onValueChange(`group:${PERSONAL_ASSIGNMENT}`)}>
+              {t("group.personal")}
+            </DropdownMenuItem>
             {legacySwimmerId && (
               <>
                 <DropdownMenuSeparator />

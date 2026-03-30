@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import type { Workout, SwimmerProfile, SwimmerGroup } from "./types";
-import { SWIMMER_GROUPS, PERSONAL_ASSIGNMENT, isTrainingSwimmerGroup, normDate, getTimeframe } from "./types";
+import { SWIMMER_GROUPS, ALL_ID, ONLY_GROUPS_ID, PERSONAL_ASSIGNMENT, isTrainingSwimmerGroup, normDate, getTimeframe } from "./types";
 
 export async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
@@ -38,12 +38,6 @@ export async function loadAndMergeWorkouts(rows: Workout[], swimmers: SwimmerPro
   if (workoutIds.length === 0) return rows;
   const assigneesMap = await fetchAssigneesForWorkouts(workoutIds);
   return mergeAssigneesIntoWorkouts(rows, assigneesMap, swimmers);
-}
-
-export function orAssignFilter(userId: string, group: string | null | undefined): string {
-  if (!group) return `assigned_to.eq.${userId}`;
-  const escaped = group.includes(" ") ? `"${group}"` : group;
-  return `assigned_to.eq.${userId},assigned_to_group.eq.${escaped}`;
 }
 
 export function filterWorkoutsForSwimmer(workouts: Workout[], swimmerId: string, swimmerGroup: SwimmerGroup | null): Workout[] {
@@ -89,6 +83,30 @@ export function filterWorkoutsForSwimmer(workouts: Workout[], swimmerId: string,
     }
   }
   return out;
+}
+
+/** Same visibility rules as coach day view: individual, personal assignee list, and group roster. */
+export function filterWorkoutsForCoachSwimmerSelection(
+  workouts: Workout[],
+  selectedCoachSwimmerId: string | null | undefined,
+  swimmers: SwimmerProfile[],
+): Workout[] {
+  if (!selectedCoachSwimmerId || selectedCoachSwimmerId === ALL_ID) return workouts;
+  if (selectedCoachSwimmerId === ONLY_GROUPS_ID) {
+    return workouts.filter((w) => isTrainingSwimmerGroup(w.assigned_to_group));
+  }
+  const coachFilterGroup = swimmers.find((s) => s.id === selectedCoachSwimmerId)?.swimmer_group ?? null;
+  return workouts.filter((w) => {
+    if (w.assigned_to === selectedCoachSwimmerId) return true;
+    if (w.assigned_to_group === PERSONAL_ASSIGNMENT) {
+      return (w.assignee_ids ?? []).includes(selectedCoachSwimmerId);
+    }
+    if (w.assigned_to_group && coachFilterGroup) {
+      const ids = Array.isArray(w.assignee_ids) ? w.assignee_ids : swimmers.filter((s) => s.swimmer_group === w.assigned_to_group).map((s) => s.id);
+      return ids.includes(selectedCoachSwimmerId);
+    }
+    return false;
+  });
 }
 
 export function sortCoachWorkouts(workouts: Workout[], swimmers: SwimmerProfile[]): Workout[] {

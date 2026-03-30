@@ -5,13 +5,24 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SignOutDropdown } from "@/components/sign-out-dropdown";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getPreferences } from "@/lib/preferences";
 import { useTranslations } from "@/components/i18n-provider";
 import { useAuth } from "@/components/auth-provider";
-import type { SwimmerGroup } from "@/lib/types";
-import { ArrowLeft, ChevronLeft, ChevronRight, LogOut, Settings } from "lucide-react";
+import { SWIMMER_GROUPS, type SwimmerGroup } from "@/lib/types";
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, LogOut, Settings } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
   BarChart,
@@ -40,12 +51,6 @@ import { NotificationBell } from "@/components/notification-bell";
 import { cn } from "@/lib/utils";
 
 const VOLUME_DISPLAY_UNIT_KEY = "flipturns.volumeAnalyticsDisplayUnit";
-
-const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
-  { value: "Sprint", label: "Sprint" },
-  { value: "Middle distance", label: "Middle distance" },
-  { value: "Distance", label: "Distance" },
-];
 
 function getVolumeDateRange(
   aggregation: Aggregation,
@@ -520,45 +525,66 @@ export default function AnalyticsPage() {
           <CardContent className="space-y-4 overflow-x-hidden min-w-0 pt-6">
             <div className="flex flex-nowrap items-center gap-2 min-w-0">
               {!swimmerView ? (
-                <select
-                  className="min-w-0 flex-1 sm:w-48 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={
-                    volumeViewMode === "group" && volumeSelectedGroup
-                      ? `group:${volumeSelectedGroup}`
-                      : volumeViewMode === "swimmer" && volumeSelectedSwimmerId
-                        ? `swimmer:${volumeSelectedSwimmerId}`
-                        : ""
-                  }
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v.startsWith("group:")) {
-                      const group = v.slice(6) as VolumeSwimmerGroup;
-                      setVolumeViewMode("group");
-                      setVolumeSelectedGroup(group);
-                      setVolumeSelectedSwimmerId(null);
-                    } else if (v.startsWith("swimmer:")) {
-                      setVolumeViewMode("swimmer");
-                      setVolumeSelectedSwimmerId(v.slice(8));
-                      setVolumeSelectedGroup(null);
-                    }
-                  }}
-                >
-                  <option value="">{t("settings.selectSwimmerGroup")}</option>
-                  <optgroup label={t("settings.groups")}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="min-w-0 flex-1 h-9 justify-between gap-1.5 px-3 text-left text-sm font-normal sm:max-w-[min(100%,12rem)]"
+                    >
+                      <span className="truncate">
+                        {volumeViewMode === "group" && volumeSelectedGroup
+                          ? t(GROUP_KEYS[volumeSelectedGroup])
+                          : volumeViewMode === "swimmer" && volumeSelectedSwimmerId
+                            ? teamSwimmers.find((s) => s.id === volumeSelectedSwimmerId)?.full_name ??
+                              volumeSelectedSwimmerId.slice(0, 8)
+                            : t("settings.selectSwimmerGroup")}
+                      </span>
+                      <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-[12rem] max-w-[min(100vw-2rem,20rem)]">
+                    <DropdownMenuLabel className="font-semibold text-foreground">{t("settings.groups")}</DropdownMenuLabel>
                     {SWIMMER_GROUPS.map((g) => (
-                      <option key={g.value} value={`group:${g.value}`}>
-                        {t(GROUP_KEYS[g.value])}
-                      </option>
+                      <DropdownMenuItem
+                        key={g}
+                        className="pl-3"
+                        onSelect={() => {
+                          setVolumeViewMode("group");
+                          setVolumeSelectedGroup(g);
+                          setVolumeSelectedSwimmerId(null);
+                        }}
+                      >
+                        {t(GROUP_KEYS[g])}
+                      </DropdownMenuItem>
                     ))}
-                  </optgroup>
-                  <optgroup label={t("settings.swimmers")}>
-                    {teamSwimmers.map((s) => (
-                      <option key={s.id} value={`swimmer:${s.id}`}>
-                        {s.full_name || s.id.slice(0, 8)}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>{t("group.personal")}</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent
+                        className="min-w-[12rem] w-max max-w-[min(calc(100vw-1.5rem),22rem)] max-h-[90dvh] overflow-y-auto p-1"
+                        avoidCollisions
+                      >
+                        <div className="grid grid-cols-2 gap-x-1">
+                          {teamSwimmers.map((s) => (
+                            <DropdownMenuItem
+                              key={s.id}
+                              className="min-w-0 justify-start"
+                              onSelect={() => {
+                                setVolumeViewMode("swimmer");
+                                setVolumeSelectedSwimmerId(s.id);
+                                setVolumeSelectedGroup(null);
+                              }}
+                            >
+                              <span className="truncate">{s.full_name || s.id.slice(0, 8)}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </div>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : null}
               <div className="flex gap-1 items-center shrink-0">
                 {(["day", "week"] as const).map((a) => (
