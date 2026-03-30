@@ -1,7 +1,4 @@
-/**
- * Parses swim workout text to extract total meters and meters per set.
- * Recognizes: fly/fl, back/bk, breast/br, free/fr, uw (underwater)
- */
+/** Parses workout text for meters per set (strokes, repeats, out/in, etc.). */
 
 import { stripWorkoutInlineMarkers } from "./workout-inline-format";
 
@@ -17,6 +14,7 @@ export interface WorkoutAnalysis {
 }
 
 const SET_NAME_PATTERNS = [
+  /^(?:set|serie)\s*#\s*\d+\s*:?/i,
   /^(?:warm[- ]?up|warmup|calentamiento)\s*:?/i,
   /^(?:pre[- ]?set\s+activation|pre[- ]?set|pre\s+set|preset)\s*:?/i,
   /^(?:main\s+set|set\s+principal)\s*:?/i,
@@ -163,7 +161,6 @@ function parseMetersInText(text: string): number {
   let textForStandalone = linesForStandalone.join("\n");
   // Remove "word: number" patterns to avoid counting descriptive numbers (e.g. "odds: 25 swim, evens: 35 swim")
   textForStandalone = textForStandalone.replace(/\b[a-zA-Z]+\s*:\s*\d+/g, " ");
-  // Use horizontal space only: \s* would match newlines and merge lines (e.g. "P+P" + newline + "25 MAX" → eats the 25 as "p 25").
   textForStandalone = textForStandalone.replace(/\bp[ \t]*\d+(?:\/\d+)?\b/gi, " ");
   textForStandalone = textForStandalone.replace(/\bon\s+\d+["']?\s*/gi, " ");
   textForStandalone = textForStandalone.replace(/\bc\/\s*\S+/gi, " ");
@@ -189,15 +186,10 @@ function parseMetersInText(text: string): number {
   return total;
 }
 
-/** True when this line starts a named set block (same rules as volume analysis). */
 export function lineIsWorkoutSetHeader(line: string): boolean {
   return findSetName(line) !== null;
 }
 
-/**
- * Split a logical line for display: leading whitespace, set-title prefix (underline in UI), remainder.
- * Uses the same header patterns as volume analysis.
- */
 export function splitWorkoutSetTitleLine(line: string): { leading: string; title: string; rest: string } | null {
   const t = line.trimStart();
   if (!t) return null;

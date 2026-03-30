@@ -14,7 +14,36 @@ import { Pencil, Trash2, MessageSquare } from "lucide-react";
 const FEEDBACK_INTENSITY_MAX = 10;
 const INTENSITY_VALUES = Array.from({ length: FEEDBACK_INTENSITY_MAX }, (_, i) => i + 1);
 
-/** DB allows null or integers 1–10. Coerce 0, NaN, out-of-range, or empty string to null (avoids check constraint violations). */
+function IntensityScale({
+  value,
+  onChange,
+  label,
+}: {
+  value: number | null;
+  onChange: (n: number | null) => void;
+  label: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {INTENSITY_VALUES.map((n) => (
+          <Button
+            key={n}
+            type="button"
+            variant={value === n ? "default" : "outline"}
+            size="icon"
+            className="size-7 shrink-0 text-[11px] sm:size-8 sm:text-xs"
+            onClick={() => onChange(value === n ? null : n)}
+          >
+            {n}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function normalizeFeedbackIntensity(value: number | string | null | undefined): number | null {
   if (value === "" || value == null) return null;
   const n = typeof value === "number" ? value : Number(value);
@@ -42,7 +71,6 @@ interface WorkoutAnalysisProps {
   className?: string;
   viewerRole?: "coach" | "swimmer";
   onFeedbackChange?: () => void;
-  /** When true, only volume/duration analysis is shown (e.g. while editing a workout). */
   hideFeedback?: boolean;
 }
 
@@ -80,7 +108,6 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     if (!date) return;
     async function fetchFeedback() {
       const selectCols = readOnly ? "*" : "id, feedback_text, muscle_intensity, cardio_intensity, anonymous";
-      /** New / unsaved workouts use `id: ""`; feedback is stored with `workout_id` null. Must still fetch so submit + refreshKey does not wipe the list. */
       let query = supabase.from("feedback").select(selectCols).eq("date", date);
       if (!workoutId) {
         if (readOnly || !user?.id) {
@@ -225,34 +252,6 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     !hideFeedback && date && (hasFeedback || hasLoadedFeedback || !readOnly) && (!readOnly || !!workoutId);
 
   const unit = poolSize === "SCY" ? "yd" : "m";
-
-  const IntensityScale = ({
-    value,
-    onChange,
-    label,
-  }: {
-    value: number | null;
-    onChange: (n: number | null) => void;
-    label: string;
-  }) => (
-    <div className="space-y-1.5">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {INTENSITY_VALUES.map((n) => (
-          <Button
-            key={n}
-            type="button"
-            variant={value === n ? "default" : "outline"}
-            size="icon"
-            className="size-7 shrink-0 text-[11px] sm:size-8 sm:text-xs"
-            onClick={() => onChange(value === n ? null : n)}
-          >
-            {n}
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
 
   if (!hasAnalysis && !showFeedbackSection) return null;
 

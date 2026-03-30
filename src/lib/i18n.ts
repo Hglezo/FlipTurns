@@ -49,6 +49,7 @@ const TRANSLATIONS_EN = {
   "main.allWorkouts": "All workouts",
   "main.groupWorkouts": "Group workouts",
   "main.myWorkouts": "My workouts",
+  "main.personalWorkoutsMenu": "Personal workouts",
   "main.noWorkout": "No workout",
   "main.noWorkoutForDay": "No workout planned for this day.",
   "main.day": "Day",
@@ -170,8 +171,7 @@ const TRANSLATIONS_EN = {
   "feedback.noFeedbackYet": "No feedback yet.",
   "feedback.submitAnonymous": "Submit anonymously (coach won't see your name)",
   "feedback.fixInSetup": "Fix in Database setup →",
-  "feedback.intensityDbOutdated":
-    "Your database still limits intensity to 1–5. In Database setup, run the “Feedback intensity 1–10” SQL block (ratings 6–10).",
+  "feedback.intensityDbOutdated": "Your database still limits intensity to 1–5. In Database setup, run the “Feedback intensity 1–10” SQL block (ratings 6–10).",
 
   // Volume analytics
   "volume.weekLabel": "Week {n}",
@@ -183,6 +183,10 @@ const TRANSLATIONS_EN = {
   "volume.dayFri": "Fri",
   "volume.daySat": "Sat",
   "volume.daySun": "Sun",
+  "volume.tooltipSessionAm": "AM session",
+  "volume.tooltipSessionPm": "PM session",
+  "volume.displayMeters": "Meters",
+  "volume.displayYards": "Yards",
 
   // Coach workout editor
   "coach.swimmer": "Swimmer",
@@ -336,6 +340,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "main.allWorkouts": "Todos los entrenamientos",
   "main.groupWorkouts": "Grupos",
   "main.myWorkouts": "Mis entrenamientos",
+  "main.personalWorkoutsMenu": "Entrenamientos personales",
   "main.noWorkout": "Sin entrenamiento",
   "main.noWorkoutForDay": "No hay entrenamiento planificado para hoy.",
   "main.day": "Día",
@@ -457,8 +462,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "feedback.noFeedbackYet": "Aún no hay comentarios.",
   "feedback.submitAnonymous": "Enviar de forma anónima (el entrenador no verá tu nombre)",
   "feedback.fixInSetup": "Arreglar en Configuración de base de datos →",
-  "feedback.intensityDbOutdated":
-    "Tu base de datos aún limita la intensidad a 1–5. En Configuración de base de datos, ejecuta el bloque SQL «Feedback intensity 1–10» (valoraciones 6–10).",
+  "feedback.intensityDbOutdated": "Tu base de datos aún limita la intensidad a 1–5. En Configuración de base de datos, ejecuta el bloque SQL «Feedback intensity 1–10» (valoraciones 6–10).",
 
   // Volume analytics
   "volume.weekLabel": "Semana {n}",
@@ -470,6 +474,10 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "volume.dayFri": "Vie",
   "volume.daySat": "Sáb",
   "volume.daySun": "Dom",
+  "volume.tooltipSessionAm": "Sesión AM",
+  "volume.tooltipSessionPm": "Sesión PM",
+  "volume.displayMeters": "Metros",
+  "volume.displayYards": "Yardas",
 
   // Coach workout editor
   "coach.swimmer": "Nadador",
@@ -697,7 +705,8 @@ export type DateFormatType =
   | "weekRange" // MMM d – MMM d
   | "monthYear" // March 2026  /  Marzo 2026
   | "weekOf"    // Week of MMM d – MMM d, yyyy
-  | "memberSince"; // MMMM d, yyyy
+  | "memberSince" // MMMM d, yyyy
+  | "numericDMY";
 
 export function formatDate(
   date: Date,
@@ -748,6 +757,10 @@ export function formatDate(
           ? dateFnsFormat(date, "d 'de' MMMM, yyyy", opts)
           : dateFnsFormat(date, "MMMM d, yyyy", opts)
       );
+    case "numericDMY":
+      return locale === "es-ES"
+        ? dateFnsFormat(date, "dd/MM/yyyy", opts)
+        : dateFnsFormat(date, "M/d/yyyy", opts);
     default:
       return dateFnsFormat(date, "PP", opts);
   }

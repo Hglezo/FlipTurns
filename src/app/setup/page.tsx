@@ -92,7 +92,7 @@ alter table public.feedback
   alter column muscle_intensity drop not null,
   alter column cardio_intensity drop not null;`;
 
-// SQL: widen checks from legacy 1–5 to 1–10 (app scale). Run in Supabase if ratings 6–10 fail to save.
+// Widen checks from legacy 1–5 to 1–10; run if ratings 6–10 fail to save.
 const FEEDBACK_INTENSITY_1_TO_10_SQL = `alter table public.feedback drop constraint if exists feedback_muscle_intensity_check;
 alter table public.feedback drop constraint if exists feedback_cardio_intensity_check;
 

@@ -10,8 +10,15 @@ import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -25,7 +32,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
 import { WorkoutContentTextarea } from "@/components/workout-content-textarea";
 import { WorkoutAssignPicker } from "@/components/workout-assign-picker";
-import { formatWorkoutInlineText } from "@/components/workout-inline-formatted";
+import { WorkoutTextWithWrapIndent } from "@/components/workout-text-with-wrap-indent";
 import { SignOutDropdown } from "@/components/sign-out-dropdown";
 import { NotificationBell } from "@/components/notification-bell";
 import { usePreferences } from "@/components/preferences-provider";
@@ -43,7 +50,6 @@ import {
   resolvedGroupAssigneeIdsForSave,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
-import { splitWorkoutSetTitleLine } from "@/lib/workout-analyzer";
 import { cn } from "@/lib/utils";
 
 const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
@@ -113,48 +119,6 @@ function weekDayCollapsedPreviewLabel(
     sessionTrim === "AM" ? t("session.am") : sessionTrim === "PM" ? t("session.pm") : t("main.anytime");
   if (assignee) return `${translatedAssignee}: ${sessionSuffix} - ${translatedCategory}`;
   return `${sessionSuffix} - ${translatedCategory}`;
-}
-
-const SET_TITLE_UNDERLINE = "underline underline-offset-[3px] decoration-foreground/75";
-
-/** One block per newline in the workout: each starts at the left margin; soft-wrapped lines inside a block indent. */
-function WorkoutTextWithWrapIndent({
-  content,
-  segmentClassName,
-}: {
-  content: string;
-  segmentClassName?: string;
-}) {
-  const segments = content.split(/\r?\n/);
-  return (
-    <>
-      {segments.map((segment, i) => {
-        const split = segment === "" ? null : splitWorkoutSetTitleLine(segment);
-        return (
-          <div
-            key={i}
-            className={cn(
-              "min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap pl-[1.75em] -indent-[1.75em]",
-              segment === "" && "min-h-[1lh]",
-              segmentClassName,
-            )}
-          >
-            {segment === "" ? (
-              "\u00a0"
-            ) : split ? (
-              <>
-                {split.leading}
-                <span className={SET_TITLE_UNDERLINE}>{formatWorkoutInlineText(split.title)}</span>
-                {formatWorkoutInlineText(split.rest)}
-              </>
-            ) : (
-              formatWorkoutInlineText(segment)
-            )}
-          </div>
-        );
-      })}
-    </>
-  );
 }
 
 function WorkoutBlock({
@@ -546,6 +510,10 @@ function HomePage() {
   useLayoutEffect(() => {
     setAggregatedDayExpandedWorkoutKey(null);
   }, [dateKey, selectedCoachSwimmerId, selectedViewSwimmerId, viewMode]);
+
+  useEffect(() => {
+    if (role === "swimmer" && selectedViewSwimmerId === ALL_ID) setSelectedViewSwimmerId(null);
+  }, [role, selectedViewSwimmerId]);
 
   useEffect(() => {
     if (viewMode === "day") rangeDataKeyRef.current = "";
@@ -1278,9 +1246,10 @@ function HomePage() {
       if (selectedCoachSwimmerId === ONLY_GROUPS_ID) return t("main.groupWorkouts");
       return selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined;
     }
-    if (selectedViewSwimmerId === ALL_ID) return t("main.allWorkouts");
     if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) return t("main.groupWorkouts");
-    if (!selectedViewSwimmerId) return profile?.full_name ?? swimmers.find((s) => s.id === user?.id)?.full_name ?? undefined;
+    if (!selectedViewSwimmerId || selectedViewSwimmerId === ALL_ID) {
+      return profile?.full_name ?? swimmers.find((s) => s.id === user?.id)?.full_name ?? undefined;
+    }
     return swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? undefined;
   };
 
@@ -1458,15 +1427,33 @@ function HomePage() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm" className="h-9 w-full min-w-0 justify-between gap-1.5 px-2 text-left text-xs font-medium">
-                      <span className="truncate">{selectedViewSwimmerId === ALL_ID ? t("main.allWorkouts") : selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID ? t("main.groupWorkouts") : selectedViewSwimmerId ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? t("login.swimmer") : profile?.full_name ?? t("main.myWorkouts")}</span>
+                      <span className="truncate">
+                        {selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID
+                          ? t("main.groupWorkouts")
+                          : selectedViewSwimmerId
+                            ? swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? t("login.swimmer")
+                            : profile?.full_name ?? t("main.myWorkouts")}
+                      </span>
                       <ChevronDown className="size-3.5 shrink-0 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[10rem]">
                   <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(null)}>{profile?.full_name ?? t("main.myWorkouts")}</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(ALL_ID)}>{t("main.allWorkouts")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(ONLY_GROUPS_ID)}>{t("main.groupWorkouts")}</DropdownMenuItem>
-                  {swimmers.filter((s) => s.id !== user?.id).map((s) => <DropdownMenuItem key={s.id} onClick={() => setSelectedViewSwimmerId(s.id)}>{s.full_name ?? s.id}</DropdownMenuItem>)}
+                  {swimmers.some((s) => s.id !== user?.id) ? (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>{t("main.personalWorkoutsMenu")}</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="min-w-[10rem]">
+                        {swimmers
+                          .filter((s) => s.id !== user?.id)
+                          .map((s) => (
+                            <DropdownMenuItem key={s.id} onClick={() => setSelectedViewSwimmerId(s.id)}>
+                              {s.full_name ?? s.id}
+                            </DropdownMenuItem>
+                          ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  ) : null}
                 </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -1482,7 +1469,16 @@ function HomePage() {
                   <DropdownMenuContent align="end" className="min-w-[10rem]">
                     <DropdownMenuItem onClick={() => setSelectedCoachSwimmerId(ALL_ID)}>{t("main.allWorkouts")}</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setSelectedCoachSwimmerId(ONLY_GROUPS_ID)}>{t("main.groupWorkouts")}</DropdownMenuItem>
-                    {swimmers.map((s) => <DropdownMenuItem key={s.id} onClick={() => setSelectedCoachSwimmerId(s.id)}>{s.full_name ?? s.id}</DropdownMenuItem>)}
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>{t("main.personalWorkoutsMenu")}</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="min-w-[10rem]">
+                        {swimmers.map((s) => (
+                          <DropdownMenuItem key={s.id} onClick={() => setSelectedCoachSwimmerId(s.id)}>
+                            {s.full_name ?? s.id}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
