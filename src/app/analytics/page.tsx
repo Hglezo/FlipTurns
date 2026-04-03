@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useId } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ import { supabase } from "@/lib/supabase";
 import {
   BarChart,
   Bar,
+  Cell,
+  CartesianGrid,
   XAxis,
   YAxis,
   Tooltip,
@@ -147,15 +149,24 @@ function VolumeAxisTick({
   const isZero = m <= 0;
   return (
     <g transform={`translate(${nx},${ny})`}>
-      <text x={0} y={0} dy={10} textAnchor="middle" className="fill-foreground text-[10px]">
+      <text
+        x={0}
+        y={0}
+        dy={10}
+        textAnchor="middle"
+        className="fill-foreground text-[11px] font-medium"
+      >
         {payload.value}
       </text>
       <text
         x={0}
         y={0}
-        dy={22}
+        dy={24}
         textAnchor="middle"
-        className={cn("text-[9px]", isZero ? "fill-muted-foreground" : "fill-foreground")}
+        className={cn(
+          "tabular-nums text-[10px] tracking-tight",
+          isZero ? "fill-muted-foreground/70" : "fill-foreground",
+        )}
       >
         {vol}
       </text>
@@ -285,6 +296,8 @@ function VolumeChart({
   locale: string;
   displayUnit: VolumeDisplayUnit;
 }) {
+  const barGradientId = `vol-bar-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
   if (chartData.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center">
@@ -309,16 +322,39 @@ function VolumeChart({
   return (
     <div className="h-[260px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={displayData} margin={{ top: 8, right: 8, left: 0, bottom: 28 }}>
+        <BarChart
+          data={displayData}
+          margin={{ top: 10, right: 4, left: 0, bottom: 32 }}
+        >
+          <defs>
+            <linearGradient id={barGradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={1} />
+              <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.45} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid
+            vertical={false}
+            stroke="var(--border)"
+            strokeOpacity={0.45}
+            strokeDasharray="5 8"
+          />
           <XAxis
             dataKey="shortLabel"
             interval={0}
+            tickLine={false}
+            axisLine={{ stroke: "var(--border)", strokeOpacity: 0.55 }}
             tick={(props) => (
               <VolumeAxisTick {...props} displayData={displayData} displayUnit={displayUnit} />
             )}
-            height={36}
+            height={40}
           />
-          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatVolumeCompact(Number(v))} />
+          <YAxis
+            width={44}
+            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+            tickLine={false}
+            axisLine={{ stroke: "var(--border)", strokeOpacity: 0.55 }}
+            tickFormatter={(v) => formatVolumeCompact(Number(v))}
+          />
           <Tooltip
             cursor={{ fill: "var(--muted)", opacity: 0.35 }}
             content={(tipProps) => (
@@ -337,7 +373,24 @@ function VolumeChart({
               />
             )}
           />
-          <Bar dataKey="plotValue" fill="var(--chart-1)" radius={[2, 2, 0, 0]} />
+          <Bar
+            dataKey="plotValue"
+            radius={[7, 7, 3, 3]}
+            maxBarSize={40}
+            activeBar={{
+              fill: "var(--chart-2)",
+              stroke: "var(--border)",
+              strokeWidth: 1,
+              opacity: 0.95,
+            }}
+          >
+            {displayData.map((entry, index) => (
+              <Cell
+                key={`vol-${entry.label}-${index}`}
+                fill={entry.plotValue > 0 ? `url(#${barGradientId})` : "transparent"}
+              />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
