@@ -6,6 +6,24 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 // Anthropic limit is 5 MB for base64; base64 adds ~33% overhead, so target ~3.5 MB raw
 const TARGET_BUFFER_BYTES = Math.floor(3.5 * 1024 * 1024);
 
+/** Safari often uses `data:image/jpeg;charset=...;base64,` — a strict regex drops the payload into Buffer wrong. */
+function parseDataUrlImage(imageData: string): { base64: string; mime: string } {
+  if (!imageData.startsWith("data:")) {
+    return { base64: imageData, mime: "image/jpeg" };
+  }
+  const comma = imageData.indexOf(",");
+  if (comma === -1) {
+    return { base64: "", mime: "image/jpeg" };
+  }
+  const meta = imageData.slice(5, comma).trim();
+  const payload = imageData.slice(comma + 1);
+  const mimePart = meta.split(";")[0]?.trim() ?? "image/jpeg";
+  return {
+    base64: payload,
+    mime: mimePart.startsWith("image/") ? mimePart : "image/jpeg",
+  };
+}
+
 async function compressImage(base64: string, mime: string): Promise<{ base64: string; mime: string }> {
   const buffer = Buffer.from(base64, "base64");
   if (buffer.length <= TARGET_BUFFER_BYTES) return { base64, mime };
@@ -92,15 +110,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing image data" }, { status: 400 });
     }
 
-    // Accept base64 with or without data URL prefix
-    let base64 = imageData;
-    let mime = "image/jpeg";
-    if (imageData.startsWith("data:")) {
-      const match = imageData.match(/^data:(image\/\w+);base64,(.+)$/);
-      if (match) {
-        mime = match[1];
-        base64 = match[2];
-      }
+    const parsed = parseDataUrlImage(imageData);
+    let { base64, mime } = parsed;
+    if (!base64.trim()) {
+      return NextResponse.json({ error: "Missing image data" }, { status: 400 });
     }
 
     const { base64: compressedBase64, mime: compressedMime } = await compressImage(base64, mime);
