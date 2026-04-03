@@ -95,6 +95,14 @@ function workoutListKey(workout: Workout, index: number): string {
   return workout.id ? String(workout.id) : `idx-${index}`;
 }
 
+async function sniffLikelyHeic(blob: Blob): Promise<boolean> {
+  if (blob.size < 12) return false;
+  const b = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  if (String.fromCharCode(b[4], b[5], b[6], b[7]) !== "ftyp") return false;
+  const brand = String.fromCharCode(b[8], b[9], b[10], b[11]).toLowerCase();
+  return /^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(brand);
+}
+
 function buildSwimmerDayCacheKey(dateKey: string, selectedViewSwimmerId: string | null, userId: string): string {
   if (selectedViewSwimmerId === ALL_ID) return `${dateKey}:${ALL_ID}`;
   if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) return `${dateKey}:${selectedViewSwimmerId}`;
@@ -1149,13 +1157,19 @@ function HomePage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (idx === null || !file) return;
-    const isHeic = /^image\/(heic|heif)$/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
-    if (!isHeic && !file.type.startsWith("image/")) return;
+    const mime = file.type.trim().toLowerCase();
+    const heicByMime = /^image\/(heic|heif)$/.test(mime);
+    const heicByName = /\.(heic|heif)$/i.test(file.name);
+    if (!heicByMime && !heicByName && mime && !mime.startsWith("image/") && mime !== "application/octet-stream") return;
     setImageFromWorkoutError(null);
     setImageFromWorkoutLoading(true);
     try {
       let blob: Blob = file;
-      if (isHeic) {
+      const needsHeic =
+        heicByMime ||
+        heicByName ||
+        ((!mime || mime === "application/octet-stream") && (await sniffLikelyHeic(file)));
+      if (needsHeic) {
         const heic2any = (await import("heic2any")).default;
         const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
         blob = Array.isArray(converted) ? converted[0]! : converted;
@@ -1261,6 +1275,13 @@ function HomePage() {
   );
 
   const previewDefault = getPreviewDefault();
+
+  const imageWorkoutAnalyzing = imageFromWorkoutLoading ? (
+    <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+      <Loader2 className="size-4 animate-spin shrink-0" aria-hidden />
+      {t("main.workoutFromImageAnalyzing")}
+    </span>
+  ) : null;
 
   const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; onExpandPreview?: () => void; namesRowClassName?: string; analysisBleedClassName?: string; aggregatedPdfBelowBanner?: { show: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
     const rawLabel = assignmentLabel(workout, swimmers);
@@ -1812,14 +1833,15 @@ function HomePage() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
                                   onClick={() => pickWorkoutImageSource("camera", originalIdx)}>
-                                  {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-                                  {imageFromWorkoutLoading ? t("main.workoutFromImageAnalyzing") : t("main.workoutFromImageTakePicture")}
+                                  <Camera className="size-4" />
+                                  {t("main.workoutFromImageTakePicture")}
                                 </Button>
                                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
                                   onClick={() => pickWorkoutImageSource("gallery", originalIdx)}>
-                                  {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <ImageUp className="size-4" />}
-                                  {imageFromWorkoutLoading ? t("main.workoutFromImageAnalyzing") : t("main.workoutFromImageUploadPhoto")}
+                                  <ImageUp className="size-4" />
+                                  {t("main.workoutFromImageUploadPhoto")}
                                 </Button>
+                                {imageWorkoutAnalyzing}
                                 {imageFromWorkoutError && swimmerEditingIndex === originalIdx && (
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}
@@ -2142,14 +2164,15 @@ function HomePage() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
                                   onClick={() => pickWorkoutImageSource("camera", originalIdx)}>
-                                  {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-                                  {imageFromWorkoutLoading ? t("main.workoutFromImageAnalyzing") : t("main.workoutFromImageTakePicture")}
+                                  <Camera className="size-4" />
+                                  {t("main.workoutFromImageTakePicture")}
                                 </Button>
                                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
                                   onClick={() => pickWorkoutImageSource("gallery", originalIdx)}>
-                                  {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <ImageUp className="size-4" />}
-                                  {imageFromWorkoutLoading ? t("main.workoutFromImageAnalyzing") : t("main.workoutFromImageUploadPhoto")}
+                                  <ImageUp className="size-4" />
+                                  {t("main.workoutFromImageUploadPhoto")}
                                 </Button>
+                                {imageWorkoutAnalyzing}
                                 {imageFromWorkoutError && editingWorkoutIndex === originalIdx && (
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}
