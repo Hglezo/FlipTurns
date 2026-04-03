@@ -111,24 +111,19 @@ async function isJpegOrPngBlob(blob: Blob): Promise<boolean> {
   return false;
 }
 
-/** Gallery picks are often huge; camera JPEGs are smaller — downscale so JSON body fits server limits. */
-async function blobToDownscaledJpegDataUrl(blob: Blob, maxSide = 2048, quality = 0.85): Promise<string> {
-  const drawToJpeg = (img: CanvasImageSource, w: number, h: number): string => {
+async function blobToWorkoutUploadDataUrl(blob: Blob, maxSide = 2048, quality = 0.85): Promise<string> {
+  const drawToJpeg = (img: CanvasImageSource, w: number, h: number) => {
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("canvas");
-    ctx.drawImage(img, 0, 0, w, h);
+    canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
     return canvas.toDataURL("image/jpeg", quality);
   };
-
   const scale = (w: number, h: number) => {
     if (w <= maxSide && h <= maxSide) return { w, h };
     if (w > h) return { w: maxSide, h: Math.round((h * maxSide) / w) };
     return { w: Math.round((w * maxSide) / h), h: maxSide };
   };
-
   try {
     const bmp = await createImageBitmap(blob);
     try {
@@ -138,18 +133,27 @@ async function blobToDownscaledJpegDataUrl(blob: Blob, maxSide = 2048, quality =
       bmp.close();
     }
   } catch {
-    const url = URL.createObjectURL(blob);
     try {
-      const img = new Image();
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("decode"));
-        img.src = url;
+      const url = URL.createObjectURL(blob);
+      try {
+        const img = new Image();
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject();
+          img.src = url;
+        });
+        const { w, h } = scale(img.naturalWidth, img.naturalHeight);
+        return drawToJpeg(img, w, h);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch {
+      return new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error("Failed to read image"));
+        r.readAsDataURL(blob);
       });
-      const { w, h } = scale(img.naturalWidth, img.naturalHeight);
-      return drawToJpeg(img, w, h);
-    } finally {
-      URL.revokeObjectURL(url);
     }
   }
 }
@@ -1224,17 +1228,7 @@ function HomePage() {
         const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
         blob = Array.isArray(converted) ? converted[0]! : converted;
       }
-      let base64: string;
-      try {
-        base64 = await blobToDownscaledJpegDataUrl(blob);
-      } catch {
-        base64 = await new Promise<string>((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result));
-          r.onerror = () => reject(new Error("Failed to read image"));
-          r.readAsDataURL(blob);
-        });
-      }
+      const base64 = await blobToWorkoutUploadDataUrl(blob);
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (!token) throw new Error("Not signed in");

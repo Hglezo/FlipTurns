@@ -6,7 +6,6 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 // Anthropic limit is 5 MB for base64; base64 adds ~33% overhead, so target ~3.5 MB raw
 const TARGET_BUFFER_BYTES = Math.floor(3.5 * 1024 * 1024);
 
-/** Safari often uses `data:image/jpeg;charset=...;base64,` — a strict regex drops the payload into Buffer wrong. */
 function parseDataUrlImage(imageData: string): { base64: string; mime: string } {
   if (!imageData.startsWith("data:")) {
     return { base64: imageData, mime: "image/jpeg" };
@@ -110,8 +109,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing image data" }, { status: 400 });
     }
 
-    const parsed = parseDataUrlImage(imageData);
-    let { base64, mime } = parsed;
+    const { base64, mime } = parseDataUrlImage(imageData);
     if (!base64.trim()) {
       return NextResponse.json({ error: "Missing image data" }, { status: 400 });
     }
