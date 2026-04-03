@@ -84,6 +84,9 @@ const TRANSLATIONS_EN = {
   "main.expandWorkout": "Expand workout",
   "main.collapseWorkout": "Collapse workout",
   "main.seeMore": "See more",
+  "main.workoutFromImageTakePicture": "Take picture",
+  "main.workoutFromImageUploadPhoto": "Upload",
+  "main.workoutFromImageAnalyzing": "Analyzing…",
 
   // Settings
   "settings.profile": "Profile",
@@ -376,6 +379,9 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "main.expandWorkout": "Desplegar entrenamiento",
   "main.collapseWorkout": "Contraer entrenamiento",
   "main.seeMore": "Ver más",
+  "main.workoutFromImageTakePicture": "Hacer foto",
+  "main.workoutFromImageUploadPhoto": "Subir",
+  "main.workoutFromImageAnalyzing": "Analizando…",
 
   // Settings
   "settings.profile": "Perfil",

@@ -25,7 +25,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
-  Camera, Loader2, Users, BarChart3, Printer,
+  Camera, ImageUp, Loader2, Users, BarChart3, Printer,
 } from "lucide-react";
 import { FlipTurnsLogo } from "@/components/flipturns-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -441,7 +441,8 @@ function HomePage() {
   const coachDayListReadyForKeyRef = useRef<string | null>(null);
   const addWorkoutForDateRef = useRef<string | null>(null);
   const imageFromWorkoutIdxRef = useRef<number | null>(null);
-  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const imageCameraInputRef = useRef<HTMLInputElement>(null);
+  const imageGalleryInputRef = useRef<HTMLInputElement>(null);
   const swimmerDayCacheRef = useRef<Map<string, Workout[]>>(new Map());
   /** Cleared when leaving week/month so returning refetches; avoids refetch when only `selectedDate` moves inside same range. */
   const rangeDataKeyRef = useRef<string>("");
@@ -1138,6 +1139,11 @@ function HomePage() {
     return out;
   }
 
+  function pickWorkoutImageSource(source: "camera" | "gallery", idx: number) {
+    imageFromWorkoutIdxRef.current = idx;
+    (source === "camera" ? imageCameraInputRef : imageGalleryInputRef).current?.click();
+  }
+
   async function handleImageFromWorkout(e: React.ChangeEvent<HTMLInputElement>) {
     const idx = imageFromWorkoutIdxRef.current;
     const file = e.target.files?.[0];
@@ -1637,7 +1643,8 @@ function HomePage() {
         {/* Day view - swimmer editor (my workouts) */}
         {viewMode === "day" && isSwimmerMyView && (
           <div className="flex min-w-0 flex-1 flex-col gap-4">
-            <input ref={imageFileInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
+            <input ref={imageCameraInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
+            <input ref={imageGalleryInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" className="hidden" onChange={handleImageFromWorkout} />
               {swimmerLoading && swimmerWorkouts.length === 0 ? (
                 <div className="flex justify-center py-10" aria-busy="true">
                   <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
@@ -1804,9 +1811,14 @@ function HomePage() {
                               )}
                               <div className="flex flex-wrap items-center gap-2">
                                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
-                                  onClick={() => { imageFromWorkoutIdxRef.current = originalIdx; imageFileInputRef.current?.click(); }}>
+                                  onClick={() => pickWorkoutImageSource("camera", originalIdx)}>
                                   {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-                                  {imageFromWorkoutLoading ? "Analyzing..." : "Take picture"}
+                                  {imageFromWorkoutLoading ? t("main.workoutFromImageAnalyzing") : t("main.workoutFromImageTakePicture")}
+                                </Button>
+                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
+                                  onClick={() => pickWorkoutImageSource("gallery", originalIdx)}>
+                                  {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <ImageUp className="size-4" />}
+                                  {imageFromWorkoutLoading ? t("main.workoutFromImageAnalyzing") : t("main.workoutFromImageUploadPhoto")}
                                 </Button>
                                 {imageFromWorkoutError && swimmerEditingIndex === originalIdx && (
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
@@ -1961,7 +1973,8 @@ function HomePage() {
 
         {viewMode === "day" && isCoach && (
           <div className="flex min-w-0 flex-1 flex-col gap-4">
-            <input ref={imageFileInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
+            <input ref={imageCameraInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" capture="environment" className="hidden" onChange={handleImageFromWorkout} />
+            <input ref={imageGalleryInputRef} type="file" accept="image/*,image/heic,image/heif,.heic,.heif" className="hidden" onChange={handleImageFromWorkout} />
               {coachLoading && coachWorkouts.length === 0 ? (
                 <div className="flex justify-center py-10" aria-busy="true">
                   <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden />
@@ -2128,9 +2141,14 @@ function HomePage() {
                               )}
                               <div className="flex flex-wrap items-center gap-2">
                                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
-                                  onClick={() => { imageFromWorkoutIdxRef.current = originalIdx; imageFileInputRef.current?.click(); }}>
+                                  onClick={() => pickWorkoutImageSource("camera", originalIdx)}>
                                   {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-                                  {imageFromWorkoutLoading ? "Analyzing..." : "Take picture"}
+                                  {imageFromWorkoutLoading ? t("main.workoutFromImageAnalyzing") : t("main.workoutFromImageTakePicture")}
+                                </Button>
+                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
+                                  onClick={() => pickWorkoutImageSource("gallery", originalIdx)}>
+                                  {imageFromWorkoutLoading ? <Loader2 className="size-4 animate-spin" /> : <ImageUp className="size-4" />}
+                                  {imageFromWorkoutLoading ? t("main.workoutFromImageAnalyzing") : t("main.workoutFromImageUploadPhoto")}
                                 </Button>
                                 {imageFromWorkoutError && editingWorkoutIndex === originalIdx && (
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
