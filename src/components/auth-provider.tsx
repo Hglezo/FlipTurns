@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import type { Profile } from "@/lib/types";
 
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchProfile(userId: string) {
+  const fetchProfile = useCallback(async (userId: string) => {
     const { data: withGroup } = await supabase
       .from("profiles")
       .select("id, full_name, role, created_at, swimmer_group, team_name")
@@ -67,28 +67,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (created) {
       setProfile({ ...created, swimmer_group: null, team_name: created.team_name ?? null } as Profile);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    void supabase.auth.startAutoRefresh();
+
+    const applySession = (session: Session | null, finishInitialLoad: boolean) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
-        fetchProfile(currentUser.id).finally(() => setLoading(false));
+        void fetchProfile(currentUser.id).finally(() => {
+          if (finishInitialLoad) setLoading(false);
+        });
       } else {
-        setLoading(false);
+        setProfile(null);
+        if (finishInitialLoad) setLoading(false);
       }
+    };
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      applySession(session, true);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) fetchProfile(currentUser.id);
-      else setProfile(null);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session, false);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    const resume = () => {
+      void supabase.auth.startAutoRefresh();
+      void supabase.auth.getSession().then(({ data: { session } }) => applySession(session, false));
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") resume();
+      else void supabase.auth.stopAutoRefresh();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pageshow", resume);
+
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", resume);
+      void supabase.auth.stopAutoRefresh();
+    };
+  }, [fetchProfile]);
 
   return (
     <AuthContext.Provider

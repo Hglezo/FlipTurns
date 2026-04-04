@@ -7,4 +7,9 @@ const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   "placeholder-key";
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: typeof window !== "undefined" ? window.localStorage : undefined,
+    storageKey: "flipturns.supabase.auth",
+  },
+});

@@ -53,14 +53,29 @@ import { cn } from "@/lib/utils";
 
 const VOLUME_DISPLAY_UNIT_KEY = "flipturns.volumeAnalyticsDisplayUnit";
 
-const COACH_VOLUME_SHARED_Y_AXIS = {
-  domain: [0, 15] as [number, number],
-  ticks: [0, 2.5, 5, 7.5, 10, 12.5, 15],
+const K_VOLUME_AXIS_MAX: Record<SwimmerGroup, number> = {
+  Sprint: 10,
+  "Middle distance": 12.5,
+  Distance: 15,
 };
 
-function formatCoachVolumeYAxisTick(v: number): string {
-  const ticks = COACH_VOLUME_SHARED_Y_AXIS.ticks;
-  const best = ticks.reduce((a, t) => (Math.abs(t - v) < Math.abs(a - v) ? t : a), ticks[0]);
+const K_VOLUME_UNASSIGNED_MAX = K_VOLUME_AXIS_MAX["Middle distance"];
+
+function buildKVolumeAxis(max: number): { domain: [number, number]; ticks: number[] } {
+  const ticks: number[] = [];
+  for (let v = 0; v <= max + 1e-6; v += 2.5) {
+    ticks.push(Math.round(v * 10) / 10);
+  }
+  return { domain: [0, max], ticks };
+}
+
+function kVolumeAxisForSwimmerGroup(group: SwimmerGroup | null | undefined) {
+  const max = group == null ? K_VOLUME_UNASSIGNED_MAX : K_VOLUME_AXIS_MAX[group];
+  return buildKVolumeAxis(max);
+}
+
+function formatKVolumeYAxisTick(v: number, ticks: number[]): string {
+  const best = ticks.reduce((a, t) => (Math.abs(t - v) < Math.abs(a - v) ? t : a), ticks[0]!);
   return Number.isInteger(best) ? String(best) : best.toFixed(1);
 }
 
@@ -293,7 +308,8 @@ function VolumeChart({
   locale,
   displayUnit,
   chartContainerClassName,
-  fixedCoachYAxis,
+  kVolumeAxis,
+  chartInstanceId,
 }: {
   chartData: { label: string; meters: number }[];
   workouts: WorkoutRow[];
@@ -308,7 +324,8 @@ function VolumeChart({
   locale: string;
   displayUnit: VolumeDisplayUnit;
   chartContainerClassName?: string;
-  fixedCoachYAxis?: boolean;
+  kVolumeAxis: { domain: [number, number]; ticks: number[] } | null;
+  chartInstanceId?: string;
 }) {
   const barGradientId = `vol-bar-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
@@ -329,7 +346,9 @@ function VolumeChart({
       ? (weekStartsOn === 1 ? DAY_NAMES_ES_MON : DAY_NAMES_ES_SUN)
       : (weekStartsOn === 1 ? DAY_NAMES_EN_MON : DAY_NAMES_EN_SUN);
     const shortLabel = aggregation === "day" ? dayNames[i] : (locale === "es-ES" ? t("volume.semanaLabel", { n: String(i + 1) }) : t("volume.weekLabel", { n: String(i + 1) }));
-    const plotValue = metersToDisplayDistance(d.meters, displayUnit);
+    const rawPlot = metersToDisplayDistance(d.meters, displayUnit);
+    const finite = Number.isFinite(rawPlot) ? rawPlot : 0;
+    const plotValue = kVolumeAxis ? finite / 1000 : finite;
     return { ...d, shortLabel, plotValue };
   });
 
@@ -337,6 +356,7 @@ function VolumeChart({
     <div className={cn("h-[260px] w-full", chartContainerClassName)}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
+          id={chartInstanceId}
           data={displayData}
           margin={{ top: 10, right: 4, left: 0, bottom: 32 }}
         >
@@ -363,15 +383,18 @@ function VolumeChart({
             height={40}
           />
           <YAxis
+            type="number"
             width={48}
-            domain={fixedCoachYAxis ? COACH_VOLUME_SHARED_Y_AXIS.domain : [0, "auto"]}
-            ticks={fixedCoachYAxis ? COACH_VOLUME_SHARED_Y_AXIS.ticks : undefined}
-            interval={fixedCoachYAxis ? 0 : undefined}
+            domain={kVolumeAxis ? kVolumeAxis.domain : [0, "auto"]}
+            ticks={kVolumeAxis ? kVolumeAxis.ticks : undefined}
+            interval={kVolumeAxis ? 0 : undefined}
+            allowDataOverflow={Boolean(kVolumeAxis)}
+            niceTicks={kVolumeAxis ? "none" : undefined}
             tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--border)", strokeOpacity: 0.55 }}
             tickFormatter={(v) =>
-              fixedCoachYAxis ? formatCoachVolumeYAxisTick(Number(v)) : formatVolumeCompact(Number(v))
+              kVolumeAxis ? formatKVolumeYAxisTick(Number(v), kVolumeAxis.ticks) : formatVolumeCompact(Number(v))
             }
             allowDecimals
           />
@@ -570,6 +593,20 @@ export default function AnalyticsPage() {
     volumeDateBounds,
   ]);
 
+  const singleSwimmerKVolumeAxis = useMemo(() => {
+    if (!swimmerView && (volumeViewMode !== "swimmer" || volumeSelectedSwimmerId == null)) return null;
+    const group = swimmerView
+      ? profile?.swimmer_group ?? null
+      : teamSwimmers.find((s) => s.id === volumeSelectedSwimmerId)?.swimmer_group ?? null;
+    return kVolumeAxisForSwimmerGroup(group);
+  }, [
+    swimmerView,
+    volumeViewMode,
+    volumeSelectedSwimmerId,
+    profile?.swimmer_group,
+    teamSwimmers,
+  ]);
+
   if (authLoading || !user) {
     return (
       <div className="min-h-dvh bg-background flex items-center justify-center">
@@ -751,7 +788,8 @@ export default function AnalyticsPage() {
                         locale={locale}
                         displayUnit={volumeDisplayUnit}
                         chartContainerClassName="h-[200px]"
-                        fixedCoachYAxis
+                        chartInstanceId={`coach-volume-${group.replace(/\s+/g, "-")}`}
+                        kVolumeAxis={kVolumeAxisForSwimmerGroup(group)}
                       />
                     </div>
                     );
@@ -782,6 +820,14 @@ export default function AnalyticsPage() {
                     formatDate={formatDate}
                     locale={locale}
                     displayUnit={volumeDisplayUnit}
+                    chartInstanceId={
+                      swimmerView
+                        ? "personal-volume"
+                        : volumeSelectedSwimmerId
+                          ? `coach-volume-swimmer-${volumeSelectedSwimmerId}`
+                          : undefined
+                    }
+                    kVolumeAxis={singleSwimmerKVolumeAxis}
                   />
                 </div>
               )}
