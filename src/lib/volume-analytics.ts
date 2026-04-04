@@ -118,6 +118,23 @@ export function getWeekVolumeBreakdown(
   return out;
 }
 
+export function computeAllGroupsVolumeChartData(
+  workouts: WorkoutRow[],
+  aggregation: Aggregation,
+  weekStartsOn: 0 | 1,
+  dateRangeStart: string,
+  dateRangeEnd: string,
+  groups: SwimmerGroup[] = ["Sprint", "Middle distance", "Distance"],
+): { group: SwimmerGroup; chartData: { label: string; meters: number }[] }[] {
+  const groupVols = computeGroupVolumes(workouts, groups);
+  return groups.map((group) => {
+    const volByDate = groupVols.get(group) ?? new Map();
+    const aggregated = aggregateByPeriod(volByDate, aggregation, weekStartsOn);
+    const chartData = fillPeriodsInRange(aggregated, dateRangeStart, dateRangeEnd, aggregation, weekStartsOn);
+    return { group, chartData };
+  });
+}
+
 export function computeVolumeChartData(
   workouts: WorkoutRow[],
   swimmers: SwimmerProfile[],

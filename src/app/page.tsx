@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type MouseEvent, type ReactNode } from "react";
 import {
   format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -13,10 +13,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/lib/supabase";
@@ -116,7 +114,9 @@ async function blobToWorkoutUploadDataUrl(blob: Blob, maxSide = 2048, quality = 
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
-    canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas");
+    ctx.drawImage(img, 0, 0, w, h);
     return canvas.toDataURL("image/jpeg", quality);
   };
   const scale = (w: number, h: number) => {
@@ -500,6 +500,16 @@ function HomePage() {
   const [selectedCoachSwimmerId, setSelectedCoachSwimmerId] = useState<string | null>(null);
   const [imageFromWorkoutLoading, setImageFromWorkoutLoading] = useState(false);
   const [imageFromWorkoutError, setImageFromWorkoutError] = useState<string | null>(null);
+  const [mainMenuShellBoundary, setMainMenuShellBoundary] = useState<HTMLElement | null>(null);
+  const [mainMenuShellWidthPx, setMainMenuShellWidthPx] = useState<number | null>(null);
+  const [mainPersonalWorkoutsOpen, setMainPersonalWorkoutsOpen] = useState(false);
+  const mainPersonalWorkoutsGroupRef = useRef<HTMLDivElement | null>(null);
+
+  const handlePersonalWorkoutsGroupMouseLeave = useCallback((e: MouseEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget;
+    if (next instanceof Node && mainPersonalWorkoutsGroupRef.current?.contains(next)) return;
+    setMainPersonalWorkoutsOpen(false);
+  }, []);
   /** Set when coach day fetch finishes for `dateKey` so notification deep-link can tell [] vs still loading. */
   const coachDayListReadyForKeyRef = useRef<string | null>(null);
   const addWorkoutForDateRef = useRef<string | null>(null);
@@ -546,6 +556,26 @@ function HomePage() {
   );
 
   useEffect(() => { if (!authLoading && !user) router.push("/login"); }, [authLoading, user, router]);
+
+  useLayoutEffect(() => {
+    if (!mainMenuShellBoundary) {
+      setMainMenuShellWidthPx(null);
+      return;
+    }
+    const el = mainMenuShellBoundary;
+    const update = () => {
+      const shellW = el.clientWidth;
+      setMainMenuShellWidthPx(Math.max(0, Math.min(shellW, window.innerWidth - 16)));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [mainMenuShellBoundary]);
 
   const handleNotificationDeepLink = useCallback(
     (info: { date: string; workoutId: string | null }) => {
@@ -1323,6 +1353,11 @@ function HomePage() {
     </div>
   );
 
+  const mainMenuShellMaxWidthStyle =
+    mainMenuShellWidthPx != null && mainMenuShellWidthPx > 0
+      ? { maxWidth: mainMenuShellWidthPx }
+      : undefined;
+
   const previewDefault = getPreviewDefault();
 
   const imageWorkoutAnalyzing = imageFromWorkoutLoading ? (
@@ -1480,7 +1515,10 @@ function HomePage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6">
+      <div
+        ref={setMainMenuShellBoundary}
+        className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6"
+      >
         {/* Header */}
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
@@ -1488,7 +1526,19 @@ function HomePage() {
             <div className="shrink-0"><ThemeToggle /></div>
             {role === "swimmer" && swimmers.length > 0 ? (
               <div className="min-w-0 flex-1 overflow-hidden">
-                <DropdownMenu>
+                <DropdownMenu
+                  onOpenChange={(open) => {
+                    if (!open) setMainPersonalWorkoutsOpen(false);
+                    else if (
+                      selectedViewSwimmerId &&
+                      selectedViewSwimmerId !== ONLY_GROUPS_ID &&
+                      user?.id &&
+                      swimmers.some((s) => s.id === selectedViewSwimmerId && s.id !== user.id)
+                    ) {
+                      setMainPersonalWorkoutsOpen(true);
+                    }
+                  }}
+                >
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm" className="h-9 w-full min-w-0 justify-between gap-1.5 px-2 text-left text-xs font-medium">
                       <span className="truncate">
@@ -1501,48 +1551,123 @@ function HomePage() {
                       <ChevronDown className="size-3.5 shrink-0 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[10rem]">
-                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(null)}>{profile?.full_name ?? t("main.myWorkouts")}</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSelectedViewSwimmerId(ONLY_GROUPS_ID)}>{t("main.groupWorkouts")}</DropdownMenuItem>
-                  {swimmers.some((s) => s.id !== user?.id) ? (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>{t("main.personalWorkoutsMenu")}</DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="min-w-[10rem]">
-                        {swimmers
-                          .filter((s) => s.id !== user?.id)
-                          .map((s) => (
-                            <DropdownMenuItem key={s.id} onClick={() => setSelectedViewSwimmerId(s.id)}>
-                              {s.full_name ?? s.id}
-                            </DropdownMenuItem>
-                          ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  ) : null}
-                </DropdownMenuContent>
+                  <DropdownMenuContent
+                    align="end"
+                    collisionBoundary={mainMenuShellBoundary ?? undefined}
+                    collisionPadding={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={mainMenuShellMaxWidthStyle}
+                    className="box-border max-h-[calc(100dvh-2.5rem)] w-max min-w-[var(--radix-popper-anchor-width)] overflow-x-hidden overflow-y-auto p-1"
+                  >
+                    <DropdownMenuItem onSelect={() => setSelectedViewSwimmerId(null)}>
+                      {profile?.full_name ?? t("main.myWorkouts")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setSelectedViewSwimmerId(ONLY_GROUPS_ID)}>{t("main.groupWorkouts")}</DropdownMenuItem>
+                    {swimmers.some((s) => s.id !== user?.id) ? (
+                      <DropdownMenuGroup
+                        ref={mainPersonalWorkoutsGroupRef}
+                        onMouseLeave={handlePersonalWorkoutsGroupMouseLeave}
+                      >
+                        <DropdownMenuItem
+                          className="w-full min-w-0"
+                          aria-expanded={mainPersonalWorkoutsOpen}
+                          onMouseEnter={() => setMainPersonalWorkoutsOpen(true)}
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            setMainPersonalWorkoutsOpen((o) => !o);
+                          }}
+                        >
+                          <span className="min-w-0 flex-1 text-left">{t("main.personalWorkoutsMenu")}</span>
+                          <ChevronDown
+                            className={cn(
+                              "ml-auto size-4 shrink-0 opacity-50 transition-transform",
+                              mainPersonalWorkoutsOpen && "rotate-180",
+                            )}
+                            aria-hidden
+                          />
+                        </DropdownMenuItem>
+                        {mainPersonalWorkoutsOpen
+                          ? swimmers
+                              .filter((s) => s.id !== user?.id)
+                              .map((s) => (
+                                <DropdownMenuItem
+                                  key={s.id}
+                                  className="h-auto min-h-8 min-w-0 max-w-full items-start justify-start whitespace-normal py-2 pl-7 pr-2"
+                                  onSelect={() => setSelectedViewSwimmerId(s.id)}
+                                >
+                                  <span className="w-full min-w-0 break-words text-left leading-snug">
+                                    {s.full_name ?? s.id}
+                                  </span>
+                                </DropdownMenuItem>
+                              ))
+                          : null}
+                      </DropdownMenuGroup>
+                    ) : null}
+                  </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             ) : isCoach && swimmers.length > 0 ? (
               <div className="min-w-0 flex-1 overflow-hidden">
-                <DropdownMenu>
+                <DropdownMenu
+                  onOpenChange={(open) => {
+                    if (!open) setMainPersonalWorkoutsOpen(false);
+                    else if (
+                      selectedCoachSwimmerId &&
+                      selectedCoachSwimmerId !== ONLY_GROUPS_ID &&
+                      selectedCoachSwimmerId !== ALL_ID
+                    ) {
+                      setMainPersonalWorkoutsOpen(true);
+                    }
+                  }}
+                >
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm" className="h-9 w-full min-w-0 justify-between gap-1.5 px-2 text-left text-xs font-medium">
                       <span className="truncate">{selectedCoachSwimmerId === ALL_ID ? t("main.allWorkouts") : selectedCoachSwimmerId === ONLY_GROUPS_ID ? t("main.groupWorkouts") : selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name ?? t("login.swimmer") : t("main.allWorkouts")}</span>
                       <ChevronDown className="size-3.5 shrink-0 opacity-50" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-[10rem]">
-                    <DropdownMenuItem onClick={() => setSelectedCoachSwimmerId(ALL_ID)}>{t("main.allWorkouts")}</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSelectedCoachSwimmerId(ONLY_GROUPS_ID)}>{t("main.groupWorkouts")}</DropdownMenuItem>
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>{t("main.personalWorkoutsMenu")}</DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="min-w-[10rem]">
-                        {swimmers.map((s) => (
-                          <DropdownMenuItem key={s.id} onClick={() => setSelectedCoachSwimmerId(s.id)}>
-                            {s.full_name ?? s.id}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
+                  <DropdownMenuContent
+                    align="end"
+                    collisionBoundary={mainMenuShellBoundary ?? undefined}
+                    collisionPadding={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={mainMenuShellMaxWidthStyle}
+                    className="box-border max-h-[calc(100dvh-2.5rem)] w-max min-w-[var(--radix-popper-anchor-width)] overflow-x-hidden overflow-y-auto p-1"
+                  >
+                    <DropdownMenuItem onSelect={() => setSelectedCoachSwimmerId(ALL_ID)}>{t("main.allWorkouts")}</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setSelectedCoachSwimmerId(ONLY_GROUPS_ID)}>{t("main.groupWorkouts")}</DropdownMenuItem>
+                    <DropdownMenuGroup
+                      ref={mainPersonalWorkoutsGroupRef}
+                      onMouseLeave={handlePersonalWorkoutsGroupMouseLeave}
+                    >
+                      <DropdownMenuItem
+                        className="w-full min-w-0"
+                        aria-expanded={mainPersonalWorkoutsOpen}
+                        onMouseEnter={() => setMainPersonalWorkoutsOpen(true)}
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          setMainPersonalWorkoutsOpen((o) => !o);
+                        }}
+                      >
+                        <span className="min-w-0 flex-1 text-left">{t("main.personalWorkoutsMenu")}</span>
+                        <ChevronDown
+                          className={cn(
+                            "ml-auto size-4 shrink-0 opacity-50 transition-transform",
+                            mainPersonalWorkoutsOpen && "rotate-180",
+                          )}
+                          aria-hidden
+                        />
+                      </DropdownMenuItem>
+                      {mainPersonalWorkoutsOpen
+                        ? swimmers.map((s) => (
+                            <DropdownMenuItem
+                              key={s.id}
+                              className="h-auto min-h-8 min-w-0 max-w-full items-start justify-start whitespace-normal py-2 pl-7 pr-2"
+                              onSelect={() => setSelectedCoachSwimmerId(s.id)}
+                            >
+                              <span className="w-full min-w-0 break-words text-left leading-snug">{s.full_name ?? s.id}</span>
+                            </DropdownMenuItem>
+                          ))
+                        : null}
+                    </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -1880,17 +2005,22 @@ function HomePage() {
                                 </div>
                               )}
                               <div className="flex flex-wrap items-center gap-2">
-                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
-                                  onClick={() => pickWorkoutImageSource("camera", originalIdx)}>
-                                  <Camera className="size-4" />
-                                  {t("main.workoutFromImageTakePicture")}
-                                </Button>
-                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
-                                  onClick={() => pickWorkoutImageSource("gallery", originalIdx)}>
-                                  <ImageUp className="size-4" />
-                                  {t("main.workoutFromImageUploadPhoto")}
-                                </Button>
-                                {imageWorkoutAnalyzing}
+                                {imageFromWorkoutLoading ? (
+                                  imageWorkoutAnalyzing
+                                ) : (
+                                  <>
+                                    <Button type="button" variant="outline" size="sm" className="gap-2"
+                                      onClick={() => pickWorkoutImageSource("camera", originalIdx)}>
+                                      <Camera className="size-4" />
+                                      {t("main.workoutFromImageTakePicture")}
+                                    </Button>
+                                    <Button type="button" variant="outline" size="sm" className="gap-2"
+                                      onClick={() => pickWorkoutImageSource("gallery", originalIdx)}>
+                                      <ImageUp className="size-4" />
+                                      {t("main.workoutFromImageUploadPhoto")}
+                                    </Button>
+                                  </>
+                                )}
                                 {imageFromWorkoutError && swimmerEditingIndex === originalIdx && (
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}
@@ -2211,17 +2341,22 @@ function HomePage() {
                                 </div>
                               )}
                               <div className="flex flex-wrap items-center gap-2">
-                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
-                                  onClick={() => pickWorkoutImageSource("camera", originalIdx)}>
-                                  <Camera className="size-4" />
-                                  {t("main.workoutFromImageTakePicture")}
-                                </Button>
-                                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={imageFromWorkoutLoading}
-                                  onClick={() => pickWorkoutImageSource("gallery", originalIdx)}>
-                                  <ImageUp className="size-4" />
-                                  {t("main.workoutFromImageUploadPhoto")}
-                                </Button>
-                                {imageWorkoutAnalyzing}
+                                {imageFromWorkoutLoading ? (
+                                  imageWorkoutAnalyzing
+                                ) : (
+                                  <>
+                                    <Button type="button" variant="outline" size="sm" className="gap-2"
+                                      onClick={() => pickWorkoutImageSource("camera", originalIdx)}>
+                                      <Camera className="size-4" />
+                                      {t("main.workoutFromImageTakePicture")}
+                                    </Button>
+                                    <Button type="button" variant="outline" size="sm" className="gap-2"
+                                      onClick={() => pickWorkoutImageSource("gallery", originalIdx)}>
+                                      <ImageUp className="size-4" />
+                                      {t("main.workoutFromImageUploadPhoto")}
+                                    </Button>
+                                  </>
+                                )}
                                 {imageFromWorkoutError && editingWorkoutIndex === originalIdx && (
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}

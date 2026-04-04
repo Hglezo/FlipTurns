@@ -68,6 +68,11 @@ function removeParentheticalContent(text: string): string {
   return text.replace(/\([^)\n]*\)/g, " ");
 }
 
+function stripLineBracketNotes(line: string): string {
+  if (/^\s*\d+\s*[xX]\s*\[/.test(line)) return line;
+  return line.replace(/\[[^\]\n]*\]/g, " ");
+}
+
 function parseMetersInText(text: string): number {
   let total = 0;
   const cleanedText = removeParentheticalContent(text);
@@ -145,7 +150,7 @@ function parseMetersInText(text: string): number {
       total += blockMeters * multiplier;
       continue;
     }
-    processedLines.push(removeParentheticalContent(line));
+    processedLines.push(stripLineBracketNotes(removeParentheticalContent(line)));
     i++;
   }
 

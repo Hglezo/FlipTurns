@@ -191,6 +191,7 @@ const TRANSLATIONS_EN = {
   "volume.tooltipSessionPm": "PM session",
   "volume.displayMeters": "Meters",
   "volume.displayYards": "Yards",
+  "volume.personalOpenList": "Open the list of swimmers",
 
   // Coach workout editor
   "coach.swimmer": "Swimmer",
@@ -486,6 +487,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "volume.tooltipSessionPm": "Sesión PM",
   "volume.displayMeters": "Metros",
   "volume.displayYards": "Yardas",
+  "volume.personalOpenList": "Abrir la lista de nadadores",
 
   // Coach workout editor
   "coach.swimmer": "Nadador",

@@ -9,8 +9,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -36,6 +34,7 @@ import {
   type TooltipPayload,
 } from "recharts";
 import {
+  computeAllGroupsVolumeChartData,
   computeVolumeChartData,
   formatVolumeCompact,
   getDayVolumeBreakdown,
@@ -53,6 +52,17 @@ import { NotificationBell } from "@/components/notification-bell";
 import { cn } from "@/lib/utils";
 
 const VOLUME_DISPLAY_UNIT_KEY = "flipturns.volumeAnalyticsDisplayUnit";
+
+const COACH_VOLUME_SHARED_Y_AXIS = {
+  domain: [0, 15] as [number, number],
+  ticks: [0, 2.5, 5, 7.5, 10, 12.5, 15],
+};
+
+function formatCoachVolumeYAxisTick(v: number): string {
+  const ticks = COACH_VOLUME_SHARED_Y_AXIS.ticks;
+  const best = ticks.reduce((a, t) => (Math.abs(t - v) < Math.abs(a - v) ? t : a), ticks[0]);
+  return Number.isInteger(best) ? String(best) : best.toFixed(1);
+}
 
 function getVolumeDateRange(
   aggregation: Aggregation,
@@ -282,6 +292,8 @@ function VolumeChart({
   formatDate,
   locale,
   displayUnit,
+  chartContainerClassName,
+  fixedCoachYAxis,
 }: {
   chartData: { label: string; meters: number }[];
   workouts: WorkoutRow[];
@@ -295,6 +307,8 @@ function VolumeChart({
   formatDate: (date: Date, type: import("@/lib/i18n").DateFormatType, endDate?: Date) => string;
   locale: string;
   displayUnit: VolumeDisplayUnit;
+  chartContainerClassName?: string;
+  fixedCoachYAxis?: boolean;
 }) {
   const barGradientId = `vol-bar-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
@@ -320,7 +334,7 @@ function VolumeChart({
   });
 
   return (
-    <div className="h-[260px] w-full">
+    <div className={cn("h-[260px] w-full", chartContainerClassName)}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={displayData}
@@ -349,11 +363,17 @@ function VolumeChart({
             height={40}
           />
           <YAxis
-            width={44}
+            width={48}
+            domain={fixedCoachYAxis ? COACH_VOLUME_SHARED_Y_AXIS.domain : [0, "auto"]}
+            ticks={fixedCoachYAxis ? COACH_VOLUME_SHARED_Y_AXIS.ticks : undefined}
+            interval={fixedCoachYAxis ? 0 : undefined}
             tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--border)", strokeOpacity: 0.55 }}
-            tickFormatter={(v) => formatVolumeCompact(Number(v))}
+            tickFormatter={(v) =>
+              fixedCoachYAxis ? formatCoachVolumeYAxisTick(Number(v)) : formatVolumeCompact(Number(v))
+            }
+            allowDecimals
           />
           <Tooltip
             cursor={{ fill: "var(--muted)", opacity: 0.35 }}
@@ -408,9 +428,9 @@ export default function AnalyticsPage() {
   const [volumeDateOffset, setVolumeDateOffset] = useState(0);
   const [volumeViewMode, setVolumeViewMode] = useState<"swimmer" | "group">("group");
   const [volumeSelectedSwimmerId, setVolumeSelectedSwimmerId] = useState<string | null>(null);
-  const [volumeSelectedGroup, setVolumeSelectedGroup] = useState<VolumeSwimmerGroup | null>(null);
   const [volumeDisplayUnit, setVolumeDisplayUnit] = useState<VolumeDisplayUnit>("meters");
   const [prefs, setPrefsState] = useState<ReturnType<typeof getPreferences>>(getPreferences());
+  const [volumeMenuBoundary, setVolumeMenuBoundary] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem(VOLUME_DISPLAY_UNIT_KEY);
@@ -504,19 +524,37 @@ export default function AnalyticsPage() {
     [volumeAggregation, volumeDateOffset, weekStartsOn],
   );
 
-  const { volumeChartData, volumePeriodTotal } = useMemo(() => {
+  const { coachAllGroupsChart, volumeChartData, volumePeriodTotal } = useMemo(() => {
+    const startStr = toLocalDateStr(volumeDateBounds.start);
+    const endStr = toLocalDateStr(volumeDateBounds.end);
+    if (!swimmerView && volumeViewMode === "group") {
+      const series = computeAllGroupsVolumeChartData(
+        volumeWorkouts,
+        volumeAggregation,
+        weekStartsOn,
+        startStr,
+        endStr,
+        SWIMMER_GROUPS,
+      );
+      const volumePeriodTotal = series.reduce(
+        (sum, { chartData }) => sum + chartData.reduce((s, r) => s + r.meters, 0),
+        0,
+      );
+      return { coachAllGroupsChart: series, volumeChartData: [] as { label: string; meters: number }[], volumePeriodTotal };
+    }
     const chartData = computeVolumeChartData(
       volumeWorkouts,
       teamSwimmers as VolumeSwimmerProfile[],
       swimmerView ? "swimmer" : volumeViewMode,
       swimmerView ? user?.id ?? null : volumeSelectedSwimmerId,
-      swimmerView ? null : volumeSelectedGroup,
+      null,
       volumeAggregation,
       weekStartsOn,
-      toLocalDateStr(volumeDateBounds.start),
-      toLocalDateStr(volumeDateBounds.end),
+      startStr,
+      endStr,
     );
     return {
+      coachAllGroupsChart: null as null | ReturnType<typeof computeAllGroupsVolumeChartData>,
       volumeChartData: chartData,
       volumePeriodTotal: chartData.reduce((s, r) => s + r.meters, 0),
     };
@@ -527,7 +565,6 @@ export default function AnalyticsPage() {
     volumeViewMode,
     user?.id,
     volumeSelectedSwimmerId,
-    volumeSelectedGroup,
     volumeAggregation,
     weekStartsOn,
     volumeDateBounds,
@@ -545,8 +582,10 @@ export default function AnalyticsPage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6">
-        {/* Header: back button left, title center, icons right */}
+      <div
+        ref={setVolumeMenuBoundary}
+        className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6"
+      >
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>
@@ -587,8 +626,8 @@ export default function AnalyticsPage() {
                       className="min-w-0 flex-1 h-9 justify-between gap-1.5 px-3 text-left text-sm font-normal sm:max-w-[min(100%,12rem)]"
                     >
                       <span className="truncate">
-                        {volumeViewMode === "group" && volumeSelectedGroup
-                          ? t(GROUP_KEYS[volumeSelectedGroup])
+                        {volumeViewMode === "group"
+                          ? t("settings.groups")
                           : volumeViewMode === "swimmer" && volumeSelectedSwimmerId
                             ? teamSwimmers.find((s) => s.id === volumeSelectedSwimmerId)?.full_name ??
                               volumeSelectedSwimmerId.slice(0, 8)
@@ -597,43 +636,51 @@ export default function AnalyticsPage() {
                       <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-[12rem] max-w-[min(100vw-2rem,20rem)]">
-                    <DropdownMenuLabel className="font-semibold text-foreground">{t("settings.groups")}</DropdownMenuLabel>
-                    {SWIMMER_GROUPS.map((g) => (
-                      <DropdownMenuItem
-                        key={g}
-                        className="pl-3"
-                        onSelect={() => {
-                          setVolumeViewMode("group");
-                          setVolumeSelectedGroup(g);
-                          setVolumeSelectedSwimmerId(null);
-                        }}
-                      >
-                        {t(GROUP_KEYS[g])}
-                      </DropdownMenuItem>
-                    ))}
-                    <DropdownMenuSeparator />
+                  <DropdownMenuContent
+                    align="start"
+                    side="bottom"
+                    sideOffset={4}
+                    collisionBoundary={volumeMenuBoundary ?? undefined}
+                    collisionPadding={{ top: 8, bottom: 12, left: 8, right: 8 }}
+                    className="box-border max-h-[min(70dvh,var(--radix-dropdown-menu-content-available-height))] w-max min-w-[var(--radix-popper-anchor-width)] max-w-[min(20rem,var(--radix-popper-available-width,100%))] overflow-x-hidden overflow-y-auto p-1"
+                  >
+                    <DropdownMenuItem
+                      className="pl-3"
+                      onSelect={() => {
+                        setVolumeViewMode("group");
+                        setVolumeSelectedSwimmerId(null);
+                      }}
+                    >
+                      {t("settings.groups")}
+                    </DropdownMenuItem>
                     <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>{t("group.personal")}</DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent
-                        className="min-w-[12rem] w-max max-w-[min(calc(100vw-1.5rem),22rem)] max-h-[90dvh] overflow-y-auto p-1"
-                        avoidCollisions
+                      <DropdownMenuSubTrigger
+                        chevron="down"
+                        className="w-full min-w-0 pl-3 pr-2"
+                        title={t("volume.personalOpenList")}
                       >
-                        <div className="grid grid-cols-2 gap-x-1">
-                          {teamSwimmers.map((s) => (
-                            <DropdownMenuItem
-                              key={s.id}
-                              className="min-w-0 justify-start"
-                              onSelect={() => {
-                                setVolumeViewMode("swimmer");
-                                setVolumeSelectedSwimmerId(s.id);
-                                setVolumeSelectedGroup(null);
-                              }}
-                            >
-                              <span className="truncate">{s.full_name || s.id.slice(0, 8)}</span>
-                            </DropdownMenuItem>
-                          ))}
-                        </div>
+                        {t("group.personal")}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent
+                        sideOffset={6}
+                        collisionBoundary={volumeMenuBoundary ?? undefined}
+                        collisionPadding={{ top: 8, bottom: 12, left: 8, right: 8 }}
+                        className="box-border max-h-[min(60dvh,var(--radix-dropdown-menu-content-available-height))] w-max min-w-[var(--radix-popper-anchor-width)] max-w-[min(20rem,var(--radix-popper-available-width,100%))] overflow-x-hidden overflow-y-auto p-1"
+                      >
+                        {teamSwimmers.map((s) => (
+                          <DropdownMenuItem
+                            key={s.id}
+                            className="h-auto min-h-8 min-w-0 max-w-full items-start justify-start whitespace-normal py-2"
+                            onSelect={() => {
+                              setVolumeViewMode("swimmer");
+                              setVolumeSelectedSwimmerId(s.id);
+                            }}
+                          >
+                            <span className="w-full break-words text-left leading-snug">
+                              {s.full_name || s.id.slice(0, 8)}
+                            </span>
+                          </DropdownMenuItem>
+                        ))}
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
                   </DropdownMenuContent>
@@ -665,31 +712,78 @@ export default function AnalyticsPage() {
                   <ChevronRight className="size-4" />
                 </Button>
               </div>
-              {!volumeLoading && volumeChartData.length > 0 && (
-                <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground" title={t("feedback.volume")}>
-                  {formatVolumeCompact(metersToDisplayDistance(volumePeriodTotal, volumeDisplayUnit))}
-                </span>
-              )}
             </div>
 
             <div className="min-w-0 w-full">
               {volumeLoading ? (
                 <p className="text-sm text-muted-foreground py-8 text-center">{t("common.loading")}</p>
+              ) : coachAllGroupsChart ? (
+                <div className="flex min-w-0 flex-col gap-5">
+                  {coachAllGroupsChart.map(({ group, chartData }) => {
+                    const groupPeriodMeters = chartData.reduce((s, r) => s + r.meters, 0);
+                    return (
+                    <div key={group} className="min-w-0 space-y-1.5">
+                      <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0">
+                        <p className="min-w-0 truncate text-xs font-semibold tracking-wide text-muted-foreground">
+                          {t(GROUP_KEYS[group])}
+                        </p>
+                        <span
+                          className={cn(
+                            "text-right text-sm font-semibold tabular-nums",
+                            groupPeriodMeters <= 0 ? "text-muted-foreground" : "text-foreground",
+                          )}
+                          title={t("feedback.volume")}
+                        >
+                          {formatVolumeCompact(metersToDisplayDistance(groupPeriodMeters, volumeDisplayUnit))}
+                        </span>
+                      </div>
+                      <VolumeChart
+                        chartData={chartData}
+                        workouts={volumeWorkouts}
+                        swimmers={teamSwimmers as VolumeSwimmerProfile[]}
+                        viewMode="group"
+                        selectedSwimmerId={null}
+                        selectedGroup={group}
+                        aggregation={volumeAggregation}
+                        weekStartsOn={weekStartsOn}
+                        t={t}
+                        formatDate={formatDate}
+                        locale={locale}
+                        displayUnit={volumeDisplayUnit}
+                        chartContainerClassName="h-[200px]"
+                        fixedCoachYAxis
+                      />
+                    </div>
+                    );
+                  })}
+                </div>
               ) : (
-                <VolumeChart
-                  chartData={volumeChartData}
-                  workouts={volumeWorkouts}
-                  swimmers={teamSwimmers as VolumeSwimmerProfile[]}
-                  viewMode={swimmerView ? "swimmer" : volumeViewMode}
-                  selectedSwimmerId={swimmerView ? user?.id ?? null : volumeSelectedSwimmerId}
-                  selectedGroup={swimmerView ? null : volumeSelectedGroup}
-                  aggregation={volumeAggregation}
-                  weekStartsOn={weekStartsOn}
-                  t={t}
-                  formatDate={formatDate}
-                  locale={locale}
-                  displayUnit={volumeDisplayUnit}
-                />
+                <div className="min-w-0 space-y-1.5">
+                  {volumePeriodTotal > 0 ? (
+                    <div className="flex justify-end">
+                      <span
+                        className="text-sm font-semibold tabular-nums text-foreground"
+                        title={t("feedback.volume")}
+                      >
+                        {formatVolumeCompact(metersToDisplayDistance(volumePeriodTotal, volumeDisplayUnit))}
+                      </span>
+                    </div>
+                  ) : null}
+                  <VolumeChart
+                    chartData={volumeChartData}
+                    workouts={volumeWorkouts}
+                    swimmers={teamSwimmers as VolumeSwimmerProfile[]}
+                    viewMode={swimmerView ? "swimmer" : volumeViewMode}
+                    selectedSwimmerId={swimmerView ? user?.id ?? null : volumeSelectedSwimmerId}
+                    selectedGroup={null}
+                    aggregation={volumeAggregation}
+                    weekStartsOn={weekStartsOn}
+                    t={t}
+                    formatDate={formatDate}
+                    locale={locale}
+                    displayUnit={volumeDisplayUnit}
+                  />
+                </div>
               )}
               <div className="flex justify-end pt-2">
                 <div className="inline-flex rounded-md border border-input bg-muted/30 p-0.5 dark:bg-muted/20">
