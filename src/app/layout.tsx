@@ -44,10 +44,10 @@ export const viewport: Viewport = {
 
 const themeScript = `
   (function() {
-    let theme = localStorage.getItem('swim-theme');
-    if (!theme) {
+    var theme = localStorage.getItem('swim-theme');
+    if (theme !== 'light' && theme !== 'dark') {
       try {
-        const prefs = JSON.parse(localStorage.getItem('swim-preferences') || '{}');
+        var prefs = JSON.parse(localStorage.getItem('swim-preferences') || '{}');
         theme = prefs.defaultTheme === 'light' ? 'light' : 'dark';
       } catch (_) { theme = 'dark'; }
     }

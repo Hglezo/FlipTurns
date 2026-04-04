@@ -12,6 +12,8 @@ export interface Preferences {
 
 const PREFERENCES_KEY = "swim-preferences";
 
+export const THEME_STORAGE_KEY = "swim-theme";
+
 export const DEFAULT_PREFERENCES: Preferences = {
   poolSize: "LCM",
   firstDayOfWeek: 1,
@@ -37,4 +39,11 @@ export function savePreferences(prefs: Partial<Preferences>): Preferences {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(next));
   }
   return next;
+}
+
+export function getResolvedTheme(): Preferences["defaultTheme"] {
+  if (typeof window === "undefined") return DEFAULT_PREFERENCES.defaultTheme;
+  const key = localStorage.getItem(THEME_STORAGE_KEY);
+  if (key === "light" || key === "dark") return key;
+  return getPreferences().defaultTheme;
 }
