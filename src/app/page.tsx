@@ -164,6 +164,38 @@ function buildSwimmerDayCacheKey(dateKey: string, selectedViewSwimmerId: string 
   return `${dateKey}:${selectedViewSwimmerId ?? userId}`;
 }
 
+function sortCoachDayFiltered(merged: Workout[], filterId: string | null, swimmers: SwimmerProfile[]) {
+  return sortCoachWorkouts(filterWorkoutsForCoachSwimmerSelection(merged, filterId, swimmers), swimmers);
+}
+
+async function fetchSwimmerDayRowsForCache(params: {
+  dateKey: string;
+  userId: string;
+  selectedViewSwimmerId: string | null;
+  swimmers: SwimmerProfile[];
+  swimmerGroup: SwimmerGroup | null;
+}): Promise<{ cacheKey: string; rows: Workout[] }> {
+  const { dateKey, userId, selectedViewSwimmerId, swimmers, swimmerGroup } = params;
+  const isAll = selectedViewSwimmerId === ALL_ID;
+  const isOnlyGroups = selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID;
+  const filterId = isAll || isOnlyGroups ? selectedViewSwimmerId : (selectedViewSwimmerId ?? userId);
+  const filterGroup =
+    filterId === userId
+      ? swimmerGroup
+      : filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID && filterId !== ALL_GROUPS_ID
+        ? swimmers.find((s) => s.id === filterId)?.swimmer_group ?? null
+        : null;
+  const me = filterId ?? userId;
+  const cacheKey = buildSwimmerDayCacheKey(dateKey, selectedViewSwimmerId, userId);
+  let query = supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
+  if (isOnlyGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
+  const { data } = await query;
+  let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[];
+  rows = await loadAndMergeWorkouts(rows, swimmers);
+  rows = filterWorkoutsForSwimmer(rows, me, filterGroup ?? null);
+  return { cacheKey, rows };
+}
+
 /** Collapsed week/month day line: “Name: AM - Aerobic” (assignee/group, timing, type of work). */
 function weekDayCollapsedPreviewLabel(
   w: Workout,
@@ -517,6 +549,7 @@ function HomePage() {
   const imageCameraInputRef = useRef<HTMLInputElement>(null);
   const imageGalleryInputRef = useRef<HTMLInputElement>(null);
   const swimmerDayCacheRef = useRef<Map<string, Workout[]>>(new Map());
+  const coachDayMergedCacheRef = useRef<Map<string, Workout[]>>(new Map());
   /** Cleared when leaving week/month so returning refetches; avoids refetch when only `selectedDate` moves inside same range. */
   const rangeDataKeyRef = useRef<string>("");
   const weekWorkoutsRef = useRef<Workout[]>([]);
@@ -633,6 +666,33 @@ function HomePage() {
       });
   }, [role]);
 
+  const fetchCoachMergedForDate = useCallback(async (d: string): Promise<Workout[] | null> => {
+    const { data, error } = await supabase.rpc("get_workouts_for_date", { p_date: d });
+    if (error?.message?.includes("function") && error?.message?.includes("does not exist")) {
+      const { data: fallback } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", d).order("created_at", { ascending: true });
+      return await loadAndMergeWorkouts((fallback ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? d })) as Workout[], swimmers);
+    }
+    if (error) return null;
+    return await loadAndMergeWorkouts((data ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? d })), swimmers);
+  }, [swimmers]);
+
+  const coachFilterRef = useRef(selectedCoachSwimmerId);
+  coachFilterRef.current = selectedCoachSwimmerId;
+  const swimmersForCoachRef = useRef(swimmers);
+  swimmersForCoachRef.current = swimmers;
+  const editingCoachWorkoutIndexRef = useRef(editingWorkoutIndex);
+  editingCoachWorkoutIndexRef.current = editingWorkoutIndex;
+
+  async function refreshCoachWorkouts() {
+    const merged = await fetchCoachMergedForDate(dateKey);
+    if (merged == null) {
+      alert("Could not reload workouts for this day.");
+      return;
+    }
+    coachDayMergedCacheRef.current.set(dateKey, merged);
+    setCoachWorkouts(sortCoachDayFiltered(merged, coachFilterRef.current, swimmersForCoachRef.current));
+  }
+
   // Swimmer day fetch
   useEffect(() => {
     if (role !== "swimmer" || viewMode !== "day" || !user) return;
@@ -687,16 +747,15 @@ function HomePage() {
     }
 
     (async () => {
-      let query = supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
-      if (isOnlyGroups) query = query.in("assigned_to_group", SWIMMER_GROUPS);
-      /* Else: load full day; filterWorkoutsForSwimmer applies visibility (includes Personal assignee lists). */
-      const { data } = await query;
+      const { cacheKey: ck, rows } = await fetchSwimmerDayRowsForCache({
+        dateKey,
+        userId,
+        selectedViewSwimmerId,
+        swimmers,
+        swimmerGroup,
+      });
       if (cancelled) return;
-      let rows = (data ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[];
-      rows = await loadAndMergeWorkouts(rows, swimmers);
-      if (cancelled) return;
-      rows = filterWorkoutsForSwimmer(rows, me, filterGroup ?? null);
-      swimmerDayCacheRef.current.set(cacheKey, rows);
+      swimmerDayCacheRef.current.set(ck, rows);
       applyRows(rows);
       if (!cancelled) setSwimmerLoading(false);
     })();
@@ -704,13 +763,46 @@ function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [dateKey, role, viewMode, user?.id, selectedViewSwimmerId, swimmerGroup, swimmers]);
+  }, [dateKey, role, viewMode, user, selectedViewSwimmerId, swimmerGroup, swimmers]);
+
+  useEffect(() => {
+    if (role !== "swimmer" || viewMode !== "day" || !user?.id) return;
+    let cancelled = false;
+    (async () => {
+      for (const delta of [-1, 1] as const) {
+        const d = format(addDays(parseISO(`${dateKey}T12:00:00`), delta), "yyyy-MM-dd");
+        const ck = buildSwimmerDayCacheKey(d, selectedViewSwimmerId, user.id);
+        if (swimmerDayCacheRef.current.has(ck)) continue;
+        const result = await fetchSwimmerDayRowsForCache({
+          dateKey: d,
+          userId: user.id,
+          selectedViewSwimmerId,
+          swimmers,
+          swimmerGroup,
+        });
+        if (cancelled) return;
+        swimmerDayCacheRef.current.set(result.cacheKey, result.rows);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dateKey, role, viewMode, user, selectedViewSwimmerId, swimmerGroup, swimmers]);
 
   /** So notification deep-link logic sees `coachLoading` before passive effects run (avoids clearing pending while workouts are still the previous day). */
   useLayoutEffect(() => {
     if (!dateKey || !isCoach || viewMode !== "day" || !user) return;
-    setCoachLoading(true);
-  }, [dateKey, isCoach, viewMode, user?.id, selectedCoachSwimmerId]);
+    if (coachDayMergedCacheRef.current.has(dateKey)) setCoachLoading(false);
+    else setCoachLoading(true);
+  }, [dateKey, isCoach, viewMode, user]);
+
+  useEffect(() => {
+    if (!dateKey || !isCoach || viewMode !== "day" || !user) return;
+    if (editingCoachWorkoutIndexRef.current !== null) return;
+    const merged = coachDayMergedCacheRef.current.get(dateKey);
+    if (!merged) return;
+    setCoachWorkouts(sortCoachDayFiltered(merged, selectedCoachSwimmerId, swimmers));
+  }, [selectedCoachSwimmerId, swimmers, dateKey, isCoach, viewMode, user]);
 
   // Coach day fetch
   useEffect(() => {
@@ -718,29 +810,31 @@ function HomePage() {
     const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
     coachDayListReadyForKeyRef.current = null;
     if (!isAddingWorkout) {
-      setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null);
-      setCoachWorkouts([]);
+      setEditingWorkoutIndex(null);
+      setEditingWorkoutSnapshot(null);
+      const mergedCached = coachDayMergedCacheRef.current.get(dateKey);
+      if (mergedCached) {
+        setCoachWorkouts(sortCoachDayFiltered(mergedCached, selectedCoachSwimmerId, swimmers));
+        coachDayListReadyForKeyRef.current = dateKey;
+        setCoachLoading(false);
+      } else {
+        setCoachWorkouts([]);
+      }
     }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.rpc("get_workouts_for_date", { p_date: dateKey });
-      let rows: Workout[];
-      if (error?.message?.includes("function") && error?.message?.includes("does not exist")) {
-        const { data: fallback } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
-        rows = await loadAndMergeWorkouts((fallback ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[], swimmers);
-      } else if (error) {
-        if (!cancelled) {
-          coachDayListReadyForKeyRef.current = dateKey;
-          setCoachLoading(false);
-        }
-        return;
-      } else {
-        rows = await loadAndMergeWorkouts((data ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey })), swimmers);
-      }
+      const merged = await fetchCoachMergedForDate(dateKey);
       if (cancelled) return;
-      rows = filterWorkoutsForCoachSwimmerSelection(rows, selectedCoachSwimmerId, swimmers);
-      const sortedRows = sortCoachWorkouts(rows, swimmers);
-      const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
+      if (merged == null) {
+        coachDayListReadyForKeyRef.current = dateKey;
+        setCoachLoading(false);
+        return;
+      }
+      coachDayMergedCacheRef.current.set(dateKey, merged);
+      const filterId = coachFilterRef.current;
+      const sw = swimmersForCoachRef.current;
+      const sortedRows = sortCoachDayFiltered(merged, filterId, sw);
+      const assigneeForNew = (filterId && filterId !== ALL_ID && filterId !== ONLY_GROUPS_ID) ? filterId : null;
       if (cancelled) return;
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
@@ -758,7 +852,24 @@ function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [dateKey, role, viewMode, user?.id, selectedCoachSwimmerId, swimmers]);
+  }, [dateKey, role, viewMode, user, isCoach, swimmers, fetchCoachMergedForDate]);
+
+  useEffect(() => {
+    if (!isCoach || viewMode !== "day" || !user?.id) return;
+    let cancelled = false;
+    (async () => {
+      for (const delta of [-1, 1] as const) {
+        const d = format(addDays(parseISO(`${dateKey}T12:00:00`), delta), "yyyy-MM-dd");
+        if (coachDayMergedCacheRef.current.has(d)) continue;
+        const merged = await fetchCoachMergedForDate(d);
+        if (cancelled || merged == null) continue;
+        coachDayMergedCacheRef.current.set(d, merged);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dateKey, isCoach, viewMode, user, fetchCoachMergedForDate]);
 
   // Week/month range fetch (shared for swimmer and coach)
   useEffect(() => {
@@ -911,20 +1022,6 @@ function HomePage() {
     setLoading(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
   }
 
-  async function refreshCoachWorkouts() {
-    const { data: rows, error } = await supabase.rpc("get_workouts_for_date", { p_date: dateKey });
-    if (error?.message?.includes("function") && error?.message?.includes("does not exist")) {
-      const { data: fallback } = await supabase.from("workouts").select(WORKOUT_SELECT).eq("date", dateKey).order("created_at", { ascending: true });
-      const merged = await loadAndMergeWorkouts((fallback ?? []).map((w) => ({ ...w, date: normDate(w.date) ?? dateKey })) as Workout[], swimmers);
-      setCoachWorkouts(sortCoachWorkouts(merged, swimmers));
-      return;
-    }
-    if (error) { alert(error.message); return; }
-    let merged = (rows ?? []).map((w: Workout) => ({ ...w, date: normDate(w.date) ?? dateKey }));
-    merged = await loadAndMergeWorkouts(merged, swimmers);
-    setCoachWorkouts(sortCoachWorkouts(merged, swimmers));
-  }
-
   async function deleteSingleWorkout(index: number) {
     if (index < 0 || index >= coachWorkouts.length || !confirm("Delete this workout?")) return;
     setLoading(true);
@@ -933,6 +1030,7 @@ function HomePage() {
       const { error } = await supabase.from("workouts").delete().eq("id", workout.id);
       if (error) { alert(error.message); setLoading(false); return; }
     }
+    coachDayMergedCacheRef.current.delete(dateKey);
     setCoachWorkouts((prev) => prev.filter((_, i) => i !== index));
     setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null); setLoading(false);
   }
