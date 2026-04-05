@@ -6,25 +6,47 @@ import { ViewportPreviewProvider } from "@/components/viewport-preview-provider"
 import { I18nProvider } from "@/components/i18n-provider";
 import { LangAttribute } from "@/components/lang-attribute";
 import { AuthProvider } from "@/components/auth-provider";
+import { getSiteUrl } from "@/lib/site-url";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const metadataBaseUrl = getSiteUrl();
+
+/** Bumps when favicon / PWA art changes so browsers and crawlers refetch. */
+const iconCacheBust = "?v=2";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(metadataBaseUrl),
   title: "FlipTurns - Workout Tracker",
   description: "Coach and swimmer workout calendar",
   applicationName: "FlipTurns",
+  icons: {
+    icon: [
+      { url: `/icon-16.png${iconCacheBust}`, sizes: "16x16", type: "image/png" },
+      { url: `/icon-32.png${iconCacheBust}`, sizes: "32x32", type: "image/png" },
+    ],
+    apple: [{ url: `/apple-touch-icon.png${iconCacheBust}`, sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "FlipTurns",
   },
-  icons: {
-    icon: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+  openGraph: {
+    type: "website",
+    siteName: "FlipTurns",
+    title: "FlipTurns - Workout Tracker",
+    description: "Coach and swimmer workout calendar",
+    images: [
+      { url: `/icon-512.png${iconCacheBust}`, width: 512, height: 512, alt: "FlipTurns" },
     ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  twitter: {
+    card: "summary",
+    title: "FlipTurns - Workout Tracker",
+    description: "Coach and swimmer workout calendar",
+    images: [`/icon-512.png${iconCacheBust}`],
   },
   other: {
     "mobile-web-app-capable": "yes",
