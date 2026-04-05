@@ -59,7 +59,15 @@ const K_VOLUME_AXIS_MAX: Record<SwimmerGroup, number> = {
   Distance: 15,
 };
 
+/** Y max (thousands) for UI "monthly" chart (`aggregation === "week"`). */
+const K_VOLUME_MONTH_CHART_AXIS_MAX: Record<SwimmerGroup, number> = {
+  Sprint: 40,
+  "Middle distance": 50,
+  Distance: 60,
+};
+
 const K_VOLUME_UNASSIGNED_MAX = K_VOLUME_AXIS_MAX["Middle distance"];
+const K_VOLUME_MONTH_CHART_UNASSIGNED_MAX = K_VOLUME_MONTH_CHART_AXIS_MAX["Middle distance"];
 
 function buildKVolumeAxis(max: number): { domain: [number, number]; ticks: number[] } {
   const ticks: number[] = [];
@@ -69,7 +77,23 @@ function buildKVolumeAxis(max: number): { domain: [number, number]; ticks: numbe
   return { domain: [0, max], ticks };
 }
 
-function kVolumeAxisForSwimmerGroup(group: SwimmerGroup | null | undefined) {
+function buildMonthChartKVolumeAxis(max: number): { domain: [number, number]; ticks: number[] } {
+  const ticks: number[] = [];
+  for (let v = 0; v <= max + 1e-6; v += 10) {
+    ticks.push(v);
+  }
+  return { domain: [0, max], ticks };
+}
+
+function kVolumeAxisForSwimmerGroup(
+  group: SwimmerGroup | null | undefined,
+  aggregation: Aggregation,
+) {
+  if (aggregation === "week") {
+    const max =
+      group == null ? K_VOLUME_MONTH_CHART_UNASSIGNED_MAX : K_VOLUME_MONTH_CHART_AXIS_MAX[group];
+    return buildMonthChartKVolumeAxis(max);
+  }
   const max = group == null ? K_VOLUME_UNASSIGNED_MAX : K_VOLUME_AXIS_MAX[group];
   return buildKVolumeAxis(max);
 }
@@ -453,8 +477,6 @@ export default function AnalyticsPage() {
   const [volumeSelectedSwimmerId, setVolumeSelectedSwimmerId] = useState<string | null>(null);
   const [volumeDisplayUnit, setVolumeDisplayUnit] = useState<VolumeDisplayUnit>("meters");
   const [prefs, setPrefsState] = useState<ReturnType<typeof getPreferences>>(getPreferences());
-  const [volumeMenuBoundary, setVolumeMenuBoundary] = useState<HTMLElement | null>(null);
-
   useEffect(() => {
     const raw = localStorage.getItem(VOLUME_DISPLAY_UNIT_KEY);
     if (raw === "yards" || raw === "meters") setVolumeDisplayUnit(raw);
@@ -598,13 +620,14 @@ export default function AnalyticsPage() {
     const group = swimmerView
       ? profile?.swimmer_group ?? null
       : teamSwimmers.find((s) => s.id === volumeSelectedSwimmerId)?.swimmer_group ?? null;
-    return kVolumeAxisForSwimmerGroup(group);
+    return kVolumeAxisForSwimmerGroup(group, volumeAggregation);
   }, [
     swimmerView,
     volumeViewMode,
     volumeSelectedSwimmerId,
     profile?.swimmer_group,
     teamSwimmers,
+    volumeAggregation,
   ]);
 
   if (authLoading || !user) {
@@ -619,10 +642,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div
-        ref={setVolumeMenuBoundary}
-        className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6"
-      >
+      <div className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6">
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>
@@ -677,9 +697,8 @@ export default function AnalyticsPage() {
                     align="start"
                     side="bottom"
                     sideOffset={4}
-                    collisionBoundary={volumeMenuBoundary ?? undefined}
-                    collisionPadding={{ top: 8, bottom: 12, left: 8, right: 8 }}
-                    className="box-border max-h-[min(70dvh,var(--radix-dropdown-menu-content-available-height))] w-max min-w-[var(--radix-popper-anchor-width)] max-w-[min(20rem,var(--radix-popper-available-width,100%))] overflow-x-hidden overflow-y-auto p-1"
+                    collisionPadding={12}
+                    className="box-border max-h-[var(--radix-dropdown-menu-content-available-height)] w-max min-w-[var(--radix-popper-anchor-width)] max-w-[min(20rem,var(--radix-popper-available-width,100%))] overflow-x-hidden overflow-y-auto p-1"
                   >
                     <DropdownMenuItem
                       className="pl-3"
@@ -700,9 +719,8 @@ export default function AnalyticsPage() {
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent
                         sideOffset={6}
-                        collisionBoundary={volumeMenuBoundary ?? undefined}
-                        collisionPadding={{ top: 8, bottom: 12, left: 8, right: 8 }}
-                        className="box-border max-h-[min(60dvh,var(--radix-dropdown-menu-content-available-height))] w-max min-w-[var(--radix-popper-anchor-width)] max-w-[min(20rem,var(--radix-popper-available-width,100%))] overflow-x-hidden overflow-y-auto p-1"
+                        collisionPadding={12}
+                        className="box-border max-h-[var(--radix-dropdown-menu-content-available-height)] w-max min-w-[var(--radix-popper-anchor-width)] max-w-[min(20rem,var(--radix-popper-available-width,100%))] overflow-x-hidden overflow-y-auto p-1"
                       >
                         {teamSwimmers.map((s) => (
                           <DropdownMenuItem
@@ -789,7 +807,7 @@ export default function AnalyticsPage() {
                         displayUnit={volumeDisplayUnit}
                         chartContainerClassName="h-[200px]"
                         chartInstanceId={`coach-volume-${group.replace(/\s+/g, "-")}`}
-                        kVolumeAxis={kVolumeAxisForSwimmerGroup(group)}
+                        kVolumeAxis={kVolumeAxisForSwimmerGroup(group, volumeAggregation)}
                       />
                     </div>
                     );

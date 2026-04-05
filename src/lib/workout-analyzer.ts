@@ -1,4 +1,4 @@
-/** Parses workout text for meters per set (strokes, repeats, out/in, etc.). */
+/** Parses workout text for meters per set (strokes, repeats, out/in, ida/vuelta, etc.). */
 
 import { stripWorkoutInlineMarkers } from "./workout-inline-format";
 
@@ -36,22 +36,22 @@ const SET_NAME_PATTERNS = [
 
 const REPEAT_PATTERN = /(\d+)\s*[×xX]\s*(\d+)/g;
 
-// Out/in adds extra meters: 1=25, 2=50, 3=100, 4=125, 5=150, 6=200
+// Out/in (and Spanish ida/vuelta) add extra meters: 1=25, 2=50, 3=100, 4=125, 5=150, 6=200
 const OUT_IN_METERS: Record<number, number> = { 1: 25, 2: 50, 3: 100, 4: 125, 5: 150, 6: 200 };
+// Same phrase shapes as English out/in; "ida y vuelta" is common written without a slash.
+const OUT_IN_PHRASE = String.raw`(?:out\s*\/\s*in\s*s?|ida\s*\/\s*vueltas?|ida\s+y\s+vueltas?)`;
 // Only match single-digit count (1-9) so "400 out/in" is base 400 + 1 out/in, not count 400
-const OUT_IN_WITH_COUNT = /\b([1-9])\s*[xX]?\s*out\s*\/\s*in\s*s?/gi;
-const OUT_IN_STANDALONE = /(?<!\d)\bout\s*\/\s*in\s*s?\b/gi;
+const OUT_IN_WITH_COUNT = new RegExp(String.raw`\b([1-9])\s*[xX]?\s*${OUT_IN_PHRASE}`, "gi");
+const OUT_IN_STANDALONE = new RegExp(String.raw`(?<!\d)\b${OUT_IN_PHRASE}\b`, "gi");
 
 function parseOutInMeters(text: string): number {
   let meters = 0;
   let remaining = text;
-  // Match "Nx out/in" or "N out/in" or "N out/ins" first
   for (const m of text.matchAll(OUT_IN_WITH_COUNT)) {
     const n = Math.min(parseInt(m[1], 10), 6);
     meters += OUT_IN_METERS[n] ?? n * 25;
-    remaining = remaining.replace(m[0], " "); // remove so we don't double-count standalone
+    remaining = remaining.replace(m[0], " ");
   }
-  // Match standalone "out/in" or "out/ins" (not preceded by digit)
   const standalone = remaining.match(OUT_IN_STANDALONE);
   if (standalone) meters += standalone.length * 25;
   return meters;
@@ -194,7 +194,7 @@ function parseMetersInText(text: string): number {
     total += parseInt(m[1], 10);
   }
 
-  // Fifth: add meters from out/in (1=25m, 2=50m, 3=100m, 4=125m, 5=150m, 6=200m)
+  // Fifth: add meters from out/in or ida/vuelta (1=25m, 2=50m, … 6=200m)
   total += parseOutInMeters(remainingText);
 
   return total;
