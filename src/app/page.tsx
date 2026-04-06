@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type MouseEvent, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import {
   format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -494,6 +494,8 @@ function MonthCalendar({
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
+
 function HomePage() {
   const prefs = usePreferences();
   const { t, formatDate } = useTranslations();
@@ -525,6 +527,21 @@ function HomePage() {
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const [expandedMonthDayKey, setExpandedMonthDayKey] = useState<string | null>(null);
   const [aggregatedDayExpandedWorkoutKey, setAggregatedDayExpandedWorkoutKey] = useState<string | null>(null);
+  const aggregatedPreviewCardHandlers = useCallback((enabled: boolean, collapsed: boolean, key: string) => {
+    if (!enabled) return {};
+    return {
+      tabIndex: 0 as const,
+      onClick(e: MouseEvent<HTMLDivElement>) {
+        if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
+        setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
+      },
+      onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
+      },
+    };
+  }, []);
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
   const [editingWorkoutIndex, setEditingWorkoutIndex] = useState<number | null>(null);
   const [editingWorkoutSnapshot, setEditingWorkoutSnapshot] = useState<Workout | null>(null);
@@ -1857,26 +1874,8 @@ function HomePage() {
                       <Card
                         key={workout.id || i}
                         id={workout.id ? `workout-notification-focus-${workout.id}` : undefined}
-                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", browseCollapsed && "cursor-pointer")}
-                        tabIndex={browseCollapsed ? 0 : undefined}
-                        onClick={
-                          browseCollapsed
-                            ? (e) => {
-                                if ((e.target as HTMLElement).closest("button, a")) return;
-                                setAggregatedDayExpandedWorkoutKey(browseKey);
-                              }
-                            : undefined
-                        }
-                        onKeyDown={
-                          browseCollapsed
-                            ? (e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  setAggregatedDayExpandedWorkoutKey(browseKey);
-                                }
-                              }
-                            : undefined
-                        }
+                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", swimmerUsesWorkoutPreviews && "cursor-pointer")}
+                        {...aggregatedPreviewCardHandlers(swimmerUsesWorkoutPreviews, browseCollapsed, browseKey)}
                       >
                         <div className="absolute right-2 top-2 z-10 flex shrink-0 justify-end gap-0.5">
                           {swimmerUsesWorkoutPreviews ? (
@@ -1994,26 +1993,8 @@ function HomePage() {
                       <Card
                         key={workout.id || `new-${originalIdx}`}
                         id={workout.id ? `workout-notification-focus-${workout.id}` : undefined}
-                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", swimmerMyCollapsed && "cursor-pointer")}
-                        tabIndex={swimmerMyCollapsed ? 0 : undefined}
-                        onClick={
-                          swimmerMyCollapsed
-                            ? (e) => {
-                                if ((e.target as HTMLElement).closest("button, a")) return;
-                                setAggregatedDayExpandedWorkoutKey(workoutKey);
-                              }
-                            : undefined
-                        }
-                        onKeyDown={
-                          swimmerMyCollapsed
-                            ? (e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  setAggregatedDayExpandedWorkoutKey(workoutKey);
-                                }
-                              }
-                            : undefined
-                        }
+                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", swimmerMyUsesWorkoutPreviews && !isEditing && "cursor-pointer")}
+                        {...aggregatedPreviewCardHandlers(swimmerMyUsesWorkoutPreviews && !isEditing, swimmerMyCollapsed, workoutKey)}
                       >
                         {isEditing ? (
                           <CardContent className="w-full min-w-0 px-4 py-0">
@@ -2305,26 +2286,8 @@ function HomePage() {
                       <Card
                         key={workout.id || `new-${originalIdx}`}
                         id={workout.id ? `workout-notification-focus-${workout.id}` : undefined}
-                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", coachCollapsed && "cursor-pointer")}
-                        tabIndex={coachCollapsed ? 0 : undefined}
-                        onClick={
-                          coachCollapsed
-                            ? (e) => {
-                                if ((e.target as HTMLElement).closest("button, a")) return;
-                                setAggregatedDayExpandedWorkoutKey(workoutKey);
-                              }
-                            : undefined
-                        }
-                        onKeyDown={
-                          coachCollapsed
-                            ? (e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  setAggregatedDayExpandedWorkoutKey(workoutKey);
-                                }
-                              }
-                            : undefined
-                        }
+                        className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", coachUsesWorkoutPreviews && !isEditing && "cursor-pointer")}
+                        {...aggregatedPreviewCardHandlers(coachUsesWorkoutPreviews && !isEditing, coachCollapsed, workoutKey)}
                       >
                         {isEditing ? (
                           <CardContent className="w-full min-w-0 px-4 py-0">

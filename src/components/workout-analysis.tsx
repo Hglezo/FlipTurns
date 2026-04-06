@@ -259,9 +259,6 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     <div className={cn("w-full min-w-0 space-y-4", className)}>
       {hasAnalysis && (
         <div className="w-full min-w-0 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("feedback.volume")}
-          </p>
           <p className="mb-2 font-medium text-foreground">
             {t("feedback.total")}: {analysis.totalMeters.toLocaleString()} {unit}
           </p>
