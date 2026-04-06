@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useId } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useId, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -48,10 +48,68 @@ import {
   type VolumeDisplayUnit,
 } from "@/lib/volume-analytics";
 import { GROUP_KEYS } from "@/lib/i18n";
+import { fetchCoachTeamSwimmers, readCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
 import { NotificationBell } from "@/components/notification-bell";
 import { cn } from "@/lib/utils";
 
 const VOLUME_DISPLAY_UNIT_KEY = "flipturns.volumeAnalyticsDisplayUnit";
+
+/**
+ * Time for the tallest bar (max target height) to grow from 0 to full value at **constant speed**
+ * in plot units (linear motion—no slowdown near the top). Shorter bars finish sooner.
+ * Targets can update mid-motion (e.g. fetch returns) without restarting the tween.
+ */
+const VOL_BAR_GROW_DURATION_MS = 950;
+
+function useSlowApproachPlotValues(plotTargets: number[], resetEpoch: string): number[] {
+  const targetsRef = useRef(plotTargets);
+  targetsRef.current = plotTargets;
+
+  const [values, setValues] = useState<number[]>(() => plotTargets.map(() => 0));
+
+  useLayoutEffect(() => {
+    setValues(Array.from({ length: plotTargets.length }, () => 0));
+  }, [resetEpoch, plotTargets.length]);
+
+  useEffect(() => {
+    let stopped = false;
+    let raf = 0;
+
+    const step = (now: number, last: number) => {
+      if (stopped) return;
+      const dt = Math.min(48, Math.max(0, now - last));
+      const targets = targetsRef.current;
+      const maxTarget = targets.reduce((m, x) => Math.max(m, Math.abs(x ?? 0)), 0);
+      const speedPerMs = maxTarget > 1e-9 ? maxTarget / VOL_BAR_GROW_DURATION_MS : 0;
+      const maxStep = speedPerMs * dt;
+
+      setValues((prev) => {
+        if (prev.length !== targets.length) return prev;
+        let changed = false;
+        const next = prev.map((v, i) => {
+          const t = targets[i] ?? 0;
+          const diff = t - v;
+          if (Math.abs(diff) < 1e-7) return t;
+          const mag = Math.min(Math.abs(diff), maxStep);
+          const nv = v + Math.sign(diff) * mag;
+          const snapped = Math.abs(t - nv) < 1e-6 ? t : nv;
+          if (Math.abs(snapped - v) > 1e-7) changed = true;
+          return snapped;
+        });
+        return changed ? next : prev;
+      });
+      raf = requestAnimationFrame((nextNow) => step(nextNow, now));
+    };
+
+    raf = requestAnimationFrame((now) => step(now, now));
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [resetEpoch]);
+
+  return values;
+}
 
 const K_VOLUME_AXIS_MAX: Record<SwimmerGroup, number> = {
   Sprint: 10,
@@ -214,7 +272,7 @@ function VolumeAxisTick({
         textAnchor="middle"
         className={cn(
           "tabular-nums text-[10px] tracking-tight",
-          isZero ? "fill-muted-foreground/70" : "fill-foreground",
+          isZero ? "fill-chart-axis/65" : "fill-foreground",
         )}
       >
         {vol}
@@ -334,6 +392,7 @@ function VolumeChart({
   chartContainerClassName,
   kVolumeAxis,
   chartInstanceId,
+  barGrowthResetKey,
 }: {
   chartData: { label: string; meters: number }[];
   workouts: WorkoutRow[];
@@ -350,8 +409,26 @@ function VolumeChart({
   chartContainerClassName?: string;
   kVolumeAxis: { domain: [number, number]; ticks: number[] } | null;
   chartInstanceId?: string;
+  /** Changes when period / chart identity changes; bars reset and grow again from zero. */
+  barGrowthResetKey: string;
 }) {
   const barGradientId = `vol-bar-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
+  const seriesBase = useMemo(() => {
+    return chartData.map((d, i) => {
+      const dayNames = locale === "es-ES"
+        ? (weekStartsOn === 1 ? DAY_NAMES_ES_MON : DAY_NAMES_ES_SUN)
+        : (weekStartsOn === 1 ? DAY_NAMES_EN_MON : DAY_NAMES_EN_SUN);
+      const shortLabel = aggregation === "day" ? dayNames[i] : (locale === "es-ES" ? t("volume.semanaLabel", { n: String(i + 1) }) : t("volume.weekLabel", { n: String(i + 1) }));
+      const rawPlot = metersToDisplayDistance(d.meters, displayUnit);
+      const finite = Number.isFinite(rawPlot) ? rawPlot : 0;
+      const plotValueTarget = kVolumeAxis ? finite / 1000 : finite;
+      return { ...d, shortLabel, plotValueTarget };
+    });
+  }, [chartData, weekStartsOn, locale, aggregation, kVolumeAxis, displayUnit, t]);
+
+  const plotTargets = useMemo(() => seriesBase.map((r) => r.plotValueTarget), [seriesBase]);
+  const animatedPlotValues = useSlowApproachPlotValues(plotTargets, barGrowthResetKey);
 
   if (chartData.length === 0) {
     return (
@@ -365,23 +442,19 @@ function VolumeChart({
     );
   }
 
-  const displayData = chartData.map((d, i) => {
-    const dayNames = locale === "es-ES"
-      ? (weekStartsOn === 1 ? DAY_NAMES_ES_MON : DAY_NAMES_ES_SUN)
-      : (weekStartsOn === 1 ? DAY_NAMES_EN_MON : DAY_NAMES_EN_SUN);
-    const shortLabel = aggregation === "day" ? dayNames[i] : (locale === "es-ES" ? t("volume.semanaLabel", { n: String(i + 1) }) : t("volume.weekLabel", { n: String(i + 1) }));
-    const rawPlot = metersToDisplayDistance(d.meters, displayUnit);
-    const finite = Number.isFinite(rawPlot) ? rawPlot : 0;
-    const plotValue = kVolumeAxis ? finite / 1000 : finite;
-    return { ...d, shortLabel, plotValue };
-  });
+  const chartRows = seriesBase.map((row, i) => ({
+    label: row.label,
+    meters: row.meters,
+    shortLabel: row.shortLabel,
+    plotValue: animatedPlotValues[i] ?? 0,
+  }));
 
   return (
     <div className={cn("h-[260px] w-full", chartContainerClassName)}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           id={chartInstanceId}
-          data={displayData}
+          data={chartRows}
           margin={{ top: 10, right: 4, left: 0, bottom: 32 }}
         >
           <defs>
@@ -402,7 +475,7 @@ function VolumeChart({
             tickLine={false}
             axisLine={{ stroke: "var(--border)", strokeOpacity: 0.55 }}
             tick={(props) => (
-              <VolumeAxisTick {...props} displayData={displayData} displayUnit={displayUnit} />
+              <VolumeAxisTick {...props} displayData={seriesBase} displayUnit={displayUnit} />
             )}
             height={40}
           />
@@ -414,7 +487,7 @@ function VolumeChart({
             interval={kVolumeAxis ? 0 : undefined}
             allowDataOverflow={Boolean(kVolumeAxis)}
             niceTicks={kVolumeAxis ? "none" : undefined}
-            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+            tick={{ fontSize: 11, fill: "var(--chart-axis-foreground)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--border)", strokeOpacity: 0.55 }}
             tickFormatter={(v) =>
@@ -444,6 +517,7 @@ function VolumeChart({
             dataKey="plotValue"
             radius={[7, 7, 3, 3]}
             maxBarSize={40}
+            isAnimationActive={false}
             activeBar={{
               fill: "var(--chart-2)",
               stroke: "var(--border)",
@@ -451,10 +525,10 @@ function VolumeChart({
               opacity: 0.95,
             }}
           >
-            {displayData.map((entry, index) => (
+            {chartRows.map((entry, index) => (
               <Cell
                 key={`vol-${entry.label}-${index}`}
-                fill={entry.plotValue > 0 ? `url(#${barGradientId})` : "transparent"}
+                fill={entry.plotValue > 1e-6 ? `url(#${barGradientId})` : "transparent"}
               />
             ))}
           </Bar>
@@ -470,7 +544,7 @@ export default function AnalyticsPage() {
   const { user, profile, loading: authLoading } = useAuth();
   const [teamSwimmers, setTeamSwimmers] = useState<{ id: string; full_name: string | null; swimmer_group: SwimmerGroup | null }[]>([]);
   const [volumeWorkouts, setVolumeWorkouts] = useState<WorkoutRow[]>([]);
-  const [volumeLoading, setVolumeLoading] = useState(false);
+  const [volumeLoading, setVolumeLoading] = useState(true);
   const [volumeAggregation, setVolumeAggregation] = useState<Aggregation>("day");
   const [volumeDateOffset, setVolumeDateOffset] = useState(0);
   const [volumeViewMode, setVolumeViewMode] = useState<"swimmer" | "group">("group");
@@ -503,20 +577,15 @@ export default function AnalyticsPage() {
       setTeamSwimmers([{ id: user.id, full_name: profile?.full_name ?? null, swimmer_group: profile?.swimmer_group ?? null }]);
       return;
     }
-    if (profile?.role !== "coach") return;
-    async function loadSwimmers() {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, swimmer_group")
-        .eq("role", "swimmer")
-        .order("full_name");
-      if (!error && data) {
-        setTeamSwimmers((data ?? []) as { id: string; full_name: string | null; swimmer_group: SwimmerGroup | null }[]);
-      } else {
-        setTeamSwimmers([]);
-      }
-    }
-    loadSwimmers();
+    if (profile?.role !== "coach" || !user?.id) return;
+    const uid = user.id;
+    const cached = readCoachTeamSwimmersCache(uid);
+    if (cached) setTeamSwimmers(cached);
+    void fetchCoachTeamSwimmers(uid)
+      .then((rows) => setTeamSwimmers(rows))
+      .catch(() => {
+        if (!cached) setTeamSwimmers([]);
+      });
   }, [profile?.role, profile?.full_name, profile?.swimmer_group, user?.id]);
 
   useEffect(() => {
@@ -574,9 +643,10 @@ export default function AnalyticsPage() {
   const { coachAllGroupsChart, volumeChartData, volumePeriodTotal } = useMemo(() => {
     const startStr = toLocalDateStr(volumeDateBounds.start);
     const endStr = toLocalDateStr(volumeDateBounds.end);
+    const w = volumeLoading ? [] : volumeWorkouts;
     if (!swimmerView && volumeViewMode === "group") {
       const series = computeAllGroupsVolumeChartData(
-        volumeWorkouts,
+        w,
         volumeAggregation,
         weekStartsOn,
         startStr,
@@ -590,7 +660,7 @@ export default function AnalyticsPage() {
       return { coachAllGroupsChart: series, volumeChartData: [] as { label: string; meters: number }[], volumePeriodTotal };
     }
     const chartData = computeVolumeChartData(
-      volumeWorkouts,
+      w,
       teamSwimmers as VolumeSwimmerProfile[],
       swimmerView ? "swimmer" : volumeViewMode,
       swimmerView ? user?.id ?? null : volumeSelectedSwimmerId,
@@ -607,6 +677,7 @@ export default function AnalyticsPage() {
     };
   }, [
     volumeWorkouts,
+    volumeLoading,
     teamSwimmers,
     swimmerView,
     volumeViewMode,
@@ -764,7 +835,7 @@ export default function AnalyticsPage() {
                 <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setVolumeDateOffset((o) => o - 1)} aria-label={t("settings.previousPeriod")}>
                   <ChevronLeft className="size-4" />
                 </Button>
-                <span className="min-w-0 flex-1 truncate px-2 text-center text-sm text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate px-2 text-center text-sm text-chart-axis">
                   {getVolumePeriodLabel(volumeAggregation, volumeDateOffset, weekStartsOn, formatDate, t, locale)}
                 </span>
                 <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setVolumeDateOffset((o) => o + 1)} aria-label={t("settings.nextPeriod")}>
@@ -774,22 +845,20 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="min-w-0 w-full">
-              {volumeLoading ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">{t("common.loading")}</p>
-              ) : coachAllGroupsChart ? (
+              {coachAllGroupsChart ? (
                 <div className="flex min-w-0 flex-col gap-5">
                   {coachAllGroupsChart.map(({ group, chartData }) => {
                     const groupPeriodMeters = chartData.reduce((s, r) => s + r.meters, 0);
                     return (
                     <div key={group} className="min-w-0 space-y-1.5">
                       <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0">
-                        <p className="min-w-0 truncate text-xs font-semibold tracking-wide text-muted-foreground">
+                        <p className="min-w-0 truncate text-xs font-semibold tracking-wide text-chart-axis">
                           {t(GROUP_KEYS[group])}
                         </p>
                         <span
                           className={cn(
                             "text-right text-sm font-semibold tabular-nums",
-                            groupPeriodMeters <= 0 ? "text-muted-foreground" : "text-foreground",
+                            groupPeriodMeters <= 0 ? "text-chart-axis" : "text-foreground",
                           )}
                           title={t("feedback.volume")}
                         >
@@ -798,7 +867,7 @@ export default function AnalyticsPage() {
                       </div>
                       <VolumeChart
                         chartData={chartData}
-                        workouts={volumeWorkouts}
+                        workouts={volumeLoading ? [] : volumeWorkouts}
                         swimmers={teamSwimmers as VolumeSwimmerProfile[]}
                         viewMode="group"
                         selectedSwimmerId={null}
@@ -812,6 +881,7 @@ export default function AnalyticsPage() {
                         chartContainerClassName="h-[200px]"
                         chartInstanceId={`coach-volume-${group.replace(/\s+/g, "-")}`}
                         kVolumeAxis={kVolumeAxisForSwimmerGroup(group, volumeAggregation)}
+                        barGrowthResetKey={`${volumeAggregation}-${volumeDateOffset}-${volumeViewMode}-coach-${group}`}
                       />
                     </div>
                     );
@@ -831,7 +901,7 @@ export default function AnalyticsPage() {
                   ) : null}
                   <VolumeChart
                     chartData={volumeChartData}
-                    workouts={volumeWorkouts}
+                    workouts={volumeLoading ? [] : volumeWorkouts}
                     swimmers={teamSwimmers as VolumeSwimmerProfile[]}
                     viewMode={swimmerView ? "swimmer" : volumeViewMode}
                     selectedSwimmerId={swimmerView ? user?.id ?? null : volumeSelectedSwimmerId}
@@ -850,6 +920,7 @@ export default function AnalyticsPage() {
                           : undefined
                     }
                     kVolumeAxis={singleSwimmerKVolumeAxis}
+                    barGrowthResetKey={`${volumeAggregation}-${volumeDateOffset}-${volumeViewMode}-${swimmerView ? "swimmer" : volumeSelectedSwimmerId ?? "none"}`}
                   />
                 </div>
               )}

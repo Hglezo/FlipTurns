@@ -49,6 +49,7 @@ import {
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { cn } from "@/lib/utils";
+import { fetchCoachTeamSwimmers, readCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
 
 const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
 const badgeClassMuted = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground max-md:text-[10px] max-md:px-1.5";
@@ -657,14 +658,22 @@ function HomePage() {
   }, [viewMode]);
 
   useEffect(() => {
-    if (!role) return;
-    supabase.from("profiles").select("id, full_name, swimmer_group").eq("role", "swimmer").order("full_name")
-      .then(({ data, error }) => {
-        if (!error && data) { setSwimmers(data as SwimmerProfile[]); return; }
-        supabase.from("profiles").select("id, full_name").eq("role", "swimmer").order("full_name")
-          .then(({ data: base }) => setSwimmers((base ?? []).map((s) => ({ ...s, swimmer_group: null })) as SwimmerProfile[]));
+    if (!role || !user?.id) return;
+    const uid = user.id;
+    const cached = readCoachTeamSwimmersCache(uid);
+    if (cached) setSwimmers(cached as SwimmerProfile[]);
+    let cancelled = false;
+    void fetchCoachTeamSwimmers(uid)
+      .then((rows) => {
+        if (!cancelled) setSwimmers(rows as SwimmerProfile[]);
+      })
+      .catch(() => {
+        if (!cancelled && !cached) setSwimmers([]);
       });
-  }, [role]);
+    return () => {
+      cancelled = true;
+    };
+  }, [role, user?.id]);
 
   const fetchCoachMergedForDate = useCallback(async (d: string): Promise<Workout[] | null> => {
     const { data, error } = await supabase.rpc("get_workouts_for_date", { p_date: d });

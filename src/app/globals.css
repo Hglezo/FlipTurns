@@ -30,6 +30,7 @@
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
+  --color-chart-axis: var(--chart-axis-foreground);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -63,6 +64,8 @@
   --secondary-foreground: oklch(0.25 0 0);
   --muted: oklch(0.93 0.003 0);
   --muted-foreground: oklch(0.42 0 0);
+  /* Darker than muted-foreground for chart axes / group labels (Recharts SVG + text). */
+  --chart-axis-foreground: oklch(0.30 0 0);
   --accent: oklch(0.93 0.003 0);
   --accent-foreground: oklch(0.25 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -98,6 +101,7 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
+  --chart-axis-foreground: oklch(0.78 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);

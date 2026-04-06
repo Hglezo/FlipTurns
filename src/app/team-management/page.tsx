@@ -14,6 +14,12 @@ import type { SwimmerGroup } from "@/lib/types";
 import { ArrowLeft, LogOut, Users, Settings, Pencil } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
+  fetchCoachTeamSwimmers,
+  patchCoachTeamSwimmerGroup,
+  readCoachTeamSwimmersCache,
+  removeCoachTeamSwimmerFromCache,
+} from "@/lib/coach-team-swimmers-cache";
+import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -65,24 +71,38 @@ export default function TeamManagementPage() {
       }
       return;
     }
-    async function loadSwimmers() {
-      setTeamLoading(true);
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, swimmer_group")
-        .eq("role", "swimmer")
-        .order("full_name");
-      if (error) {
-        setTeamError(error.message);
-        setTeamSwimmers([]);
-      } else {
-        setTeamError("");
-        setTeamSwimmers((data ?? []) as { id: string; full_name: string | null; swimmer_group: SwimmerGroup | null }[]);
-      }
+    const uid = user?.id;
+    if (!uid) return;
+
+    const cached = readCoachTeamSwimmersCache(uid);
+    if (cached) {
+      setTeamSwimmers(cached);
       setTeamLoading(false);
+      setTeamError("");
+    } else {
+      setTeamLoading(true);
     }
-    loadSwimmers();
-  }, [profile?.role, authLoading, router]);
+
+    let cancelled = false;
+    void fetchCoachTeamSwimmers(uid)
+      .then((rows) => {
+        if (cancelled) return;
+        setTeamError("");
+        setTeamSwimmers(rows);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setTeamError(e instanceof Error ? e.message : "Failed to load swimmers");
+        if (!cached) setTeamSwimmers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTeamLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.role, authLoading, router, user?.id]);
 
   const handleCoachSetGroup = async (swimmerId: string, group: SwimmerGroup | null) => {
     setUpdatingSwimmerId(swimmerId);
@@ -97,6 +117,7 @@ export default function TeamManagementPage() {
     } else if (!data?.length) {
       setTeamError("Could not save. Run the coach migration (see setup page).");
     } else {
+      patchCoachTeamSwimmerGroup(swimmerId, group);
       setTeamSwimmers((prev) =>
         prev.map((s) => (s.id === swimmerId ? { ...s, swimmer_group: group } : s))
       );
@@ -125,6 +146,7 @@ export default function TeamManagementPage() {
         setDeleteSwimmerError(data.error ?? "Failed to delete account");
         return;
       }
+      removeCoachTeamSwimmerFromCache(deleteSwimmerTargetId);
       setTeamSwimmers((prev) => prev.filter((s) => s.id !== deleteSwimmerTargetId));
       setDeleteSwimmerTargetId(null);
     } catch (e) {

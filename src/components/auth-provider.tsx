@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { invalidateCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
 import type { Profile } from "@/lib/types";
 
 export type { Profile };
@@ -121,7 +122,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         profile,
         role: profile?.role ?? null,
-        signOut: async () => { await supabase.auth.signOut(); },
+        signOut: async () => {
+          invalidateCoachTeamSwimmersCache();
+          await supabase.auth.signOut();
+        },
         refreshProfile: async () => { if (user) await fetchProfile(user.id); },
         loading,
       }}
