@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useCallback, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
 import { splitWorkoutSetTitleLine } from "@/lib/workout-analyzer";
 
@@ -185,20 +185,17 @@ export function WorkoutContentTextarea({
   const composingRef = useRef(false);
   const [editorFocused, setEditorFocused] = useState(false);
 
-  const pushChange = useCallback(
-    (next: string, selStart: number, selEnd: number) => {
-      const root = rootRef.current;
-      if (!root) return;
-      fillRootDecorated(root, next);
-      lastEmittedRef.current = next;
-      onChange(next);
-      queueMicrotask(() => {
-        if (rootRef.current !== root) return;
-        setGlobalSelection(root, selStart, selEnd);
-      });
-    },
-    [onChange],
-  );
+  function pushChange(next: string, selStart: number, selEnd: number) {
+    const root = rootRef.current;
+    if (!root) return;
+    fillRootDecorated(root, next);
+    lastEmittedRef.current = next;
+    onChange(next);
+    queueMicrotask(() => {
+      if (rootRef.current !== root) return;
+      setGlobalSelection(root, selStart, selEnd);
+    });
+  }
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -212,7 +209,7 @@ export function WorkoutContentTextarea({
     lastEmittedRef.current = value;
   }, [value]);
 
-  const flushInput = useCallback(() => {
+  function flushInput() {
     if (composingRef.current) return;
     const root = rootRef.current;
     if (!root) return;
@@ -229,7 +226,7 @@ export function WorkoutContentTextarea({
         setGlobalSelection(root, Math.min(off.start, max), Math.min(off.end, max));
       });
     }
-  }, [onChange]);
+  }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (disabled) return;
@@ -266,8 +263,7 @@ export function WorkoutContentTextarea({
       const left = v.slice(0, start);
       const right = v.slice(end);
       const newV = left + "\n" + right;
-      const focusAt = start + 1;
-      pushChange(newV, focusAt, focusAt);
+      pushChange(newV, start + 1, start + 1);
       return;
     }
 
@@ -275,10 +271,7 @@ export function WorkoutContentTextarea({
       const off = getSelectionOffsets(root);
       if (!off || off.start !== off.end) return;
       const v = serialize(root);
-      if (off.start >= v.length) {
-        e.preventDefault();
-        return;
-      }
+      if (off.start >= v.length) return;
       e.preventDefault();
       const newV = v.slice(0, off.start) + v.slice(off.start + 1);
       pushChange(newV, off.start, off.start);
@@ -315,8 +308,6 @@ export function WorkoutContentTextarea({
     pushChange(newV, pos, pos);
   };
 
-  const showPlaceholder = Boolean(placeholder && value === "" && !editorFocused);
-
   return (
     <div
       className={cn(
@@ -326,7 +317,7 @@ export function WorkoutContentTextarea({
       )}
     >
       <div className={cn("relative min-w-0", minHeightClassName)}>
-        {showPlaceholder ? (
+        {placeholder && value === "" && !editorFocused ? (
           <div className="pointer-events-none absolute top-2 left-3 z-0 text-[15px] text-muted-foreground select-none whitespace-pre-wrap">
             {placeholder}
           </div>
@@ -348,13 +339,8 @@ export function WorkoutContentTextarea({
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          onCompositionStart={() => {
-            composingRef.current = true;
-          }}
-          onCompositionEnd={() => {
-            composingRef.current = false;
-            flushInput();
-          }}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={() => { composingRef.current = false; flushInput(); }}
         />
       </div>
     </div>
