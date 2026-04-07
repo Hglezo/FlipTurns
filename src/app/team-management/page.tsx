@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type DragEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { GROUP_KEYS } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/notification-bell";
 
 const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
@@ -42,6 +43,8 @@ const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
   { value: "Middle distance", label: "Middle distance" },
   { value: "Distance", label: "Distance" },
 ];
+
+type DragBucket = "unassigned" | SwimmerGroup;
 
 export default function TeamManagementPage() {
   const router = useRouter();
@@ -57,6 +60,8 @@ export default function TeamManagementPage() {
   const [editingTeamName, setEditingTeamName] = useState(false);
   const [teamNameEdit, setTeamNameEdit] = useState("");
   const [teamNameSaving, setTeamNameSaving] = useState(false);
+  const [draggingSwimmerId, setDraggingSwimmerId] = useState<string | null>(null);
+  const [dragOverBucket, setDragOverBucket] = useState<DragBucket | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -104,7 +109,51 @@ export default function TeamManagementPage() {
     };
   }, [profile?.role, authLoading, router, user?.id]);
 
+  const sortByName = (a: { full_name: string | null }, b: { full_name: string | null }) =>
+    (a.full_name ?? "").localeCompare(b.full_name ?? "");
+
+  const unassignedSwimmers = teamSwimmers.filter((s) => s.swimmer_group == null).sort(sortByName);
+
+  const endDragSession = () => {
+    setDraggingSwimmerId(null);
+    setDragOverBucket(null);
+  };
+
+  const onSwimmerDragStart = (e: DragEvent, swimmerId: string) => {
+    e.dataTransfer.setData("text/plain", swimmerId);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggingSwimmerId(swimmerId);
+  };
+
+  const onBucketDragOver = (e: DragEvent, bucket: DragBucket) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverBucket(bucket);
+  };
+
+  const onBucketDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setDragOverBucket(null);
+  };
+
+  const onBucketDrop = (e: DragEvent, targetGroup: SwimmerGroup | null) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain").trim() || null;
+    endDragSession();
+    if (!id) return;
+    void handleCoachSetGroup(id, targetGroup);
+  };
+
+  const bucketDropClass = (bucket: DragBucket) =>
+    cn(
+      "min-h-[2.75rem] rounded-md border-2 border-dashed p-1.5 transition-colors",
+      dragOverBucket === bucket ? "border-primary/60 bg-primary/10" : "border-transparent",
+    );
+
   const handleCoachSetGroup = async (swimmerId: string, group: SwimmerGroup | null) => {
+    const current = teamSwimmers.find((s) => s.id === swimmerId)?.swimmer_group ?? null;
+    if (current === group) return;
     setUpdatingSwimmerId(swimmerId);
     setTeamError("");
     const { data, error } = await supabase
@@ -254,35 +303,70 @@ export default function TeamManagementPage() {
                 <p className="text-sm text-muted-foreground">{t("settings.noSwimmersYet")}</p>
               ) : (
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("settings.teamUnassignedSwimmers")}</p>
+                    <div
+                      onDragOver={(e) => onBucketDragOver(e, "unassigned")}
+                      onDrop={(e) => onBucketDrop(e, null)}
+                      onDragLeave={onBucketDragLeave}
+                      className={bucketDropClass("unassigned")}
+                    >
+                      {unassignedSwimmers.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">{t("settings.teamUnassignedEmpty")}</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {unassignedSwimmers.map((s) => (
+                            <span
+                              key={s.id}
+                              draggable
+                              onDragStart={(e) => onSwimmerDragStart(e, s.id)}
+                              onDragEnd={endDragSession}
+                              className={cn(
+                                "rounded-md border border-input bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground cursor-grab touch-none active:cursor-grabbing select-none",
+                                draggingSwimmerId === s.id && "opacity-50",
+                              )}
+                            >
+                              {s.full_name || s.id.slice(0, 8)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                   {SWIMMER_GROUPS.map((g) => {
-                    const inGroup = teamSwimmers.filter((s) => s.swimmer_group === g.value).sort((a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? ""));
-                    const notInGroup = teamSwimmers.filter((s) => s.swimmer_group !== g.value).sort((a, b) => (a.full_name ?? "").localeCompare(b.full_name ?? ""));
+                    const inGroup = teamSwimmers.filter((s) => s.swimmer_group === g.value).sort(sortByName);
                     return (
                       <div key={g.value} className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t(GROUP_KEYS[g.value])}</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {inGroup.map((s) => (
-                            <button
-                              key={s.id}
-                              type="button"
-                              onClick={() => handleCoachSetGroup(s.id, null)}
-                              disabled={updatingSwimmerId === s.id}
-                              className="rounded-md border border-primary bg-primary/10 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-primary/20 disabled:opacity-50"
-                            >
-                              {s.full_name || s.id.slice(0, 8)}
-                            </button>
-                          ))}
-                          {notInGroup.map((s) => (
-                            <button
-                              key={s.id}
-                              type="button"
-                              onClick={() => handleCoachSetGroup(s.id, g.value)}
-                              disabled={updatingSwimmerId === s.id}
-                              className="rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
-                            >
-                              {s.full_name || s.id.slice(0, 8)}
-                            </button>
-                          ))}
+                        <div
+                          onDragOver={(e) => onBucketDragOver(e, g.value)}
+                          onDrop={(e) => onBucketDrop(e, g.value)}
+                          onDragLeave={onBucketDragLeave}
+                          className={bucketDropClass(g.value)}
+                        >
+                          {inGroup.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">{t("settings.teamGroupEmpty")}</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {inGroup.map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  draggable
+                                  onDragStart={(e) => onSwimmerDragStart(e, s.id)}
+                                  onDragEnd={endDragSession}
+                                  onClick={() => handleCoachSetGroup(s.id, null)}
+                                  disabled={updatingSwimmerId === s.id}
+                                  className={cn(
+                                    "rounded-md border border-primary bg-primary/10 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-primary/20 disabled:opacity-50 cursor-grab touch-none active:cursor-grabbing",
+                                    draggingSwimmerId === s.id && "opacity-50",
+                                  )}
+                                >
+                                  {s.full_name || s.id.slice(0, 8)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
