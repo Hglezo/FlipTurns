@@ -1,7 +1,12 @@
 import { parseISO } from "date-fns";
 import { jsPDF } from "jspdf";
-import type { Workout, SwimmerProfile } from "./types";
-import { assignmentLabel, assignedToNames } from "./workouts";
+import type { Workout, SwimmerProfile, SwimmerGroup } from "./types";
+import {
+  assignmentLabel,
+  assignedToNames,
+  workoutAssigneesAllWithoutTrainingGroup,
+  workoutTargetsExactlyOneSwimmer,
+} from "./workouts";
 import { analyzeWorkout, lineIsWorkoutSetHeader } from "./workout-analyzer";
 import { stripWorkoutInlineMarkers } from "./workout-inline-format";
 import {
@@ -37,9 +42,22 @@ type T = (key: TranslationKey, params?: Record<string, string>) => string;
 
 export type BuildWorkoutPdfContext = {
   locale: Locale;
-  teamName: string | null | undefined;
   appTitle: string;
+  brandName: string | null | undefined;
+  viewerRole: "coach" | "swimmer";
+  viewerTrainingGroup: SwimmerGroup | null;
 };
+
+function pdfHeaderBrand(ctx: BuildWorkoutPdfContext, workout: Workout, swimmers: SwimmerProfile[]): string {
+  const fallback = ctx.appTitle;
+  const brand = ctx.brandName?.trim();
+  if (!brand) return fallback;
+  if (ctx.viewerRole === "swimmer") {
+    return ctx.viewerTrainingGroup != null ? brand : fallback;
+  }
+  if (workoutAssigneesAllWithoutTrainingGroup(workout, swimmers)) return fallback;
+  return brand;
+}
 
 function workoutDate(w: Workout): Date {
   const d = w.date?.slice(0, 10);
@@ -56,7 +74,6 @@ export function buildWorkoutPrintSections(
 ): WorkoutPrintSection[] {
   const withContent = workouts.filter((w) => w.content?.trim());
   const multi = withContent.length > 1;
-  const teamOrApp = ctx.teamName?.trim() || ctx.appTitle;
 
   return withContent.map((w, i) => {
     const raw = assignmentLabel(w, swimmers);
@@ -66,7 +83,7 @@ export function buildWorkoutPrintSections(
       (multi ? t("main.workoutN", { n: String(i + 1) }) : "");
 
     const when = formatPdfWorkoutHeaderDate(workoutDate(w), w.session, ctx.locale, t);
-    const headerLine1 = `${teamOrApp} — ${when}`;
+    const headerLine1 = `${pdfHeaderBrand(ctx, w, swimmers)} — ${when}`;
 
     const poolPart = w.pool_size ? getPoolLabel(w.pool_size, t) : "";
     const categoryPart = w.workout_category?.trim() ? getCategoryLabel(w.workout_category.trim(), t) : "";
@@ -76,7 +93,8 @@ export function buildWorkoutPrintSections(
         : [poolPart, categoryPart].filter(Boolean).join(" ");
 
     const assigned = assignedToNames(w, swimmers);
-    const assignedLine = assigned ? `${t("main.assignedTo")} ${assigned}` : null;
+    const assignedLine =
+      assigned && !workoutTargetsExactlyOneSwimmer(w, swimmers) ? `${t("main.assignedTo")} ${assigned}` : null;
 
     const pdfAnalysis = buildPdfAnalysisBlock(w.content.trim(), w.pool_size, t, ctx.locale);
 
@@ -102,7 +120,7 @@ function buildPdfAnalysisBlock(
   const unit = poolSize === "SCY" ? "yd" : "m";
   const numberLocale = locale === "es-ES" ? "es-ES" : "en-US";
   const volWord = t("feedback.volume").toUpperCase();
-  const volumeLine = `${volWord} ${analysis.totalMeters.toLocaleString(numberLocale)} ${unit}`;
+  const volumeLine = `${volWord}: ${analysis.totalMeters.toLocaleString(numberLocale)} ${unit}`;
   const sets = analysis.sets.map((s) => ({
     label: getSetNameLabel(s.name, t),
     meters: s.meters,

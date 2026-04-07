@@ -45,6 +45,7 @@ import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i
 import {
   loadAndMergeWorkouts, filterWorkoutsForSwimmer, filterWorkoutsForCoachSwimmerSelection, sortCoachWorkouts,
   assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
+  workoutTargetsExactlyOneSwimmer,
   resolvedGroupAssigneeIdsForSave,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
@@ -593,8 +594,10 @@ function HomePage() {
       const locale = (prefs?.preferences?.locale ?? "en-US") as Locale;
       const sections = buildWorkoutPrintSections(workouts, swimmers, t, {
         locale,
-        teamName: profile?.team_name,
         appTitle: t("app.title"),
+        brandName: profile?.team_name,
+        viewerRole: profile?.role === "coach" ? "coach" : "swimmer",
+        viewerTrainingGroup: profile?.role === "swimmer" ? (profile?.swimmer_group ?? null) : null,
       });
       if (sections.length === 0) return;
       const dateSlug = normDate(workouts[0]?.date) ?? dateKey;
@@ -603,7 +606,7 @@ function HomePage() {
         filenameBase: `FlipTurns_workout_${dateSlug}`,
       });
     },
-    [swimmers, t, dateKey, profile?.team_name, prefs?.preferences?.locale],
+    [swimmers, t, dateKey, profile?.role, profile?.team_name, profile?.swimmer_group, prefs?.preferences?.locale],
   );
 
   useEffect(() => { if (!authLoading && !user) router.push("/login"); }, [authLoading, user, router]);
@@ -1497,7 +1500,7 @@ function HomePage() {
     const viewerInWorkout = user?.id ? isViewerInWorkout(workout, user.id, swimmers) : false;
     /** Teammates: only in own schedule view; coaches and every other swimmer context use Assigned to. */
     const showTeammatesForSwimmer = !opts.readOnly && isSwimmerOwnView && viewerInWorkout;
-    const assigneeNames =
+    let assigneeNames =
       opts.namesInHeader && opts.readOnly
         ? undefined
         : opts.readOnly
@@ -1505,6 +1508,7 @@ function HomePage() {
           : !showTeammatesForSwimmer
             ? assignedToNames(workout, swimmers, opts.excludeIds)
             : undefined;
+    if (assigneeNames && workoutTargetsExactlyOneSwimmer(workout, swimmers)) assigneeNames = undefined;
     const teammateNamesProp = showTeammatesForSwimmer ? teammateNames(workout, swimmers, user?.id, opts.excludeIds) : undefined;
     return (
       <WorkoutBlock key={workout.id || dayKey} workout={workout} dateKey={dayKey} showLabel={opts.showLabel ?? true}
@@ -2205,7 +2209,7 @@ function HomePage() {
                             captionLine={
                               teammateLine != null
                                 ? `${t("main.teammates")}: ${teammateLine}`
-                                : assignedLine
+                                : assignedLine && !workoutTargetsExactlyOneSwimmer(workout, swimmers)
                                   ? `${t("main.assignedTo")} ${assignedLine}`
                                   : null
                             }
@@ -2504,7 +2508,11 @@ function HomePage() {
                                 )}
                               </div>
                             )}
-                            captionLine={coachReadAssigneeNames ? `${t("main.assignedTo")} ${coachReadAssigneeNames}` : null}
+                            captionLine={
+                              coachReadAssigneeNames && !workoutTargetsExactlyOneSwimmer(workout, swimmers)
+                                ? `${t("main.assignedTo")} ${coachReadAssigneeNames}`
+                                : null
+                            }
                             cardContentClassName={cn("pl-4 py-0", coachReadPr)}
                             renderBody={({ offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName }) => (
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={coachWorkouts.length > 1} assigneeLabel={label}

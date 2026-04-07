@@ -182,6 +182,45 @@ export function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): s
   return names.length ? names.join(", ") : null;
 }
 
+/** Roster user ids for this workout (no UI excludes). */
+export function assigneeUserIdsForWorkout(workout: Workout, swimmers: SwimmerProfile[]): string[] {
+  if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {
+    return workout.assignee_ids ?? [];
+  }
+  if (workout.assigned_to_group) {
+    return Array.isArray(workout.assignee_ids)
+      ? workout.assignee_ids
+      : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+  }
+  if (workout.assigned_to) return [workout.assigned_to];
+  return workout.assignee_ids ?? [];
+}
+
+/** True when every resolved assignee has no training group (or no profile row). */
+export function workoutAssigneesAllWithoutTrainingGroup(workout: Workout, swimmers: SwimmerProfile[]): boolean {
+  const ids = assigneeUserIdsForWorkout(workout, swimmers);
+  if (ids.length === 0) return false;
+  return ids.every((id) => {
+    const s = swimmers.find((x) => x.id === id);
+    return s == null || s.swimmer_group == null;
+  });
+}
+
+/** True when the workout is written for exactly one swimmer (individual, single personal assignee, or one picked from a group). */
+export function workoutTargetsExactlyOneSwimmer(workout: Workout, swimmers: SwimmerProfile[]): boolean {
+  if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {
+    return (workout.assignee_ids ?? []).length === 1;
+  }
+  if (workout.assigned_to_group) {
+    const ids = Array.isArray(workout.assignee_ids)
+      ? workout.assignee_ids
+      : swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
+    return ids.length === 1;
+  }
+  if (workout.assigned_to) return true;
+  return (workout.assignee_ids ?? []).length === 1;
+}
+
 export function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], excludeUserIds?: string[]): string | null {
   if (!workout.assigned_to_group) return assignmentLabel(workout, swimmers);
   const defaultGroupIds =
