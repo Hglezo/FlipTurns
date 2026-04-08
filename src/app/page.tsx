@@ -2253,9 +2253,11 @@ function HomePage() {
                   <div className="flex justify-center pt-2">
                     <Button variant="outline" size="icon" onClick={() => {
                       const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: user?.id ?? null, assigned_to_group: null };
-                      setSwimmerWorkouts((prev) => [...prev, newWorkout]);
                       setSwimmerEditingSnapshot(null);
-                      setSwimmerEditingIndex(swimmerWorkouts.length);
+                      setSwimmerWorkouts((prev) => {
+                        setSwimmerEditingIndex(prev.length);
+                        return [...prev, newWorkout];
+                      });
                     }} className="size-10" aria-label="Add workout"><Plus className="size-5" /></Button>
                   </div>
                   {swimmerWorkouts.length === 0 && <p className="text-center text-muted-foreground py-4">{t("main.noWorkoutForDay")}</p>}
@@ -2551,7 +2553,11 @@ function HomePage() {
                     <Button variant="outline" size="icon" onClick={() => {
                       const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
                       const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null };
-                      setCoachWorkouts((prev) => [...prev, newWorkout]); setEditingWorkoutSnapshot(null); setEditingWorkoutIndex(coachWorkouts.length);
+                      setEditingWorkoutSnapshot(null);
+                      setCoachWorkouts((prev) => {
+                        setEditingWorkoutIndex(prev.length);
+                        return [...prev, newWorkout];
+                      });
                     }} className="size-10" aria-label="Add workout"><Plus className="size-5" /></Button>
                   </div>
                   {coachWorkouts.length === 0 && <p className="text-center text-muted-foreground py-4">{t("main.noWorkoutForDay")}</p>}

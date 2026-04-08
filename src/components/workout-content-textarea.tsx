@@ -1,6 +1,7 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "@/lib/utils";
 import { splitWorkoutSetTitleLine } from "@/lib/workout-analyzer";
 
@@ -22,7 +23,10 @@ export type WorkoutContentTextareaProps = {
 };
 
 function getLineElements(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll(":scope > .workout-line")] as HTMLElement[];
+  const marked = [...root.querySelectorAll(":scope > .workout-line")] as HTMLElement[];
+  if (marked.length > 0) return marked;
+  // Browser contenteditable may replace or wrap our line divs (esp. first line); fall back to any block children.
+  return [...root.querySelectorAll(":scope > *")] as HTMLElement[];
 }
 
 function serializeLineFromEl(line: HTMLElement): string {
@@ -37,7 +41,11 @@ function logicalLineLength(line: HTMLElement): number {
 
 function serialize(root: HTMLElement): string {
   const els = getLineElements(root);
-  if (els.length === 0) return "";
+  if (els.length === 0) {
+    const raw = root.textContent ?? "";
+    if (raw === "\u00a0" || raw === "") return "";
+    return raw;
+  }
   return els.map(serializeLineFromEl).join("\n");
 }
 
@@ -68,27 +76,43 @@ function fillRootDecorated(root: HTMLDivElement, value: string) {
 
 function offsetWithinLine(line: HTMLElement, node: Node, offset: number): number {
   if (serializeLineFromEl(line) === "") return 0;
-  if (line === node && node.nodeType === Node.ELEMENT_NODE) {
-    let sum = 0;
-    for (let i = 0; i < offset && i < line.childNodes.length; i++) {
-      sum += line.childNodes[i]!.textContent?.length ?? 0;
-    }
-    return sum;
+  if (!line.contains(node)) return 0;
+  const range = document.createRange();
+  try {
+    range.setStart(line, 0);
+    range.setEnd(node, offset);
+    return range.toString().length;
+  } catch {
+    return 0;
   }
-  if (node.nodeType !== Node.TEXT_NODE) return 0;
-  let sum = 0;
-  const tw = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-  let n = tw.nextNode();
-  while (n) {
-    if (n === node) return sum + offset;
-    sum += (n as Text).length;
-    n = tw.nextNode();
-  }
-  return sum;
 }
 
 function nodeOffsetToGlobal(root: HTMLElement, node: Node, offset: number): number {
+  if (node === root) {
+    const lines = getLineElements(root);
+    let g = 0;
+    for (let ci = 0; ci < offset && ci < root.childNodes.length; ci++) {
+      const ch = root.childNodes[ci];
+      if (!(ch instanceof HTMLElement)) continue;
+      const idx = lines.indexOf(ch);
+      if (idx < 0) continue;
+      if (idx > 0) g += 1;
+      g += logicalLineLength(lines[idx]!);
+    }
+    return g;
+  }
   const lines = getLineElements(root);
+  if (lines.length === 0) {
+    if (!root.contains(node) || node.nodeType !== Node.TEXT_NODE) return 0;
+    let pos = 0;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n: Node | null;
+    while ((n = walker.nextNode())) {
+      if (n === node) return pos + Math.min(offset, (n as Text).length);
+      pos += (n as Text).length;
+    }
+    return 0;
+  }
   let g = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
@@ -103,10 +127,13 @@ function nodeOffsetToGlobal(root: HTMLElement, node: Node, offset: number): numb
 function getSelectionOffsets(root: HTMLElement): { start: number; end: number } | null {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return null;
-  const r = sel.getRangeAt(0);
-  if (!root.contains(r.startContainer)) return null;
-  const a = nodeOffsetToGlobal(root, r.startContainer, r.startOffset);
-  const b = nodeOffsetToGlobal(root, r.endContainer, r.endOffset);
+  const r0 = sel.getRangeAt(0);
+  if (!root.contains(r0.startContainer)) return null;
+  const a = nodeOffsetToGlobal(root, r0.startContainer, r0.startOffset);
+  const b = nodeOffsetToGlobal(root, r0.endContainer, r0.endOffset);
+  // Adjacent text siblings (common in contenteditable) make Range end at (node, len) stop
+  // before the next text node, so toString().length is one short — e.g. caret looks like "her|e".
+  root.normalize();
   return a <= b ? { start: a, end: b } : { start: b, end: a };
 }
 
@@ -182,20 +209,51 @@ export function WorkoutContentTextarea({
 }: WorkoutContentTextareaProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const lastEmittedRef = useRef<string | undefined>(undefined);
+  const pendingPropSyncRef = useRef(false);
   const composingRef = useRef(false);
   const [editorFocused, setEditorFocused] = useState(false);
 
-  function pushChange(next: string, selStart: number, selEnd: number) {
+  function applyDocumentChange(next: string, selStart: number, selEnd: number) {
     const root = rootRef.current;
     if (!root) return;
     fillRootDecorated(root, next);
     lastEmittedRef.current = next;
-    onChange(next);
+    flushSync(() => {
+      onChange(next);
+    });
     queueMicrotask(() => {
       if (rootRef.current !== root) return;
       setGlobalSelection(root, selStart, selEnd);
     });
   }
+
+  function pushChange(next: string, selStart: number, selEnd: number) {
+    applyDocumentChange(next, selStart, selEnd);
+  }
+
+  const applyDocumentChangeRef = useRef(applyDocumentChange);
+  applyDocumentChangeRef.current = applyDocumentChange;
+
+  /** Capture phase so we run before the browser mutates contenteditable (fixes first Enter clearing the first line). */
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el || disabled) return;
+    const onEnterCapture = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Enter") return;
+      if (composingRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const root = rootRef.current;
+      if (!root) return;
+      const off = getSelectionOffsets(root) ?? { start: 0, end: 0 };
+      const { start, end } = off;
+      const v = serialize(root);
+      const newV = v.slice(0, start) + "\n" + v.slice(end);
+      applyDocumentChangeRef.current(newV, start + 1, start + 1);
+    };
+    el.addEventListener("keydown", onEnterCapture, true);
+    return () => el.removeEventListener("keydown", onEnterCapture, true);
+  }, [disabled]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -203,8 +261,14 @@ export function WorkoutContentTextarea({
     const cur = serialize(root);
     if (value === cur) {
       lastEmittedRef.current = value;
+      pendingPropSyncRef.current = false;
+      if (getLineElements(root).length === 0) fillRootDecorated(root, value);
       return;
     }
+    if (pendingPropSyncRef.current && cur === lastEmittedRef.current) {
+      return;
+    }
+    pendingPropSyncRef.current = false;
     fillRootDecorated(root, value);
     lastEmittedRef.current = value;
   }, [value]);
@@ -218,6 +282,7 @@ export function WorkoutContentTextarea({
     const off = getSelectionOffsets(root);
     fillRootDecorated(root, s);
     lastEmittedRef.current = s;
+    pendingPropSyncRef.current = true;
     onChange(s);
     if (off) {
       const max = s.length;
@@ -228,7 +293,7 @@ export function WorkoutContentTextarea({
     }
   }
 
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (disabled) return;
     const root = rootRef.current;
     if (!root) return;
@@ -257,13 +322,6 @@ export function WorkoutContentTextarea({
 
     if (e.key === "Enter") {
       e.preventDefault();
-      const off = getSelectionOffsets(root) ?? { start: 0, end: 0 };
-      const { start, end } = off;
-      const v = serialize(root);
-      const left = v.slice(0, start);
-      const right = v.slice(end);
-      const newV = left + "\n" + right;
-      pushChange(newV, start + 1, start + 1);
       return;
     }
 
