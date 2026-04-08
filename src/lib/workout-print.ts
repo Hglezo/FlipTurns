@@ -4,8 +4,8 @@ import type { Workout, SwimmerProfile, SwimmerGroup } from "./types";
 import {
   assignmentLabel,
   assignedToNames,
+  assignedToCaptionRedundantForWorkout,
   workoutAssigneesAllWithoutTrainingGroup,
-  workoutTargetsExactlyOneSwimmer,
 } from "./workouts";
 import { analyzeWorkout, lineIsWorkoutSetHeader } from "./workout-analyzer";
 import { stripWorkoutInlineMarkers } from "./workout-inline-format";
@@ -94,7 +94,7 @@ export function buildWorkoutPrintSections(
 
     const assigned = assignedToNames(w, swimmers);
     const assignedLine =
-      assigned && !workoutTargetsExactlyOneSwimmer(w, swimmers) ? `${t("main.assignedTo")} ${assigned}` : null;
+      assigned && !assignedToCaptionRedundantForWorkout(w, swimmers) ? `${t("main.assignedTo")} ${assigned}` : null;
 
     const pdfAnalysis = buildPdfAnalysisBlock(w.content.trim(), w.pool_size, t, ctx.locale);
 

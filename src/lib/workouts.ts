@@ -221,6 +221,14 @@ export function workoutTargetsExactlyOneSwimmer(workout: Workout, swimmers: Swim
   return (workout.assignee_ids ?? []).length === 1;
 }
 
+/**
+ * When true, the UI may omit "Assigned to …" because the workout targets a single swimmer by name.
+ * Training-group assignments are never redundant: even with one swimmer in the group, the workout is for the group.
+ */
+export function assignedToCaptionRedundantForWorkout(workout: Workout, swimmers: SwimmerProfile[]): boolean {
+  return workoutTargetsExactlyOneSwimmer(workout, swimmers) && !isTrainingSwimmerGroup(workout.assigned_to_group);
+}
+
 export function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], excludeUserIds?: string[]): string | null {
   if (!workout.assigned_to_group) return assignmentLabel(workout, swimmers);
   const defaultGroupIds =

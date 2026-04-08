@@ -45,7 +45,7 @@ import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i
 import {
   loadAndMergeWorkouts, filterWorkoutsForSwimmer, filterWorkoutsForCoachSwimmerSelection, sortCoachWorkouts,
   assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
-  workoutTargetsExactlyOneSwimmer,
+  assignedToCaptionRedundantForWorkout,
   resolvedGroupAssigneeIdsForSave,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
@@ -1508,7 +1508,7 @@ function HomePage() {
           : !showTeammatesForSwimmer
             ? assignedToNames(workout, swimmers, opts.excludeIds)
             : undefined;
-    if (assigneeNames && workoutTargetsExactlyOneSwimmer(workout, swimmers)) assigneeNames = undefined;
+    if (assigneeNames && assignedToCaptionRedundantForWorkout(workout, swimmers)) assigneeNames = undefined;
     const teammateNamesProp = showTeammatesForSwimmer ? teammateNames(workout, swimmers, user?.id, opts.excludeIds) : undefined;
     return (
       <WorkoutBlock key={workout.id || dayKey} workout={workout} dateKey={dayKey} showLabel={opts.showLabel ?? true}
@@ -2209,7 +2209,7 @@ function HomePage() {
                             captionLine={
                               teammateLine != null
                                 ? `${t("main.teammates")}: ${teammateLine}`
-                                : assignedLine && !workoutTargetsExactlyOneSwimmer(workout, swimmers)
+                                : assignedLine && !assignedToCaptionRedundantForWorkout(workout, swimmers)
                                   ? `${t("main.assignedTo")} ${assignedLine}`
                                   : null
                             }
@@ -2511,7 +2511,7 @@ function HomePage() {
                               </div>
                             )}
                             captionLine={
-                              coachReadAssigneeNames && !workoutTargetsExactlyOneSwimmer(workout, swimmers)
+                              coachReadAssigneeNames && !assignedToCaptionRedundantForWorkout(workout, swimmers)
                                 ? `${t("main.assignedTo")} ${coachReadAssigneeNames}`
                                 : null
                             }
