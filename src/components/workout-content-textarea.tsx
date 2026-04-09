@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { flushSync } from "react-dom";
 import { cn } from "@/lib/utils";
 import { splitWorkoutSetTitleLine } from "@/lib/workout-analyzer";
@@ -213,7 +213,7 @@ export function WorkoutContentTextarea({
   const composingRef = useRef(false);
   const [editorFocused, setEditorFocused] = useState(false);
 
-  function applyDocumentChange(next: string, selStart: number, selEnd: number) {
+  const applyDocumentChange = useCallback((next: string, selStart: number, selEnd: number) => {
     const root = rootRef.current;
     if (!root) return;
     fillRootDecorated(root, next);
@@ -225,14 +225,11 @@ export function WorkoutContentTextarea({
       if (rootRef.current !== root) return;
       setGlobalSelection(root, selStart, selEnd);
     });
-  }
+  }, [onChange]);
 
   function pushChange(next: string, selStart: number, selEnd: number) {
     applyDocumentChange(next, selStart, selEnd);
   }
-
-  const applyDocumentChangeRef = useRef(applyDocumentChange);
-  applyDocumentChangeRef.current = applyDocumentChange;
 
   /** Capture phase so we run before the browser mutates contenteditable (fixes first Enter clearing the first line). */
   useLayoutEffect(() => {
@@ -249,11 +246,11 @@ export function WorkoutContentTextarea({
       const { start, end } = off;
       const v = serialize(root);
       const newV = v.slice(0, start) + "\n" + v.slice(end);
-      applyDocumentChangeRef.current(newV, start + 1, start + 1);
+      applyDocumentChange(newV, start + 1, start + 1);
     };
     el.addEventListener("keydown", onEnterCapture, true);
     return () => el.removeEventListener("keydown", onEnterCapture, true);
-  }, [disabled]);
+  }, [applyDocumentChange, disabled]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
