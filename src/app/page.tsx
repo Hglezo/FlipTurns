@@ -496,7 +496,6 @@ function MonthCalendar({
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
-const AGGREGATED_PREVIEW_TAP_MAX_MOVE_SQ = 10 * 10;
 
 function HomePage() {
   const prefs = usePreferences();
@@ -537,9 +536,7 @@ function HomePage() {
       onPointerDownCapture(e: PointerEvent<HTMLDivElement>) {
         if (e.button !== 0) return;
         if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } catch {}
+        e.currentTarget.setPointerCapture(e.pointerId);
         aggregatedPreviewTapRef.current = { key, x: e.clientX, y: e.clientY };
       },
       onPointerUpCapture(e: PointerEvent<HTMLDivElement>) {
@@ -552,16 +549,13 @@ function HomePage() {
       onClick(e: MouseEvent<HTMLDivElement>) {
         if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
         const start = aggregatedPreviewTapRef.current;
-        let allowToggle = true;
-        if (start && start.key === key) {
+        if (start?.key === key) {
           aggregatedPreviewTapRef.current = null;
           const dx = e.clientX - start.x;
           const dy = e.clientY - start.y;
-          if (dx * dx + dy * dy > AGGREGATED_PREVIEW_TAP_MAX_MOVE_SQ) allowToggle = false;
-        } else if (start) {
-          aggregatedPreviewTapRef.current = null;
-        }
-        if (allowToggle) setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
+          if (dx * dx + dy * dy > 100) return;
+        } else if (start) aggregatedPreviewTapRef.current = null;
+        setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
       },
       onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
         if (e.key !== "Enter" && e.key !== " ") return;
