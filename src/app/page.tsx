@@ -538,6 +538,7 @@ function HomePage() {
       },
       onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
         if (e.key !== "Enter" && e.key !== " ") return;
+        if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
         e.preventDefault();
         setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
       },
