@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, Suspense, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import {
   format, addDays, subDays, addWeeks, subWeeks, addMonths, subMonths,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval,
@@ -496,6 +496,7 @@ function MonthCalendar({
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
+const AGGREGATED_PREVIEW_TAP_MAX_MOVE_SQ = 10 * 10;
 
 function HomePage() {
   const prefs = usePreferences();
@@ -528,13 +529,39 @@ function HomePage() {
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const [expandedMonthDayKey, setExpandedMonthDayKey] = useState<string | null>(null);
   const [aggregatedDayExpandedWorkoutKey, setAggregatedDayExpandedWorkoutKey] = useState<string | null>(null);
+  const aggregatedPreviewTapRef = useRef<{ key: string; x: number; y: number } | null>(null);
   const aggregatedPreviewCardHandlers = useCallback((enabled: boolean, collapsed: boolean, key: string) => {
     if (!enabled) return {};
     return {
       tabIndex: 0 as const,
+      onPointerDownCapture(e: PointerEvent<HTMLDivElement>) {
+        if (e.button !== 0) return;
+        if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
+        aggregatedPreviewTapRef.current = { key, x: e.clientX, y: e.clientY };
+      },
+      onPointerUpCapture(e: PointerEvent<HTMLDivElement>) {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+      },
+      onPointerCancelCapture(e: PointerEvent<HTMLDivElement>) {
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+        if (aggregatedPreviewTapRef.current?.key === key) aggregatedPreviewTapRef.current = null;
+      },
       onClick(e: MouseEvent<HTMLDivElement>) {
         if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
-        setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
+        const start = aggregatedPreviewTapRef.current;
+        let allowToggle = true;
+        if (start && start.key === key) {
+          aggregatedPreviewTapRef.current = null;
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          if (dx * dx + dy * dy > AGGREGATED_PREVIEW_TAP_MAX_MOVE_SQ) allowToggle = false;
+        } else if (start) {
+          aggregatedPreviewTapRef.current = null;
+        }
+        if (allowToggle) setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
       },
       onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
         if (e.key !== "Enter" && e.key !== " ") return;
