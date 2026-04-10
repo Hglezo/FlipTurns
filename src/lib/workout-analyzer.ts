@@ -175,11 +175,10 @@ function parseMetersInText(text: string): number {
   textForStandalone = textForStandalone.replace(/\b\d+p\b/gi, " ");
   textForStandalone = textForStandalone.replace(/\b\d+\s*meters?\b/gi, " ");
   textForStandalone = textForStandalone.replace(/\b\d+\s*[my]\b/gi, " ");
+  textForStandalone = textForStandalone.replace(/@[^\n]*|\d+(?=[\u2018\u2019\u201c\u201d'"])|(?<=[\u2018\u2019\u201c\u201d'"])\d+/g, " ");
   textForStandalone = textForStandalone.replace(/\bon\s+\d+["']?\s*/gi, " ");
   /* Same-line only: \s* must not match \n or "c/\n100" eats the next line's distance. */
   textForStandalone = textForStandalone.replace(/\bc\/[ \t]*\S+/gi, " ");
-  textForStandalone = textForStandalone.replace(/\d+[\u2018\u2019']\d+[\u201c\u201d""]?/g, " ");
-  textForStandalone = textForStandalone.replace(/\b\d{1,4}["\u201c\u201d]/g, " ");
   textForStandalone = textForStandalone.replace(/\d+:\d{2}(?:\d)?/g, " ");
 
   // Third: extract "N:" at start of line (e.g. "25: swim @80%")
