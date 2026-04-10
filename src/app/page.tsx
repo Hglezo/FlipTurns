@@ -536,14 +536,20 @@ function HomePage() {
       onPointerDownCapture(e: PointerEvent<HTMLDivElement>) {
         if (e.button !== 0) return;
         if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
-        e.currentTarget.setPointerCapture(e.pointerId);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {}
         aggregatedPreviewTapRef.current = { key, x: e.clientX, y: e.clientY };
       },
       onPointerUpCapture(e: PointerEvent<HTMLDivElement>) {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+        try {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {}
       },
       onPointerCancelCapture(e: PointerEvent<HTMLDivElement>) {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+        try {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {}
         if (aggregatedPreviewTapRef.current?.key === key) aggregatedPreviewTapRef.current = null;
       },
       onClick(e: MouseEvent<HTMLDivElement>) {
