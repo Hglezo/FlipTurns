@@ -79,10 +79,7 @@ const STANDALONE_DISTANCE_PATTERN = /(?<![:\d])\b(25|50|75|[1-9]\d{0,2}(?:00|25|
 // Matches "N:" at start of line (e.g. "25: swim @80%") - require 2+ digits to avoid "1:30" time format
 const LEADING_DISTANCE_PATTERN = /^\s*(\d{2,})\s*:/gm;
 
-// Remove parenthetical content to avoid double-counting (e.g. "4x50 (25drill 25easy)") and times (e.g. "2:25").
-// Nested parens must be stripped inside-out: /\([^)\n]*\)/g stops at the first ")", so "(a (25-25) / b)" would
-// leave " / b)" outside and numbers like "25-25" can be counted twice as standalone distances.
-// Per line: repeatedly remove innermost "(...)" with no nested parens; unclosed "(" leaves the rest of the line as-is.
+// Strip parens per line, innermost first, so nested "(a (25-25) / b)" does not leak counts into the rest of the line.
 function removeParentheticalContent(text: string): string {
   return text
     .split(/\r?\n/)

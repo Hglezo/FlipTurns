@@ -1,11 +1,10 @@
 "use client";
 
-/** Single diagonal “tape” strap over draft workouts with the label centered on it. */
 export function WorkoutDraftTape({ label }: { label: string }) {
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-0 z-[5] overflow-hidden rounded-[inherit]"
+      className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-[inherit]"
     >
       <div className="absolute left-1/2 top-1/2 flex w-[170%] -translate-x-1/2 -translate-y-1/2 -rotate-[32deg] justify-center">
         <div

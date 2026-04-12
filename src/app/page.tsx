@@ -230,7 +230,6 @@ function WorkoutBlock({
   workout: Workout; dateKey: string; showLabel: boolean; feedbackRefreshKey: number;
   onFeedbackChange?: () => void; assigneeLabel?: string | null; assigneeNames?: string | null;
   teammateNames?: string | null; className?: string; readOnly?: boolean; compact?: boolean;
-  /** When set, shows diagonal draft tape over the workout text body only. */
   draftTapeLabel?: string;
   contentDisplay?: "full" | "preview";
   /** PDF below chip row (after swap with collapse); collapse lives in card header */
@@ -543,20 +542,14 @@ function HomePage() {
       onPointerDownCapture(e: PointerEvent<HTMLDivElement>) {
         if (e.button !== 0) return;
         if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } catch {}
+        e.currentTarget.setPointerCapture(e.pointerId);
         aggregatedPreviewTapRef.current = { key, x: e.clientX, y: e.clientY };
       },
       onPointerUpCapture(e: PointerEvent<HTMLDivElement>) {
-        try {
-          if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-        } catch {}
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
       },
       onPointerCancelCapture(e: PointerEvent<HTMLDivElement>) {
-        try {
-          if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-        } catch {}
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
         if (aggregatedPreviewTapRef.current?.key === key) aggregatedPreviewTapRef.current = null;
       },
       onClick(e: MouseEvent<HTMLDivElement>) {
@@ -1150,15 +1143,11 @@ function HomePage() {
     const prior = workout.is_published;
     updateCoachWorkout(originalIdx, { is_published: nextPublished });
     syncPublishedEverywhere(workout.id, nextPublished);
-    void (async () => {
-      try {
-        await setWorkoutPublished(workout.id, nextPublished);
-      } catch (err) {
-        updateCoachWorkout(originalIdx, { is_published: prior });
-        syncPublishedEverywhere(workout.id, prior);
-        alert(err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Could not update visibility");
-      }
-    })();
+    void setWorkoutPublished(workout.id, nextPublished).catch((err) => {
+      updateCoachWorkout(originalIdx, { is_published: prior });
+      syncPublishedEverywhere(workout.id, prior);
+      alert(err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Could not update visibility");
+    });
   }
 
   function toggleSwimmerWorkoutPublished(originalIdx: number, e?: MouseEvent<HTMLButtonElement>) {
@@ -1173,15 +1162,11 @@ function HomePage() {
     const prior = workout.is_published;
     updateSwimmerWorkout(originalIdx, { is_published: nextPublished });
     syncPublishedEverywhere(workout.id, nextPublished);
-    void (async () => {
-      try {
-        await setWorkoutPublished(workout.id, nextPublished);
-      } catch (err) {
-        updateSwimmerWorkout(originalIdx, { is_published: prior });
-        syncPublishedEverywhere(workout.id, prior);
-        alert(err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Could not update visibility");
-      }
-    })();
+    void setWorkoutPublished(workout.id, nextPublished).catch((err) => {
+      updateSwimmerWorkout(originalIdx, { is_published: prior });
+      syncPublishedEverywhere(workout.id, prior);
+      alert(err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Could not update visibility");
+    });
   }
 
   function startEditingWorkout(index: number) {
