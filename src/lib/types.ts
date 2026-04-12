@@ -34,6 +34,13 @@ export interface Workout {
   assignee_ids?: string[];
   updated_at?: string | null;
   created_by?: string | null;
+  /** When false, the workout is a draft (coach/creator only until published). */
+  is_published?: boolean;
+}
+
+/** Visible to swimmers/groups (not a draft). Only explicit `true` counts as published. */
+export function workoutIsPublished(w: Pick<Workout, "is_published">): boolean {
+  return w.is_published === true;
 }
 
 export interface SwimmerProfile {

@@ -599,6 +599,7 @@ export default function AnalyticsPage() {
       const { data, error } = await supabase
         .from("workouts")
         .select("id, date, content, session, assigned_to, assigned_to_group, pool_size")
+        .eq("is_published", true)
         .gte("date", startStr)
         .lte("date", endStr)
         .order("date", { ascending: true });

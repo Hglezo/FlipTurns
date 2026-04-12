@@ -33,6 +33,23 @@ const SET_NAME_PATTERNS = [
   /^(?:set\b(?:\s+[^:\n]+)?|serie\b(?:\s+[^:\n]+)?)\s*:?/i,
 ];
 
+const LONE_STAR = /(?<!\*)\*(?!\*)/;
+
+function parseSetHeadLine(trimmed: string): { name: string; titleEnd: number } | null {
+  if (!trimmed) return null;
+  const i = trimmed.search(LONE_STAR);
+  const head = (i < 0 ? trimmed : trimmed.slice(0, i)).trimEnd();
+  for (const pattern of SET_NAME_PATTERNS) {
+    if (!pattern.test(head)) continue;
+    const colonIdx = head.indexOf(":");
+    const titleEnd = colonIdx >= 0 ? colonIdx : head.length;
+    const raw = (colonIdx >= 0 ? head.slice(0, colonIdx) : head).trim();
+    if (!raw) continue;
+    return { name: raw.replace(/\buw\s+set\b/i, "Underwater Set"), titleEnd };
+  }
+  return null;
+}
+
 const REPEAT_PATTERN = /(\d+)\s*[×xX]\s*(\d+)/g;
 
 // Out/in (ida/vuelta): 30m/rep, round to nearest 25m.
@@ -62,10 +79,23 @@ const STANDALONE_DISTANCE_PATTERN = /(?<![:\d])\b(25|50|75|[1-9]\d{0,2}(?:00|25|
 // Matches "N:" at start of line (e.g. "25: swim @80%") - require 2+ digits to avoid "1:30" time format
 const LEADING_DISTANCE_PATTERN = /^\s*(\d{2,})\s*:/gm;
 
-// Remove parenthetical content to avoid double-counting (e.g. "4x50 (25drill 25easy)") and times (e.g. "2:25")
-// Use [^)\n]* so we don't match across newlines—unclosed "25 (" would otherwise consume content until the next ")"
+// Remove parenthetical content to avoid double-counting (e.g. "4x50 (25drill 25easy)") and times (e.g. "2:25").
+// Nested parens must be stripped inside-out: /\([^)\n]*\)/g stops at the first ")", so "(a (25-25) / b)" would
+// leave " / b)" outside and numbers like "25-25" can be counted twice as standalone distances.
+// Per line: repeatedly remove innermost "(...)" with no nested parens; unclosed "(" leaves the rest of the line as-is.
 function removeParentheticalContent(text: string): string {
-  return text.replace(/\([^)\n]*\)/g, " ");
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      let prev: string;
+      let s = line;
+      do {
+        prev = s;
+        s = s.replace(/\([^()]*\)/g, " ");
+      } while (s !== prev);
+      return s;
+    })
+    .join("\n");
 }
 
 function stripLineBracketNotes(line: string): string {
@@ -205,31 +235,18 @@ export function lineIsWorkoutSetHeader(line: string): boolean {
 }
 
 export function splitWorkoutSetTitleLine(line: string): { leading: string; title: string; rest: string } | null {
-  const t = line.trimStart();
-  if (!t) return null;
-  const leading = line.slice(0, line.length - t.length);
-  for (const pattern of SET_NAME_PATTERNS) {
-    const m = t.match(pattern);
-    if (m && m.index === 0 && m[0].length > 0) {
-      return { leading, title: m[0], rest: t.slice(m[0].length) };
-    }
-  }
-  return null;
+  const trimmedFull = line.trim();
+  const parsed = parseSetHeadLine(trimmedFull);
+  if (!parsed) return null;
+  return {
+    leading: line.match(/^\s*/)![0],
+    title: trimmedFull.slice(0, parsed.titleEnd),
+    rest: trimmedFull.slice(parsed.titleEnd),
+  };
 }
 
 function findSetName(line: string): string | null {
-  const trimmed = line.trim();
-  for (const pattern of SET_NAME_PATTERNS) {
-    if (pattern.test(trimmed)) {
-      // Return the full label (everything before any colon), not just the regex match,
-      // so "Warm Up #2" is preserved instead of being truncated to "Warm Up".
-      const colonIdx = trimmed.indexOf(":");
-      const fullName = (colonIdx >= 0 ? trimmed.slice(0, colonIdx) : trimmed).trim();
-      // Normalize "UW Set" abbreviation to its full name in the analysis output.
-      return fullName.replace(/\buw\s+set\b/i, "Underwater Set") || null;
-    }
-  }
-  return null;
+  return parseSetHeadLine(line.trim())?.name ?? null;
 }
 
 export function analyzeWorkout(content: string): WorkoutAnalysis {
@@ -241,8 +258,8 @@ export function analyzeWorkout(content: string): WorkoutAnalysis {
   let currentSetLines: string[] = [];
 
   for (const line of lines) {
-    const setName = findSetName(line);
-    if (setName) {
+    const head = parseSetHeadLine(line.trim());
+    if (head) {
       // Save previous set
       if (currentSetLines.length > 0) {
         const setText = currentSetLines.join("\n");
@@ -251,8 +268,8 @@ export function analyzeWorkout(content: string): WorkoutAnalysis {
           sets.push({ name: currentSetName, meters });
         }
       }
-      currentSetName = setName;
-      const restOfLine = line.replace(/^[^:]*:?\s*/, "").trim();
+      currentSetName = head.name;
+      const restOfLine = line.trim().slice(head.titleEnd).replace(/^\s*:\s*/, "").trim();
       currentSetLines = restOfLine ? [restOfLine] : [];
     } else {
       // Include empty lines so parseMetersInText can use them (e.g. "2x" breaks on empty line)

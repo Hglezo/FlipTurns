@@ -127,13 +127,12 @@ function nodeOffsetToGlobal(root: HTMLElement, node: Node, offset: number): numb
 function getSelectionOffsets(root: HTMLElement): { start: number; end: number } | null {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return null;
+  if (!root.contains(sel.getRangeAt(0).startContainer)) return null;
+  root.normalize();
   const r0 = sel.getRangeAt(0);
   if (!root.contains(r0.startContainer)) return null;
   const a = nodeOffsetToGlobal(root, r0.startContainer, r0.startOffset);
   const b = nodeOffsetToGlobal(root, r0.endContainer, r0.endOffset);
-  // Adjacent text siblings (common in contenteditable) make Range end at (node, len) stop
-  // before the next text node, so toString().length is one short — e.g. caret looks like "her|e".
-  root.normalize();
   return a <= b ? { start: a, end: b } : { start: b, end: a };
 }
 

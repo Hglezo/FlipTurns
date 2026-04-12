@@ -23,7 +23,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
-  Camera, ImageUp, Loader2, Users, BarChart3, Printer,
+  Camera, ImageUp, Loader2, Users, BarChart3, Printer, Eye, EyeOff,
 } from "lucide-react";
 import { FlipTurnsLogo } from "@/components/flipturns-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -31,6 +31,7 @@ import { WorkoutAnalysis } from "@/components/workout-analysis";
 import { WorkoutContentTextarea } from "@/components/workout-content-textarea";
 import { WorkoutAssignPicker } from "@/components/workout-assign-picker";
 import { WorkoutTextWithWrapIndent } from "@/components/workout-text-with-wrap-indent";
+import { WorkoutDraftTape } from "@/components/workout-draft-tape";
 import { SignOutDropdown } from "@/components/sign-out-dropdown";
 import { NotificationBell } from "@/components/notification-bell";
 import { usePreferences } from "@/components/preferences-provider";
@@ -39,7 +40,7 @@ import { useAuth } from "@/components/auth-provider";
 import type { Workout, SwimmerProfile, ViewMode, SwimmerGroup } from "@/lib/types";
 import {
   SWIMMER_GROUPS, ALL_GROUPS_ID, ALL_ID, ONLY_GROUPS_ID, WORKOUT_CATEGORIES, SESSION_OPTIONS, POOL_SIZE_OPTIONS,
-  normDate, getTimeframe, PERSONAL_ASSIGNMENT, isTrainingSwimmerGroup,
+  normDate, getTimeframe, PERSONAL_ASSIGNMENT, isTrainingSwimmerGroup, workoutIsPublished,
 } from "@/lib/types";
 import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i18n";
 import {
@@ -47,6 +48,7 @@ import {
   assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
   assignedToCaptionRedundantForWorkout,
   resolvedGroupAssigneeIdsForSave,
+  setWorkoutPublished,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { cn } from "@/lib/utils";
@@ -54,7 +56,7 @@ import { fetchCoachTeamSwimmers, readCoachTeamSwimmersCache } from "@/lib/coach-
 
 const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
 const badgeClassMuted = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground max-md:text-[10px] max-md:px-1.5";
-const WORKOUT_SELECT = "id, date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_at, updated_at, created_by";
+const WORKOUT_SELECT = "id, date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_at, updated_at, created_by, is_published";
 
 /**
  * Same horizontal bleed as analysis: CardContent is `pl-4` plus larger `pr-*` for icons.
@@ -223,10 +225,13 @@ function WorkoutBlock({
   assigneeLabel, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
   className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner, onExpandPreview, namesRowClassName, analysisBleedClassName,
   offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName,
+  draftTapeLabel,
 }: {
   workout: Workout; dateKey: string; showLabel: boolean; feedbackRefreshKey: number;
   onFeedbackChange?: () => void; assigneeLabel?: string | null; assigneeNames?: string | null;
   teammateNames?: string | null; className?: string; readOnly?: boolean; compact?: boolean;
+  /** When set, shows diagonal draft tape over the workout text body only. */
+  draftTapeLabel?: string;
   contentDisplay?: "full" | "preview";
   /** PDF below chip row (after swap with collapse); collapse lives in card header */
   aggregatedPdfBelowBanner?: {
@@ -333,12 +338,13 @@ function WorkoutBlock({
           <div
             ref={previewBodyRef}
             className={cn(
-              "w-full overflow-hidden font-sans leading-relaxed text-foreground/90",
+              "relative w-full overflow-hidden font-sans leading-relaxed text-foreground/90",
               compact ? "max-h-[4.27rem] text-[14px]" : "max-h-[4.57rem] text-[15px]",
               offsetWorkoutBodyForCornerAssignee && (workoutBodyCornerOffsetClassName ?? "mt-12"),
               analysisBleedClassName,
             )}
           >
+            {draftTapeLabel ? <WorkoutDraftTape label={draftTapeLabel} /> : null}
             <WorkoutTextWithWrapIndent content={workout.content} />
           </div>
           {previewTruncated && workout.content.trim() && onExpandPreview && (
@@ -357,12 +363,13 @@ function WorkoutBlock({
       ) : (
         <div
           className={cn(
-            "w-full min-w-0 font-sans leading-relaxed text-foreground/90",
+            "relative w-full min-w-0 font-sans leading-relaxed text-foreground/90",
             compact ? "text-[14px]" : "text-[15px]",
             offsetWorkoutBodyForCornerAssignee && (workoutBodyCornerOffsetClassName ?? "mt-12"),
             analysisBleedClassName,
           )}
         >
+          {draftTapeLabel ? <WorkoutDraftTape label={draftTapeLabel} /> : null}
           <WorkoutTextWithWrapIndent content={workout.content} />
         </div>
       )}
@@ -772,7 +779,7 @@ function HomePage() {
         const sorted = sortCoachWorkouts(rows, swimmers);
         if (isAddingWorkout) {
           addWorkoutForDateRef.current = null;
-          const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: userId, assigned_to_group: null };
+          const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: userId, assigned_to_group: null, is_published: false };
           setSwimmerWorkouts([...sorted, newWorkout]);
           setSwimmerEditingIndex(sorted.length);
         } else {
@@ -895,7 +902,7 @@ function HomePage() {
       if (cancelled) return;
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
-        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null };
+        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: false };
         setCoachWorkouts([...sortedRows, newWorkout]);
         setEditingWorkoutIndex(sortedRows.length);
       } else {
@@ -1036,11 +1043,21 @@ function HomePage() {
         } else { alert(error.message); setLoading(false); return; }
       }
     } else {
-      const { data: newId, error } = await supabase.rpc("insert_workout", { p_date: dateKey, ...rpcPayload });
+      const { data: newId, error } = await supabase.rpc("insert_workout", {
+        p_date: dateKey,
+        ...rpcPayload,
+        p_is_published: workoutIsPublished(workout),
+      });
       if (error) {
         if (error.message?.includes("function") && error.message?.includes("does not exist")) {
           const { data: inserted, error: insErr } = await supabase.from("workouts")
-            .insert({ date: dateKey, ...updatePayload, assigned_to: workout.assigned_to ?? null, assigned_to_group: workout.assigned_to_group ?? null })
+            .insert({
+              date: dateKey,
+              ...updatePayload,
+              assigned_to: workout.assigned_to ?? null,
+              assigned_to_group: workout.assigned_to_group ?? null,
+              is_published: workoutIsPublished(workout),
+            })
             .select().single();
           if (insErr) { alert(insErr.message); setLoading(false); return; }
           savedId = inserted?.id;
@@ -1105,6 +1122,66 @@ function HomePage() {
       }
       return next;
     });
+  }
+
+  function syncPublishedEverywhere(workoutId: string, isPublished: boolean | undefined) {
+    const patch = (w: Workout) => (w.id === workoutId ? { ...w, is_published: isPublished } : w);
+    const merged = coachDayMergedCacheRef.current.get(dateKey);
+    if (merged) coachDayMergedCacheRef.current.set(dateKey, merged.map(patch));
+    if (user?.id) {
+      const ck = buildSwimmerDayCacheKey(dateKey, selectedViewSwimmerId, user.id);
+      const swimRows = swimmerDayCacheRef.current.get(ck);
+      if (swimRows) swimmerDayCacheRef.current.set(ck, swimRows.map(patch));
+    }
+    setWeekWorkouts((prev) => prev.map(patch));
+    setMonthWorkouts((prev) => prev.map(patch));
+    setViewWorkouts((prev) => prev.map(patch));
+  }
+
+  function toggleCoachWorkoutPublished(originalIdx: number, e?: MouseEvent<HTMLButtonElement>) {
+    e?.stopPropagation();
+    const workout = coachWorkouts[originalIdx];
+    if (!workout) return;
+    const nextPublished = !workoutIsPublished(workout);
+    if (!workout.id) {
+      updateCoachWorkout(originalIdx, { is_published: nextPublished });
+      return;
+    }
+    const prior = workout.is_published;
+    updateCoachWorkout(originalIdx, { is_published: nextPublished });
+    syncPublishedEverywhere(workout.id, nextPublished);
+    void (async () => {
+      try {
+        await setWorkoutPublished(workout.id, nextPublished);
+      } catch (err) {
+        updateCoachWorkout(originalIdx, { is_published: prior });
+        syncPublishedEverywhere(workout.id, prior);
+        alert(err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Could not update visibility");
+      }
+    })();
+  }
+
+  function toggleSwimmerWorkoutPublished(originalIdx: number, e?: MouseEvent<HTMLButtonElement>) {
+    e?.stopPropagation();
+    const workout = swimmerWorkouts[originalIdx];
+    if (!workout) return;
+    const nextPublished = !workoutIsPublished(workout);
+    if (!workout.id) {
+      updateSwimmerWorkout(originalIdx, { is_published: nextPublished });
+      return;
+    }
+    const prior = workout.is_published;
+    updateSwimmerWorkout(originalIdx, { is_published: nextPublished });
+    syncPublishedEverywhere(workout.id, nextPublished);
+    void (async () => {
+      try {
+        await setWorkoutPublished(workout.id, nextPublished);
+      } catch (err) {
+        updateSwimmerWorkout(originalIdx, { is_published: prior });
+        syncPublishedEverywhere(workout.id, prior);
+        alert(err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Could not update visibility");
+      }
+    })();
   }
 
   function startEditingWorkout(index: number) {
@@ -1283,6 +1360,7 @@ function HomePage() {
         p_pool_size: poolSizeToSave,
         p_assigned_to: singleAssignee,
         p_assigned_to_group: isPersonal ? PERSONAL_ASSIGNMENT : null,
+        p_is_published: workoutIsPublished(workout),
       });
       if (error) {
         if (error.message?.includes("function") && error.message?.includes("does not exist")) {
@@ -1292,6 +1370,7 @@ function HomePage() {
             assigned_to: isPersonal ? null : singleAssignee,
             assigned_to_group: isPersonal ? PERSONAL_ASSIGNMENT : null,
             created_by: user.id, updated_at: new Date().toISOString(),
+            is_published: workoutIsPublished(workout),
           }).select().single();
           if (insErr) { alert(insErr.message); setLoading(false); return; }
           const sid = inserted.id;
@@ -1544,6 +1623,7 @@ function HomePage() {
         className={opts.compact ? "mt-1" : "mt-4"} compact={opts.compact} readOnly={opts.readOnly} assigneeLabel={label}
         assigneeNames={assigneeNames}
         teammateNames={teammateNamesProp}
+        draftTapeLabel={!workoutIsPublished(workout) ? t("main.draftTape") : undefined}
         contentDisplay={opts.contentDisplay ?? "full"} aggregatedPdfBelowBanner={opts.aggregatedPdfBelowBanner}
         onExpandPreview={opts.onExpandPreview} namesRowClassName={opts.namesRowClassName} analysisBleedClassName={opts.analysisBleedClassName} t={t} />
     );
@@ -2145,11 +2225,14 @@ function HomePage() {
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}
                               </div>
-                              <WorkoutContentTextarea
-                                placeholder="Warm-up: 200 free..."
-                                value={workout.content}
-                                onChange={(next) => updateSwimmerWorkout(originalIdx, { content: next })}
-                              />
+                              <div className="relative">
+                                {!workoutIsPublished(workout) ? <WorkoutDraftTape label={t("main.draftTape")} /> : null}
+                                <WorkoutContentTextarea
+                                  placeholder="Warm-up: 200 free..."
+                                  value={workout.content}
+                                  onChange={(next) => updateSwimmerWorkout(originalIdx, { content: next })}
+                                />
+                              </div>
                               {workout.content && (
                                 <WorkoutAnalysis
                                   content={workout.content}
@@ -2163,7 +2246,7 @@ function HomePage() {
                                   className="mt-4 w-full min-w-0"
                                 />
                               )}
-                              <div className="flex gap-2 pt-2">
+                              <div className="flex flex-wrap gap-2 pt-2">
                                 <Button type="button" size="sm" onClick={() => saveSingleWorkoutSwimmer(originalIdx)} disabled={loading || swimmerLoading}>{saved ? t("main.saved") : t("common.save")}</Button>
                                 <button type="button" onClick={() => {
                                   const idx = swimmerEditingIndex; const snap = swimmerEditingSnapshot;
@@ -2189,6 +2272,18 @@ function HomePage() {
                               >
                                 {swimmerMyUsesWorkoutPreviews ? (
                                   <>
+                                    {canSwimmerEdit && workout.id && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-8 shrink-0"
+                                        onClick={(e) => void toggleSwimmerWorkoutPublished(originalIdx, e)}
+                                        aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
+                                      >
+                                        {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                      </Button>
+                                    )}
                                     {!swimmerMyCollapsed && !canSwimmerEdit && workout.content.trim() && (
                                       <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
                                         aria-label={t("main.exportPdf")} onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
@@ -2228,7 +2323,21 @@ function HomePage() {
                                       </Button>
                                     )}
                                     {canSwimmerEdit && (
-                                      <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                                      <>
+                                        {workout.id ? (
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="size-8 shrink-0"
+                                            onClick={(e) => void toggleSwimmerWorkoutPublished(originalIdx, e)}
+                                            aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
+                                          >
+                                            {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                          </Button>
+                                        ) : null}
+                                        <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                                      </>
                                     )}
                                   </>
                                 )}
@@ -2247,6 +2356,7 @@ function HomePage() {
                                 assigneeNames={undefined}
                                 offsetWorkoutBodyForCornerAssignee={offsetWorkoutBodyForCornerAssignee}
                                 workoutBodyCornerOffsetClassName={workoutBodyCornerOffsetClassName}
+                                draftTapeLabel={!workoutIsPublished(workout) ? t("main.draftTape") : undefined}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly
                                 contentDisplay={swimmerMyCollapsed ? "preview" : "full"}
                                 onExpandPreview={
@@ -2280,7 +2390,7 @@ function HomePage() {
                   })}
                   <div className="flex justify-center pt-2">
                     <Button variant="outline" size="icon" onClick={() => {
-                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: user?.id ?? null, assigned_to_group: null };
+                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: user?.id ?? null, assigned_to_group: null, is_published: false };
                       setSwimmerEditingSnapshot(null);
                       setSwimmerWorkouts((prev) => {
                         setSwimmerEditingIndex(prev.length);
@@ -2468,11 +2578,14 @@ function HomePage() {
                                   <button type="button" onClick={() => setImageFromWorkoutError(null)} className="text-xs text-muted-foreground hover:underline">Dismiss</button>
                                 )}
                               </div>
-                              <WorkoutContentTextarea
-                                placeholder={"Warm-up: 200 free, 4×50 kick...\nMain set: 8×100 @ 1:30...\nCool-down: 200 easy"}
-                                value={workout.content}
-                                onChange={(next) => updateCoachWorkout(originalIdx, { content: next })}
-                              />
+                              <div className="relative">
+                                {!workoutIsPublished(workout) ? <WorkoutDraftTape label={t("main.draftTape")} /> : null}
+                                <WorkoutContentTextarea
+                                  placeholder={"Warm-up: 200 free, 4×50 kick...\nMain set: 8×100 @ 1:30...\nCool-down: 200 easy"}
+                                  value={workout.content}
+                                  onChange={(next) => updateCoachWorkout(originalIdx, { content: next })}
+                                />
+                              </div>
                               {workout.content && (
                                 <WorkoutAnalysis
                                   content={workout.content}
@@ -2486,7 +2599,7 @@ function HomePage() {
                                   className="mt-4 w-full min-w-0"
                                 />
                               )}
-                              <div className="flex gap-2 pt-2">
+                              <div className="flex flex-wrap gap-2 pt-2">
                                 <Button type="button" size="sm" onClick={() => saveSingleWorkout(originalIdx)} disabled={loading || coachLoading}>{saved ? t("main.saved") : t("common.save")}</Button>
                                 <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancelEditingWorkout(); }} disabled={loading}
                                   className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent disabled:pointer-events-none disabled:opacity-50">{t("common.cancel")}</button>
@@ -2500,7 +2613,18 @@ function HomePage() {
                               <div className="flex shrink-0 justify-end gap-0.5">
                                 {coachUsesWorkoutPreviews ? (
                                   <>
-                                    {coachCollapsed && <span className="size-8 shrink-0" aria-hidden />}
+                                    {workout.id ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-8 shrink-0"
+                                        onClick={(e) => void toggleCoachWorkoutPublished(originalIdx, e)}
+                                        aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
+                                      >
+                                        {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                      </Button>
+                                    ) : null}
                                     {!coachCollapsed && (
                                       <Button variant="ghost" size="icon" className="size-8 shrink-0"
                                         onClick={(e) => { e.stopPropagation(); startEditingWorkout(originalIdx); }} aria-label="Edit workout">
@@ -2530,6 +2654,18 @@ function HomePage() {
                                         <Printer className="size-4" />
                                       </Button>
                                     )}
+                                    {workout.id ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-8 shrink-0"
+                                        onClick={(e) => void toggleCoachWorkoutPublished(originalIdx, e)}
+                                        aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
+                                      >
+                                        {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                      </Button>
+                                    ) : null}
                                     <Button variant="ghost" size="icon" className="size-8 shrink-0"
                                       onClick={(e) => { e.stopPropagation(); startEditingWorkout(originalIdx); }} aria-label="Edit workout">
                                       <Pencil className="size-4" />
@@ -2549,6 +2685,7 @@ function HomePage() {
                                 assigneeNames={undefined}
                                 offsetWorkoutBodyForCornerAssignee={offsetWorkoutBodyForCornerAssignee}
                                 workoutBodyCornerOffsetClassName={workoutBodyCornerOffsetClassName}
+                                draftTapeLabel={!workoutIsPublished(workout) ? t("main.draftTape") : undefined}
                                 feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)} readOnly
                                 contentDisplay={coachCollapsed ? "preview" : "full"}
                                 onExpandPreview={
@@ -2580,7 +2717,7 @@ function HomePage() {
                   <div className="flex justify-center pt-2">
                     <Button variant="outline" size="icon" onClick={() => {
                       const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
-                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null };
+                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: false };
                       setEditingWorkoutSnapshot(null);
                       setCoachWorkouts((prev) => {
                         setEditingWorkoutIndex(prev.length);

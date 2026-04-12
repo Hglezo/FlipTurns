@@ -87,6 +87,9 @@ const TRANSLATIONS_EN = {
   "main.workoutFromImageTakePicture": "Take picture",
   "main.workoutFromImageUploadPhoto": "Upload",
   "main.workoutFromImageAnalyzing": "Analyzing…",
+  "main.draftTape": "Draft",
+  "main.publishWorkoutAria": "Publish workout — visible to swimmers",
+  "main.unpublishWorkoutAria": "Unpublish workout — draft, hidden from swimmers",
 
   // Settings
   "settings.profile": "Profile",
@@ -387,6 +390,9 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "main.workoutFromImageTakePicture": "Hacer foto",
   "main.workoutFromImageUploadPhoto": "Subir",
   "main.workoutFromImageAnalyzing": "Analizando…",
+  "main.draftTape": "Borrador",
+  "main.publishWorkoutAria": "Publicar entrenamiento — visible para nadadores",
+  "main.unpublishWorkoutAria": "Despublicar entrenamiento — borrador, oculto para nadadores",
 
   // Settings
   "settings.profile": "Perfil",

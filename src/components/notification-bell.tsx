@@ -228,6 +228,7 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onNotif
         const { data } = await supabase
           .from("workouts")
           .select("id, date, content, session, workout_category, assigned_to, assigned_to_group, updated_at, created_by")
+          .eq("is_published", true)
           .gte("updated_at", since)
           .order("updated_at", { ascending: false })
           .limit(50);
@@ -278,6 +279,7 @@ export function NotificationBell({ role, userId, swimmerGroup, swimmers, onNotif
           supabase.from("feedback").select("id, date, workout_id, user_id, created_at, anonymous")
             .gte("created_at", since).order("created_at", { ascending: false }).limit(50),
           supabase.from("workouts").select("id, date, session, updated_at, created_by")
+            .eq("is_published", true)
             .gte("updated_at", since).not("created_by", "is", null)
             .order("updated_at", { ascending: false }).limit(50),
         ]);

@@ -315,6 +315,11 @@ export async function saveAssigneesForGroupWorkout(workoutId: string, assigneeId
   }
 }
 
+export async function setWorkoutPublished(workoutId: string, published: boolean): Promise<void> {
+  const { error } = await supabase.rpc("set_workout_published", { p_id: workoutId, p_published: published });
+  if (error) throw error;
+}
+
 export async function saveAssigneesForIndividualWorkout(workoutId: string, assigneeIds: string[]): Promise<void> {
   const { error: delErr } = await supabase.from("workout_assignees").delete().eq("workout_id", workoutId);
   if (delErr) throw delErr;
