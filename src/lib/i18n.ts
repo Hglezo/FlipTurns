@@ -44,6 +44,18 @@ const TRANSLATIONS_EN = {
   "login.noAccount": "Don't have an account?",
   "login.signUp": "Sign up",
   "login.haveAccount": "Already have an account?",
+  "login.forgotPassword": "Forgot password?",
+  "login.resetPasswordTitle": "Set new password",
+  "login.sendResetLink": "Send reset link",
+  "login.resetEmailSent":
+    "If an account exists for this email, we sent instructions to reset your password.",
+  "login.resetChecking": "Verifying link…",
+  "login.resetLinkInvalid":
+    "This reset link is invalid or has expired. Request a new one from the sign-in page.",
+  "login.backToSignIn": "Back to sign in",
+  "login.resetPasswordSubtitle":
+    "Choose a new password for this account. You’ll be signed in when you continue.",
+  "login.resetPasswordSubmit": "Save password & continue",
 
   // Main page
   "main.allWorkouts": "All workouts",
@@ -347,6 +359,18 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "login.noAccount": "¿No tienes cuenta?",
   "login.signUp": "Registrarse",
   "login.haveAccount": "¿Ya tienes cuenta?",
+  "login.forgotPassword": "¿Has olvidado la contraseña?",
+  "login.resetPasswordTitle": "Nueva contraseña",
+  "login.sendResetLink": "Enviar enlace",
+  "login.resetEmailSent":
+    "Si existe una cuenta con este correo, te hemos enviado instrucciones para restablecer la contraseña.",
+  "login.resetChecking": "Comprobando el enlace…",
+  "login.resetLinkInvalid":
+    "Este enlace no es válido o ha caducado. Solicita uno nuevo desde iniciar sesión.",
+  "login.backToSignIn": "Volver a iniciar sesión",
+  "login.resetPasswordSubtitle":
+    "Elige una contraseña nueva para esta cuenta. Al continuar iniciarás sesión.",
+  "login.resetPasswordSubmit": "Guardar contraseña y continuar",
 
   // Main page
   "main.allWorkouts": "Todos los entrenamientos",

@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { invalidateCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
@@ -28,6 +29,10 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +76,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
+  useEffect(() => {
     void supabase.auth.startAutoRefresh();
 
     const applySession = (session: Session | null, finishInitialLoad: boolean) => {
@@ -92,7 +101,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" && pathnameRef.current !== "/auth/update-password") {
+        router.replace("/auth/update-password");
+      }
       applySession(session, false);
     });
 
@@ -114,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("pageshow", resume);
       void supabase.auth.stopAutoRefresh();
     };
-  }, [fetchProfile]);
+  }, [fetchProfile, router]);
 
   return (
     <AuthContext.Provider

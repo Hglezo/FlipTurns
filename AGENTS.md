@@ -23,3 +23,4 @@ FlipTurns is a mobile-optimized swim workout calendar (Next.js 16 / React 19 / S
 - The package manager is **npm** (lockfile: `package-lock.json`).
 - After changing `.env.local`, restart the dev server — Next.js does not hot-reload env var changes.
 - Sign-up works without email confirmation on the current Supabase project config. New users are logged in immediately.
+- **Forgot password:** In Supabase → Authentication → URL configuration, add each app origin’s reset callback to **Redirect URLs** (e.g. `http://localhost:3000/auth/update-password` and `https://<your-domain>/auth/update-password`). Set **Site URL** to the primary production origin (or use `NEXT_PUBLIC_SITE_URL` for a stable public URL). Without this, reset emails will not complete the flow.

@@ -19,7 +19,7 @@ const LOCALE_FLAG_SRC: Record<Locale, string> = {
   "es-ES": "/locale-flags/es-ES.png",
 };
 
-type FormMode = "signin" | "signup";
+type FormMode = "signin" | "signup" | "forgot";
 type Role = "swimmer" | "coach";
 
 export default function LoginPage() {
@@ -34,10 +34,12 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
   function switchMode(mode: FormMode) {
     setFormMode(mode);
     setError(null);
+    setResetEmailSent(false);
     if (mode === "signin") setConfirmPassword("");
   }
 
@@ -45,6 +47,20 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
+    if (formMode === "forgot") {
+      const redirectTo = `${window.location.origin}/auth/update-password`;
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
+      });
+      setLoading(false);
+      if (resetError) {
+        setError(resetError.message);
+        return;
+      }
+      setResetEmailSent(true);
+      return;
+    }
 
     if (formMode === "signup") {
       if (password.length < 6) {
@@ -94,7 +110,11 @@ export default function LoginPage() {
           <CardHeader className="flex flex-col items-center gap-3 space-y-0 pb-4 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-2">
             <div className="hidden min-w-0 sm:block" aria-hidden />
             <CardTitle className="min-w-0 max-w-full px-1 text-center leading-snug sm:px-0 sm:leading-none">
-              {formMode === "signin" ? t("login.signIn") : t("login.createAccount")}
+              {formMode === "forgot"
+                ? t("login.forgotPassword")
+                : formMode === "signin"
+                  ? t("login.signIn")
+                  : t("login.createAccount")}
             </CardTitle>
             <div className="flex w-full min-w-0 shrink-0 items-center justify-center gap-0.5 sm:w-auto sm:justify-end">
               <ThemeToggle className="size-8 shrink-0" />
@@ -158,19 +178,30 @@ export default function LoginPage() {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="password">{t("login.password")}</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t("login.passwordPlaceholder")}
-                  required
-                  minLength={6}
-                  autoComplete={formMode === "signup" ? "new-password" : "current-password"}
-                />
-              </div>
+              {formMode !== "forgot" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="password">{t("login.password")}</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={t("login.passwordPlaceholder")}
+                    required
+                    minLength={6}
+                    autoComplete={formMode === "signup" ? "new-password" : "current-password"}
+                  />
+                  {formMode === "signin" && (
+                    <button
+                      type="button"
+                      onClick={() => switchMode("forgot")}
+                      className="text-left text-sm text-primary underline-offset-4 hover:underline"
+                    >
+                      {t("login.forgotPassword")}
+                    </button>
+                  )}
+                </div>
+              )}
 
               {formMode === "signup" && (
                 <div className="space-y-1.5">
@@ -224,17 +255,33 @@ export default function LoginPage() {
                 </p>
               )}
 
-              <Button type="submit" className="w-full" disabled={loading}>
+              {resetEmailSent && (
+                <p className="rounded-md bg-muted px-3 py-2 text-sm text-foreground" role="status">
+                  {t("login.resetEmailSent")}
+                </p>
+              )}
+
+              <Button type="submit" className="w-full" disabled={loading || resetEmailSent}>
                 {loading
                   ? t("login.pleaseWait")
-                  : formMode === "signin"
-                  ? t("login.signIn")
-                  : t("login.createAccount")}
+                  : formMode === "forgot"
+                    ? t("login.sendResetLink")
+                    : formMode === "signin"
+                      ? t("login.signIn")
+                      : t("login.createAccount")}
               </Button>
             </form>
 
             <p className="mt-4 text-center text-sm text-muted-foreground">
-              {formMode === "signin" ? (
+              {formMode === "forgot" ? (
+                <button
+                  type="button"
+                  onClick={() => switchMode("signin")}
+                  className="text-primary underline-offset-4 hover:underline"
+                >
+                  {t("login.backToSignIn")}
+                </button>
+              ) : formMode === "signin" ? (
                 <>
                   {t("login.noAccount")}{" "}
                   <button
