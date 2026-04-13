@@ -25,7 +25,7 @@ export function WorkoutTextWithWrapIndent({
           <div
             key={i}
             className={cn(
-              "min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap pl-[1.75em] -indent-[1.75em]",
+              "min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap [tab-size:2] pl-[1.75em] -indent-[1.75em]",
               segment === "" && "min-h-[1lh]",
               segmentClassName,
             )}

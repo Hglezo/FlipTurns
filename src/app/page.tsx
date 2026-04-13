@@ -2210,14 +2210,11 @@ function HomePage() {
                                   <span className="text-sm text-destructive">{imageFromWorkoutError}</span>
                                 )}
                               </div>
-                              <div className="relative">
-                                {!workoutIsPublished(workout) ? <WorkoutDraftTape label={t("main.draftTape")} /> : null}
-                                <WorkoutContentTextarea
-                                  placeholder="Warm-up: 200 free..."
-                                  value={workout.content}
-                                  onChange={(next) => updateSwimmerWorkout(originalIdx, { content: next })}
-                                />
-                              </div>
+                              <WorkoutContentTextarea
+                                placeholder="Warm-up: 200 free..."
+                                value={workout.content}
+                                onChange={(next) => updateSwimmerWorkout(originalIdx, { content: next })}
+                              />
                               {workout.content && (
                                 <WorkoutAnalysis
                                   content={workout.content}
@@ -2563,14 +2560,11 @@ function HomePage() {
                                   <button type="button" onClick={() => setImageFromWorkoutError(null)} className="text-xs text-muted-foreground hover:underline">Dismiss</button>
                                 )}
                               </div>
-                              <div className="relative">
-                                {!workoutIsPublished(workout) ? <WorkoutDraftTape label={t("main.draftTape")} /> : null}
-                                <WorkoutContentTextarea
-                                  placeholder={"Warm-up: 200 free, 4×50 kick...\nMain set: 8×100 @ 1:30...\nCool-down: 200 easy"}
-                                  value={workout.content}
-                                  onChange={(next) => updateCoachWorkout(originalIdx, { content: next })}
-                                />
-                              </div>
+                              <WorkoutContentTextarea
+                                placeholder={"Warm-up: 200 free, 4×50 kick...\nMain set: 8×100 @ 1:30...\nCool-down: 200 easy"}
+                                value={workout.content}
+                                onChange={(next) => updateCoachWorkout(originalIdx, { content: next })}
+                              />
                               {workout.content && (
                                 <WorkoutAnalysis
                                   content={workout.content}
