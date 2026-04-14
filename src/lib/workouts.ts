@@ -4,7 +4,6 @@ import { SWIMMER_GROUPS, ALL_ID, ONLY_GROUPS_ID, PERSONAL_ASSIGNMENT, isTraining
 
 export async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
-  for (const id of workoutIds) map.set(id, []);
   if (workoutIds.length === 0) return map;
   const { data } = await supabase.from("workout_assignees").select("workout_id, user_id").in("workout_id", workoutIds);
   for (const row of data ?? []) {
@@ -301,17 +300,54 @@ export function resolvedGroupAssigneeIdsForSave(workout: Workout, swimmers: Swim
   return swimmers.filter((s) => s.swimmer_group === workout.assigned_to_group).map((s) => s.id);
 }
 
-export async function saveAssigneesForGroupWorkout(workoutId: string, assigneeIds: string[], otherGroupWorkoutIdsSameDay: string[]) {
+async function replaceWorkoutAssignees(workoutId: string, userIds: string[]): Promise<void> {
+  const { error } = await supabase.rpc("replace_workout_assignees", {
+    p_workout_id: workoutId,
+    p_user_ids: userIds,
+  });
+  if (!error) return;
+  const missingRpc =
+    error.message?.includes("function") && error.message?.includes("does not exist");
+  if (!missingRpc) throw error;
   const { error: delErr } = await supabase.from("workout_assignees").delete().eq("workout_id", workoutId);
   if (delErr) throw delErr;
-  if (assigneeIds.length > 0) {
-    const { error: insErr } = await supabase.from("workout_assignees").insert(assigneeIds.map((user_id) => ({ workout_id: workoutId, user_id })));
+  if (userIds.length > 0) {
+    const { error: insErr } = await supabase.from("workout_assignees")
+      .insert(userIds.map((user_id) => ({ workout_id: workoutId, user_id })));
     if (insErr) throw insErr;
   }
+}
+
+export async function saveAssigneesForGroupWorkout(
+  workoutId: string,
+  assigneeIds: string[],
+  otherGroupWorkoutIdsSameDay: string[],
+  swimmers: SwimmerProfile[],
+) {
+  await replaceWorkoutAssignees(workoutId, assigneeIds);
   for (const uid of assigneeIds) {
     if (otherGroupWorkoutIdsSameDay.length === 0) continue;
     const { error } = await supabase.from("workout_assignees").delete().in("workout_id", otherGroupWorkoutIdsSameDay).eq("user_id", uid);
     if (error) throw error;
+  }
+  /* Sibling group workouts with no junction rows use an implicit full roster; exclusivity deletes are no-ops until we materialize. */
+  for (const otherId of otherGroupWorkoutIdsSameDay) {
+    const { count, error: cntErr } = await supabase
+      .from("workout_assignees")
+      .select("*", { count: "exact", head: true })
+      .eq("workout_id", otherId);
+    if (cntErr) throw cntErr;
+    if ((count ?? 0) > 0) continue;
+    const { data: row, error: rowErr } = await supabase.from("workouts").select("assigned_to_group").eq("id", otherId).maybeSingle();
+    if (rowErr) throw rowErr;
+    const g = row?.assigned_to_group;
+    if (!isTrainingSwimmerGroup(g)) continue;
+    const roster = swimmers
+      .filter((s) => s.swimmer_group === g)
+      .map((s) => s.id)
+      .filter((id) => !assigneeIds.includes(id));
+    if (roster.length === 0) continue;
+    await replaceWorkoutAssignees(otherId, roster);
   }
 }
 
@@ -321,10 +357,5 @@ export async function setWorkoutPublished(workoutId: string, published: boolean)
 }
 
 export async function saveAssigneesForIndividualWorkout(workoutId: string, assigneeIds: string[]): Promise<void> {
-  const { error: delErr } = await supabase.from("workout_assignees").delete().eq("workout_id", workoutId);
-  if (delErr) throw delErr;
-  if (assigneeIds.length > 0) {
-    const { error: insErr } = await supabase.from("workout_assignees").insert(assigneeIds.map((user_id) => ({ workout_id: workoutId, user_id })));
-    if (insErr) throw insErr;
-  }
+  await replaceWorkoutAssignees(workoutId, assigneeIds);
 }
