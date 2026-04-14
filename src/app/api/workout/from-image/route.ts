@@ -67,7 +67,7 @@ async function verifyAuth(request: Request) {
   return { user };
 }
 
-const WORKOUT_FORMAT_EXAMPLE = `warm up
+const SWIM_WORKOUT_FORMAT_EXAMPLE = `warm up
 2x400 (100 swim 50 drill 100 swim 50 drill 100 kick)
 
 pre set
@@ -90,6 +90,24 @@ cool down
 100 w/fins (kick faster than pull)
 50 (25 stroke 25 easy)`;
 
+const STRENGTH_WORKOUT_FORMAT_EXAMPLE = `warm up
+dynamic prep 5–8 min
+band pull-aparts 2×15
+goblet squat 2×10 (light)
+
+main
+back squat 4×6 @ 75%
+romanian deadlift 3×8 @ 70%
+leg press 3×12
+
+accessory
+lat pulldown 3×12
+face pull 2×15
+
+cool down
+easy bike 5 min
+foam roll quads / upper back`;
+
 export async function POST(request: Request) {
   try {
     const auth = await verifyAuth(request);
@@ -105,6 +123,7 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const imageData = typeof body.image === "string" ? body.image : null;
+    const workoutKind = body.workoutKind === "strength" ? "strength" : "swim";
     if (!imageData) {
       return NextResponse.json({ error: "Missing image data" }, { status: 400 });
     }
@@ -116,6 +135,14 @@ export async function POST(request: Request) {
 
     const { base64: compressedBase64, mime: compressedMime } = await compressImage(base64, mime);
 
+    const isStrength = workoutKind === "strength";
+    const system = isStrength
+      ? "You are a strength and conditioning workout transcriber. Extract the gym / weights workout from the image (whiteboard, paper, screen, handwritten, or printed) and output ONLY the workout text. No preamble, no explanation. Use the exact style shown in the example."
+      : "You are a swim workout transcriber. Extract the swim workout from the image (whiteboard, paper, screen, handwritten, or printed) and output ONLY the workout text. No preamble, no explanation. Use the exact format shown in the example.";
+    const userText = isStrength
+      ? `Format the workout like this example. Use lowercase section headers (warm up, main, accessory, cool down, etc.). Use lines like "exercise 3×8 @ 70%" or "movement 4×6 @ RPE 8" with × for reps. Preserve loads, percentages, RPE, tempos, and equipment from the image.\n\nExample format:\n${STRENGTH_WORKOUT_FORMAT_EXAMPLE}`
+      : `Format the workout exactly like this example. Use lowercase section headers (warm up, pre set, main set, cool down, etc.)—no capitals. Use sets like "Nx distance (description)" or "Nx distance on interval". Use * for equipment notes like *fins on. Preserve all reps, distances, intervals, and stroke types from the image.\n\nExample format:\n${SWIM_WORKOUT_FORMAT_EXAMPLE}`;
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -126,7 +153,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 2048,
-        system: "You are a swim workout transcriber. Extract the swim workout from the image (whiteboard, paper, screen, handwritten, or printed) and output ONLY the workout text. No preamble, no explanation. Use the exact format shown in the example.",
+        system,
         messages: [
           {
             role: "user",
@@ -137,7 +164,7 @@ export async function POST(request: Request) {
               },
               {
                 type: "text",
-                text: `Format the workout exactly like this example. Use lowercase section headers (warm up, pre set, main set, cool down, etc.)—no capitals. Use sets like "Nx distance (description)" or "Nx distance on interval". Use * for equipment notes like *fins on. Preserve all reps, distances, intervals, and stroke types from the image.\n\nExample format:\n${WORKOUT_FORMAT_EXAMPLE}`,
+                text: userText,
               },
             ],
           },

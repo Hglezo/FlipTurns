@@ -6,6 +6,7 @@ import { ViewportPreviewProvider } from "@/components/viewport-preview-provider"
 import { I18nProvider } from "@/components/i18n-provider";
 import { LangAttribute } from "@/components/lang-attribute";
 import { AuthProvider } from "@/components/auth-provider";
+import { MobileMainTabBar } from "@/components/mobile-main-tab-bar";
 import { getSiteUrl } from "@/lib/site-url";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -88,6 +89,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <I18nProvider>
               <LangAttribute />
               {children}
+              <MobileMainTabBar />
               </I18nProvider>
             </ViewportPreviewProvider>
           </PreferencesProvider>

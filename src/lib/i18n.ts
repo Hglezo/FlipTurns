@@ -22,6 +22,15 @@ const TRANSLATIONS_EN = {
   "common.settings": "Settings",
   "common.signOut": "Sign out",
 
+  "nav.home": "Home",
+  "nav.team": "Team",
+  "nav.analytics": "Volume",
+  "nav.weights": "Weights",
+  "nav.mainLabel": "Main navigation",
+
+  "weights.title": "Strength",
+  "weights.placeholder": "Squat 3×5 @ 80%\nBench 4×8…\nAccessory work…",
+
   // App
   "app.title": "FlipTurns",
   "app.description": "Coach and swimmer workout calendar",
@@ -334,6 +343,15 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "common.back": "Atrás",
   "common.settings": "Ajustes",
   "common.signOut": "Cerrar sesión",
+
+  "nav.home": "Inicio",
+  "nav.team": "Equipo",
+  "nav.analytics": "Volumen",
+  "nav.weights": "Pesas",
+  "nav.mainLabel": "Navegación principal",
+
+  "weights.title": "Fuerza",
+  "weights.placeholder": "Sentadilla 3×5 @ 80 %\nPress banca 4×8…\nComplementarios…",
 
   // App
   "app.title": "FlipTurns",

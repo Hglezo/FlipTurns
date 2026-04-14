@@ -66,6 +66,7 @@ interface WorkoutAnalysisProps {
   content: string;
   date?: string;
   workoutId?: string;
+  strengthWorkoutId?: string | null;
   poolSize?: "LCM" | "SCM" | "SCY" | null;
   refreshKey?: number;
   className?: string;
@@ -74,7 +75,7 @@ interface WorkoutAnalysisProps {
   hideFeedback?: boolean;
 }
 
-export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange, hideFeedback = false }: WorkoutAnalysisProps) {
+export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, poolSize, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange, hideFeedback = false }: WorkoutAnalysisProps) {
   const { user } = useAuth();
   const { t } = useTranslations();
   const formatFeedbackSaveError = (message: string | undefined, fallback: string) => {
@@ -85,7 +86,8 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     return base;
   };
   const readOnly = viewerRole === "coach";
-  const analysis = analyzeWorkout(content);
+  const isStrength = Boolean(strengthWorkoutId);
+  const analysis = analyzeWorkout(isStrength ? "" : content);
   const [feedback, setFeedback] = useState<Feedback[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -109,12 +111,15 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     async function fetchFeedback() {
       const selectCols = readOnly ? "*" : "id, feedback_text, muscle_intensity, cardio_intensity, anonymous";
       let query = supabase.from("feedback").select(selectCols).eq("date", date);
-      if (!workoutId) {
+      if (strengthWorkoutId) {
+        query = query.eq("strength_workout_id", strengthWorkoutId);
+        if (!readOnly && user?.id) query = query.eq("user_id", user.id);
+      } else if (!workoutId) {
         if (readOnly || !user?.id) {
           setFeedback([]);
           return;
         }
-        query = query.eq("user_id", user.id).is("workout_id", null);
+        query = query.eq("user_id", user.id).is("workout_id", null).is("strength_workout_id", null);
       } else {
         query = query.or(`workout_id.eq.${workoutId},workout_id.is.null`);
         if (!readOnly && user?.id) query = query.eq("user_id", user.id);
@@ -124,8 +129,11 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
       if (fetchError?.message?.includes("anonymous")) {
         const fallbackCols = readOnly ? "id, feedback_text, muscle_intensity, cardio_intensity, user_id" : "id, feedback_text, muscle_intensity, cardio_intensity";
         let fallbackQuery = supabase.from("feedback").select(fallbackCols).eq("date", date);
-        if (!workoutId) {
-          if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id).is("workout_id", null);
+        if (strengthWorkoutId) {
+          fallbackQuery = fallbackQuery.eq("strength_workout_id", strengthWorkoutId);
+          if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id);
+        } else if (!workoutId) {
+          if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id).is("workout_id", null).is("strength_workout_id", null);
         } else {
           fallbackQuery = fallbackQuery.or(`workout_id.eq.${workoutId},workout_id.is.null`);
           if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id);
@@ -146,7 +154,7 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
       } else setUserNames({});
     }
     fetchFeedback();
-  }, [date, workoutId, refreshKey, readOnly, user?.id, hideFeedback]);
+  }, [date, workoutId, strengthWorkoutId, refreshKey, readOnly, user?.id, hideFeedback]);
 
   const startEdit = (fb: Feedback) => {
     setError(null);
@@ -214,7 +222,8 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
     setAddSaving(true);
     const payload = {
       date,
-      workout_id: workoutId || null,
+      workout_id: strengthWorkoutId ? null : workoutId || null,
+      strength_workout_id: strengthWorkoutId || null,
       user_id: user.id,
       feedback_text: addText || null,
       muscle_intensity: normalizeFeedbackIntensity(addMuscle),
@@ -238,18 +247,18 @@ export function WorkoutAnalysis({ content, date, workoutId, poolSize, refreshKey
       .select("id, feedback_text, muscle_intensity, cardio_intensity")
       .eq("date", date)
       .eq("user_id", user.id);
-    if (workoutId) q = q.eq("workout_id", workoutId);
-    else q = q.is("workout_id", null);
+    if (strengthWorkoutId) q = q.eq("strength_workout_id", strengthWorkoutId);
+    else if (workoutId) q = q.eq("workout_id", workoutId);
+    else q = q.is("workout_id", null).is("strength_workout_id", null);
     const { data } = await q.order("created_at", { ascending: false });
     setFeedback(data ?? []);
     onFeedbackChange?.();
   };
 
-  const hasAnalysis = analysis.totalMeters > 0;
+  const hasAnalysis = !isStrength && analysis.totalMeters > 0;
   const hasFeedback = feedback && feedback.length > 0;
   const hasLoadedFeedback = feedback !== null;
-  const showFeedbackSection =
-    !hideFeedback && date && (hasFeedback || hasLoadedFeedback || !readOnly) && (!readOnly || !!workoutId);
+  const showFeedbackSection = !hideFeedback && date && (hasFeedback || hasLoadedFeedback || !readOnly) && (!readOnly || !!workoutId || !!strengthWorkoutId);
 
   const unit = poolSize === "SCY" ? "yd" : "m";
 

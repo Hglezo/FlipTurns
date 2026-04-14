@@ -23,7 +23,7 @@ import { usePreferences } from "@/components/preferences-provider";
 import { useViewportPreview } from "@/components/viewport-preview-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { SwimmerGroup } from "@/lib/types";
-import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Pencil, Smartphone, Monitor } from "lucide-react";
+import { ArrowLeft, Trash2, KeyRound, LogOut, Pencil, Smartphone, Monitor } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -227,10 +227,7 @@ export default function SettingsPage() {
               <ArrowLeft className="size-5" />
             </Button>
           </Link>
-          <h1 className="flex items-center gap-2 text-xl font-bold">
-            <Waves className="size-6 text-primary" />
-            {t("common.settings")}
-          </h1>
+          <h1 className="text-xl font-bold">{t("common.settings")}</h1>
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <SignOutDropdown

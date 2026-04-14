@@ -1,6 +1,7 @@
 import { parseISO } from "date-fns";
 import { jsPDF } from "jspdf";
-import type { Workout, SwimmerProfile, SwimmerGroup } from "./types";
+import type { StrengthWorkout, Workout, SwimmerProfile, SwimmerGroup } from "./types";
+import { strengthWorkoutsAsPrintWorkouts } from "./strength-workouts";
 import {
   assignmentLabel,
   assignedToNames,
@@ -107,6 +108,15 @@ export function buildWorkoutPrintSections(
       pdfAnalysis,
     };
   });
+}
+
+export function buildStrengthWorkoutPrintSections(
+  workouts: StrengthWorkout[],
+  swimmers: SwimmerProfile[],
+  t: T,
+  ctx: BuildWorkoutPdfContext,
+): WorkoutPrintSection[] {
+  return buildWorkoutPrintSections(strengthWorkoutsAsPrintWorkouts(workouts), swimmers, t, ctx);
 }
 
 function buildPdfAnalysisBlock(

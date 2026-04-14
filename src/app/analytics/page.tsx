@@ -715,8 +715,8 @@ export default function AnalyticsPage() {
   const role = profile?.role ?? "swimmer";
 
   return (
-    <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <div ref={setVolumeMenuBoundary} className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6">
+    <div className="min-h-dvh bg-background pt-[env(safe-area-inset-top)]">
+      <div ref={setVolumeMenuBoundary} className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 pt-5 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-5 lg:max-w-[34rem] lg:px-6">
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>

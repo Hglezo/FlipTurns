@@ -37,6 +37,19 @@ export interface Workout {
   is_published?: boolean;
 }
 
+export interface StrengthWorkout {
+  id: string;
+  date: string;
+  content: string;
+  session?: string | null;
+  assigned_to?: string | null;
+  assigned_to_group?: AssignedToGroupValue | null;
+  assignee_ids?: string[];
+  updated_at?: string | null;
+  created_by?: string | null;
+  is_published?: boolean;
+}
+
 export function workoutIsPublished(w: Pick<Workout, "is_published">): boolean {
   return w.is_published === true;
 }

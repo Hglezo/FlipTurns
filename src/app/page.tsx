@@ -23,7 +23,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft, ChevronRight, CalendarIcon, CalendarDays, CalendarRange,
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
-  Camera, ImageUp, Loader2, Users, BarChart3, Printer, Eye, EyeOff,
+  Camera, ImageUp, Loader2, Users, BarChart3, Dumbbell, Printer, Eye, EyeOff,
 } from "lucide-react";
 import { FlipTurnsLogo } from "@/components/flipturns-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -53,6 +53,7 @@ import {
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { cn } from "@/lib/utils";
 import { fetchCoachTeamSwimmers, readCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
+import { blobToWorkoutUploadDataUrl, isJpegOrPngBlob, sniffLikelyHeic } from "@/lib/workout-from-image-upload";
 
 const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
 const badgeClassMuted = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground max-md:text-[10px] max-md:px-1.5";
@@ -133,71 +134,6 @@ function coachAnalysisBleedClass(coachReadPr: string): string | undefined {
 
 function workoutListKey(workout: Workout, index: number): string {
   return workout.id ? String(workout.id) : `idx-${index}`;
-}
-
-async function sniffLikelyHeic(blob: Blob): Promise<boolean> {
-  if (blob.size < 12) return false;
-  const b = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
-  if (String.fromCharCode(b[4], b[5], b[6], b[7]) !== "ftyp") return false;
-  const brand = String.fromCharCode(b[8], b[9], b[10], b[11]).toLowerCase();
-  return /^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(brand);
-}
-
-async function isJpegOrPngBlob(blob: Blob): Promise<boolean> {
-  if (blob.size < 8) return false;
-  const b = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
-  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return true;
-  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return true;
-  return false;
-}
-
-async function blobToWorkoutUploadDataUrl(blob: Blob, maxSide = 2048, quality = 0.85): Promise<string> {
-  const drawToJpeg = (img: CanvasImageSource, w: number, h: number) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("canvas");
-    ctx.drawImage(img, 0, 0, w, h);
-    return canvas.toDataURL("image/jpeg", quality);
-  };
-  const scale = (w: number, h: number) => {
-    if (w <= maxSide && h <= maxSide) return { w, h };
-    if (w > h) return { w: maxSide, h: Math.round((h * maxSide) / w) };
-    return { w: Math.round((w * maxSide) / h), h: maxSide };
-  };
-  try {
-    const bmp = await createImageBitmap(blob);
-    try {
-      const { w, h } = scale(bmp.width, bmp.height);
-      return drawToJpeg(bmp, w, h);
-    } finally {
-      bmp.close();
-    }
-  } catch {
-    try {
-      const url = URL.createObjectURL(blob);
-      try {
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = () => reject();
-          img.src = url;
-        });
-        const { w, h } = scale(img.naturalWidth, img.naturalHeight);
-        return drawToJpeg(img, w, h);
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    } catch {
-      return new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("Failed to read image"));
-        r.readAsDataURL(blob);
-      });
-    }
-  }
 }
 
 function buildSwimmerDayCacheKey(dateKey: string, selectedViewSwimmerId: string | null, userId: string): string {
@@ -1496,7 +1432,7 @@ function HomePage() {
           Authorization: `Bearer ${token}`,
           "X-Auth-Token": token,
         },
-        body: JSON.stringify({ image: base64 }),
+        body: JSON.stringify({ image: base64, workoutKind: "swim" }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Failed to analyze image");
@@ -1743,10 +1679,10 @@ function HomePage() {
   };
 
   return (
-    <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
+    <div className="min-h-dvh bg-background pt-[env(safe-area-inset-top)]">
       <div
         ref={setMainMenuShellBoundary}
-        className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 py-5 lg:max-w-[34rem] lg:px-6"
+        className="app-shell mx-auto flex w-full min-w-0 max-w-md flex-col px-5 pt-5 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-5 lg:max-w-[34rem] lg:px-6"
       >
         {/* Header */}
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
@@ -1916,8 +1852,17 @@ function HomePage() {
           </div>
         </div>
 
-        {/* Main menu: Team Management & Analytics */}
-        <nav className={`mb-3 grid gap-2 ${isCoach ? "grid-cols-2" : "grid-cols-1"}`}>
+        {/* Main menu: Weights, then Team (coach) / Volume (desktop; mobile uses bottom tab bar) */}
+        <nav
+          className={`mb-3 hidden gap-2 md:grid ${isCoach ? "grid-cols-3" : "grid-cols-2"}`}
+        >
+          <Link
+            href="/weights"
+            className="flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-4 transition-colors hover:bg-accent/50"
+          >
+            <Dumbbell className="size-6 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium">{t("nav.weights")}</span>
+          </Link>
           {isCoach && (
             <Link
               href="/team-management"
