@@ -246,7 +246,6 @@ const TRANSLATIONS_EN = {
   "group.middleDistance": "Middle Distance",
   "group.distance": "Distance",
   "group.personal": "Personal",
-  "group.notSet": "Not set",
 
   // Workout categories (display labels)
   "category.recovery": "Recovery",
@@ -274,7 +273,6 @@ const TRANSLATIONS_EN = {
 
   // Other
   "common.saved": "Saved",
-  "settings.coachesAssignGroup": "Coaches can assign workouts to your group; all swimmers in that group will see them.",
 
   // Notifications
   "notif.coachWroteWorkout": "Coach {name} wrote a new workout for:",
@@ -561,7 +559,6 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "group.middleDistance": "Medio Fondo",
   "group.distance": "Fondistas",
   "group.personal": "Personal",
-  "group.notSet": "Sin asignar",
 
   // Workout categories
   "category.recovery": "Recuperación",
@@ -589,7 +586,6 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
 
   // Other
   "common.saved": "Guardado",
-  "settings.coachesAssignGroup": "Los entrenadores pueden asignar entrenamientos a tu grupo; todos los nadadores del grupo los verán.",
 
   // Notifications
   "notif.coachWroteWorkout": "El entrenador {name} ha escrito un nuevo entrenamiento para:",

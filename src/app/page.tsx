@@ -51,12 +51,50 @@ import {
   setWorkoutPublished,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
-import { cn, coerceUuidFromRpc } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { fetchCoachTeamSwimmers, readCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
 
 const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
 const badgeClassMuted = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground max-md:text-[10px] max-md:px-1.5";
 const WORKOUT_SELECT = "id, date, content, session, workout_category, pool_size, assigned_to, assigned_to_group, created_at, updated_at, created_by, is_published";
+
+function alertFromCaught(e: unknown, fallback: string) {
+  alert(e instanceof Error ? e.message : fallback);
+}
+
+async function persistGroupAssigneesAcrossRows(
+  rows: Workout[],
+  focal: Workout,
+  focalSavedId: string,
+  swimmers: SwimmerProfile[],
+  excludePeerId: string,
+  skipSiblingId: string,
+): Promise<boolean> {
+  const tf = getTimeframe(focal);
+  const otherIds = rows
+    .filter((w) => w.id && w.assigned_to_group && w.id !== excludePeerId && getTimeframe(w) === tf)
+    .map((w) => w.id!);
+  try {
+    await saveAssigneesForGroupWorkout(focalSavedId, resolvedGroupAssigneeIdsForSave(focal, swimmers), otherIds);
+  } catch (e) {
+    alertFromCaught(e, "Failed to save assignees");
+    return false;
+  }
+  for (const w of rows) {
+    if (!w.assigned_to_group || !w.id || w.id === skipSiblingId) continue;
+    const t = getTimeframe(w);
+    const other = rows
+      .filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === t)
+      .map((x) => x.id!);
+    try {
+      await saveAssigneesForGroupWorkout(w.id, resolvedGroupAssigneeIdsForSave(w, swimmers), other);
+    } catch (e) {
+      alertFromCaught(e, "Failed to save assignees");
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Same horizontal bleed as analysis: CardContent is `pl-4` plus larger `pr-*` for icons.
@@ -605,12 +643,8 @@ function HomePage() {
   monthWorkoutsRef.current = monthWorkouts;
 
   const dateKey = format(selectedDate, "yyyy-MM-dd");
-  const dateKeyRef = useRef(dateKey);
-  dateKeyRef.current = dateKey;
-  const persistGenRef = useRef<Record<string, number>>({});
   const isCoach = role === "coach";
 
-  /** Coach range fetch stores the full team week/month; scope to the dropdown selection here so it cannot drift from a stale cache key or in-flight response. */
   const coachScopedWeekWorkouts = useMemo(
     () => (isCoach ? filterWorkoutsForCoachSwimmerSelection(weekWorkouts, selectedCoachSwimmerId, swimmers) : weekWorkouts),
     [isCoach, weekWorkouts, selectedCoachSwimmerId, swimmers],
@@ -743,85 +777,6 @@ function HomePage() {
   const editingCoachWorkoutIndexRef = useRef(editingWorkoutIndex);
   editingCoachWorkoutIndexRef.current = editingWorkoutIndex;
 
-  const persistCoachAssigneesFromWorkout = useCallback(
-    async (w: Workout) => {
-      const dk = dateKeyRef.current;
-      if (!dk || !w.id || !w.assigned_to_group) return;
-      const sw = swimmersForCoachRef.current;
-      const resolvedPreview = resolvedGroupAssigneeIdsForSave(w, sw);
-      if (
-        isTrainingSwimmerGroup(w.assigned_to_group) &&
-        resolvedPreview.length === 0 &&
-        !Array.isArray(w.assignee_ids) &&
-        sw.length === 0
-      ) {
-        return;
-      }
-      const gen = (persistGenRef.current[w.id] = (persistGenRef.current[w.id] ?? 0) + 1);
-      try {
-        const dayList = await fetchCoachMergedForDate(dk);
-        if (dayList == null) return;
-        if (persistGenRef.current[w.id] !== gen) return;
-        const tf = getTimeframe(w);
-        const otherIds = dayList
-          .filter((x) => x.id && x.assigned_to_group && x.id !== w.id && getTimeframe(x) === tf)
-          .map((x) => x.id!);
-        const resolved = resolvedGroupAssigneeIdsForSave(w, sw);
-        await saveAssigneesForGroupWorkout(w.id, resolved, otherIds, sw);
-        if (persistGenRef.current[w.id] !== gen) return;
-        const merged = await fetchCoachMergedForDate(dk);
-        if (merged == null || persistGenRef.current[w.id] !== gen) return;
-        coachDayMergedCacheRef.current.set(dk, merged);
-        for (const k of [...swimmerDayCacheRef.current.keys()]) {
-          if (k.startsWith(`${dk}:`)) swimmerDayCacheRef.current.delete(k);
-        }
-        setCoachWorkouts(sortCoachDayFiltered(merged, coachFilterRef.current, sw));
-      } catch (e) {
-        if (persistGenRef.current[w.id] === gen) {
-          alert(
-            (e && typeof e === "object" && "message" in e)
-              ? String((e as { message: string }).message)
-              : "Failed to save assignee list",
-          );
-        }
-      }
-    },
-    [fetchCoachMergedForDate],
-  );
-
-  const syncCoachWorkoutAssignmentToServer = useCallback(
-    async (w: Workout) => {
-      if (!w.id) return;
-      const poolSizeToSave = w.pool_size ?? defaultPoolSize ?? null;
-      const rpcPayload = {
-        p_id: w.id,
-        p_content: w.content,
-        p_session: w.session || null,
-        p_workout_category: w.workout_category || null,
-        p_pool_size: poolSizeToSave,
-        p_assigned_to: w.assigned_to ?? null,
-        p_assigned_to_group: w.assigned_to_group ?? null,
-      };
-      const updatePayload = {
-        content: w.content,
-        session: w.session || null,
-        workout_category: w.workout_category,
-        pool_size: poolSizeToSave,
-        assigned_to: w.assigned_to ?? null,
-        assigned_to_group: w.assigned_to_group ?? null,
-        updated_at: new Date().toISOString(),
-      };
-      const { error } = await supabase.rpc("update_workout", rpcPayload);
-      if (error) {
-        if (error.message?.includes("function") && error.message?.includes("does not exist")) {
-          const { error: updErr } = await supabase.from("workouts").update(updatePayload).eq("id", w.id);
-          if (updErr) throw updErr;
-        } else throw error;
-      }
-    },
-    [defaultPoolSize],
-  );
-
   async function refreshCoachWorkouts() {
     const merged = await fetchCoachMergedForDate(dateKey);
     if (merged == null) {
@@ -829,9 +784,6 @@ function HomePage() {
       return;
     }
     coachDayMergedCacheRef.current.set(dateKey, merged);
-    for (const k of [...swimmerDayCacheRef.current.keys()]) {
-      if (k.startsWith(`${dateKey}:`)) swimmerDayCacheRef.current.delete(k);
-    }
     setCoachWorkouts(sortCoachDayFiltered(merged, coachFilterRef.current, swimmersForCoachRef.current));
   }
 
@@ -980,7 +932,7 @@ function HomePage() {
       if (cancelled) return;
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
-        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: true };
+        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: false };
         setCoachWorkouts([...sortedRows, newWorkout]);
         setEditingWorkoutIndex(sortedRows.length);
       } else {
@@ -1142,7 +1094,7 @@ function HomePage() {
           setCoachWorkouts((prev) => prev.map((w, i) => i === index ? { ...inserted, date: normDate(inserted?.date) ?? dateKey, assignee_ids: w.assignee_ids } : w));
         } else { alert(error.message); setLoading(false); return; }
       } else {
-        const id = coerceUuidFromRpc(newId);
+        const id = typeof newId === "string" && newId.length > 0 ? newId : null;
         if (!id) {
           alert(
             "Save failed: the server did not return a new workout id. If personal/group saves fail, apply supabase/migrations/20260326120000_personal_assignment.sql on your Supabase project.",
@@ -1155,28 +1107,10 @@ function HomePage() {
     }
 
     if (workout.assigned_to_group && savedId) {
-      const tf = getTimeframe(workout);
-      const dayList = await fetchCoachMergedForDate(dateKey);
-      if (dayList == null) {
-        alert("Could not reload workouts to save assignees.");
+      if (!(await persistGroupAssigneesAcrossRows(coachWorkouts, workout, savedId, swimmers, workout.id, workout.id))) {
         setLoading(false);
         return;
       }
-      const otherIds = dayList.filter((w) => w.id && w.assigned_to_group && w.id !== savedId && getTimeframe(w) === tf).map((w) => w.id!);
-      const resolvedAssignees = resolvedGroupAssigneeIdsForSave(workout, swimmers);
-      if (
-        isTrainingSwimmerGroup(workout.assigned_to_group) &&
-        resolvedAssignees.length === 0 &&
-        !Array.isArray(workout.assignee_ids) &&
-        swimmers.length === 0
-      ) {
-        alert("Your team roster has not loaded yet. Check your connection, wait a few seconds, then save again.");
-        setLoading(false);
-        return;
-      }
-      try {
-        await saveAssigneesForGroupWorkout(savedId, resolvedAssignees, otherIds, swimmers);
-      } catch (e) { alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees"); setLoading(false); return; }
     }
 
     await refreshCoachWorkouts();
@@ -1188,17 +1122,8 @@ function HomePage() {
     setLoading(true);
     const workout = coachWorkouts[index];
     if (workout.id) {
-      const { error: rpcErr } = await supabase.rpc("delete_workout_coach", { p_id: workout.id });
-      if (rpcErr) {
-        if (rpcErr.message?.includes("function") && rpcErr.message?.includes("does not exist")) {
-          const { error } = await supabase.from("workouts").delete().eq("id", workout.id);
-          if (error) { alert(error.message); setLoading(false); return; }
-        } else {
-          alert(rpcErr.message);
-          setLoading(false);
-          return;
-        }
-      }
+      const { error } = await supabase.from("workouts").delete().eq("id", workout.id);
+      if (error) { alert(error.message); setLoading(false); return; }
     }
     coachDayMergedCacheRef.current.delete(dateKey);
     setCoachWorkouts((prev) => prev.filter((_, i) => i !== index));
@@ -1249,7 +1174,7 @@ function HomePage() {
     void setWorkoutPublished(workout.id, nextPublished).catch((err) => {
       updateCoachWorkout(originalIdx, { is_published: prior });
       syncPublishedEverywhere(workout.id, prior);
-      alert(err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Could not update visibility");
+      alertFromCaught(err, "Could not update visibility");
     });
   }
 
@@ -1268,7 +1193,7 @@ function HomePage() {
     void setWorkoutPublished(workout.id, nextPublished).catch((err) => {
       updateSwimmerWorkout(originalIdx, { is_published: prior });
       syncPublishedEverywhere(workout.id, prior);
-      alert(err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Could not update visibility");
+      alertFromCaught(err, "Could not update visibility");
     });
   }
 
@@ -1383,22 +1308,8 @@ function HomePage() {
           : [];
     const singleAssignee = !isPersonal && assigneeIds.length === 1 ? assigneeIds[0]! : null;
 
-    const syncPersonalOrGroupAssignees = async (savedId: string): Promise<boolean> => {
-      const tf = getTimeframe(workout);
-      const dayList = await fetchCoachMergedForDate(dateKey);
-      if (dayList == null) {
-        alert("Could not reload workouts to save assignees.");
-        return false;
-      }
-      const otherIds = dayList.filter((w) => w.id && w.assigned_to_group && w.id !== savedId && getTimeframe(w) === tf).map((w) => w.id!);
-      try {
-        await saveAssigneesForGroupWorkout(savedId, resolvedGroupAssigneeIdsForSave(workout, swimmers), otherIds, swimmers);
-      } catch (e) {
-        alert((e && typeof e === "object" && "message" in e) ? String((e as { message: string }).message) : "Failed to save assignees");
-        return false;
-      }
-      return true;
-    };
+    const syncPersonalOrGroupAssignees = (savedId: string) =>
+      persistGroupAssigneesAcrossRows(swimmerWorkouts, workout, savedId, swimmers, savedId, savedId);
 
     if (workout.id) {
       const { error } = await supabase.rpc("update_workout_swimmer", {
@@ -1428,7 +1339,7 @@ function HomePage() {
         try {
           await saveAssigneesForIndividualWorkout(workout.id, assigneeIds);
         } catch (e) {
-          alert("Failed to save assignees");
+          alertFromCaught(e, "Failed to save assignees");
           setLoading(false);
           return;
         }
@@ -1464,7 +1375,7 @@ function HomePage() {
           setSwimmerWorkouts((prev) => prev.map((w, i) => i === index ? { ...inserted, date: dateKey, assignee_ids: workout.assignee_ids } : w));
         } else { alert(error.message); setLoading(false); return; }
       } else {
-        const id = coerceUuidFromRpc(newId);
+        const id = typeof newId === "string" && newId.length > 0 ? newId : null;
         if (!id) {
           alert(
             "Save failed: the server did not return a new workout id. If saving a personal workout, apply supabase/migrations/20260326120000_personal_assignment.sql on your Supabase project (adds Personal to assigned_to_group).",
@@ -2528,94 +2439,21 @@ function HomePage() {
                                           : ""
                                   }
                                   onValueChange={(v) => {
-                                    const assigneeSaveErr = (err: unknown) =>
-                                      alert(
-                                        err && typeof err === "object" && "message" in err
-                                          ? String((err as { message: string }).message)
-                                          : "Failed to update assignees",
-                                      );
                                     if (v.startsWith("swimmer:")) {
-                                      const sid = v.slice(8) || null;
-                                      const next: Workout = {
-                                        ...workout,
-                                        assigned_to: sid,
-                                        assigned_to_group: null,
-                                        assignee_ids: undefined,
-                                      };
-                                      updateCoachWorkout(originalIdx, { assigned_to: sid, assigned_to_group: null, assignee_ids: undefined });
-                                      if (workout.id) {
-                                        void (async () => {
-                                          try {
-                                            await syncCoachWorkoutAssignmentToServer(next);
-                                            await saveAssigneesForIndividualWorkout(workout.id, []);
-                                            await refreshCoachWorkouts();
-                                          } catch (e) {
-                                            assigneeSaveErr(e);
-                                          }
-                                        })();
-                                      }
+                                      updateCoachWorkout(originalIdx, { assigned_to: v.slice(8) || null, assigned_to_group: null, assignee_ids: undefined });
                                     } else if (v.startsWith("group:")) {
                                       const g = v.slice(6);
                                       if (g === PERSONAL_ASSIGNMENT) {
-                                        const next: Workout = {
-                                          ...workout,
-                                          assigned_to: null,
-                                          assigned_to_group: PERSONAL_ASSIGNMENT,
-                                          assignee_ids: [],
-                                        };
                                         updateCoachWorkout(originalIdx, {
                                           assigned_to: null,
                                           assigned_to_group: PERSONAL_ASSIGNMENT,
                                           assignee_ids: [],
                                         });
-                                        if (workout.id) {
-                                          void (async () => {
-                                            try {
-                                              await syncCoachWorkoutAssignmentToServer(next);
-                                              await persistCoachAssigneesFromWorkout(next);
-                                            } catch (e) {
-                                              assigneeSaveErr(e);
-                                            }
-                                          })();
-                                        }
                                       } else {
-                                        const next: Workout = {
-                                          ...workout,
-                                          assigned_to: null,
-                                          assigned_to_group: g as SwimmerGroup,
-                                          assignee_ids: undefined,
-                                        };
                                         updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: g as SwimmerGroup, assignee_ids: undefined });
-                                        if (workout.id) {
-                                          void (async () => {
-                                            try {
-                                              await syncCoachWorkoutAssignmentToServer(next);
-                                              await persistCoachAssigneesFromWorkout(next);
-                                            } catch (e) {
-                                              assigneeSaveErr(e);
-                                            }
-                                          })();
-                                        }
                                       }
                                     } else {
-                                      const next: Workout = {
-                                        ...workout,
-                                        assigned_to: null,
-                                        assigned_to_group: null,
-                                        assignee_ids: undefined,
-                                      };
                                       updateCoachWorkout(originalIdx, { assigned_to: null, assigned_to_group: null, assignee_ids: undefined });
-                                      if (workout.id) {
-                                        void (async () => {
-                                          try {
-                                            await syncCoachWorkoutAssignmentToServer(next);
-                                            await saveAssigneesForIndividualWorkout(workout.id, []);
-                                            await refreshCoachWorkouts();
-                                          } catch (e) {
-                                            assigneeSaveErr(e);
-                                          }
-                                        })();
-                                      }
                                     }
                                   }}
                                   swimmers={swimmers}
@@ -2663,9 +2501,6 @@ function HomePage() {
                                         }
                                         return w;
                                       }));
-                                      if (workout.id) {
-                                        void persistCoachAssigneesFromWorkout({ ...workout, assignee_ids: defaultGroupIds });
-                                      }
                                     }} className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" title={t("coach.resetToDefault")} aria-label={t("coach.resetToDefault")}>
                                       <RotateCcw className="size-3.5" />
                                     </button>
@@ -2693,12 +2528,8 @@ function HomePage() {
                                         return (
                                           <button key={s.id} type="button"
                                             onClick={() => {
-                                              let nextIds: string[] | null = null;
-                                              if (isIn) nextIds = currentIds.filter((id) => id !== s.id);
-                                              else if (!hasConflict || isIn) nextIds = [...currentIds, s.id];
-                                              if (nextIds == null) return;
-                                              updateCoachWorkout(originalIdx, { assignee_ids: nextIds });
-                                              if (workout.id) void persistCoachAssigneesFromWorkout({ ...workout, assignee_ids: nextIds });
+                                              if (isIn) updateCoachWorkout(originalIdx, { assignee_ids: currentIds.filter((id) => id !== s.id) });
+                                              else if (!hasConflict || isIn) updateCoachWorkout(originalIdx, { assignee_ids: [...currentIds, s.id] });
                                             }}
                                             title={hasConflict ? t("coach.workoutConflict") : undefined}
                                             className={hasConflict ? "rounded-md border border-red-400/80 bg-red-400/10 text-red-800 dark:text-red-200 dark:bg-red-500/15 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-red-400/20"
@@ -2873,7 +2704,7 @@ function HomePage() {
                   <div className="flex justify-center pt-2">
                     <Button variant="outline" size="icon" onClick={() => {
                       const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
-                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: true };
+                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: false };
                       setEditingWorkoutSnapshot(null);
                       setCoachWorkouts((prev) => {
                         setEditingWorkoutIndex(prev.length);

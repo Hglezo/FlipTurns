@@ -107,16 +107,16 @@ export default function LoginPage() {
         </div>
 
         <Card>
-          <CardHeader className="flex flex-col items-center gap-3 space-y-0 pb-4 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-2">
+          <CardHeader className="flex flex-col items-center gap-3 space-y-0 pb-4 sm:grid sm:grid-cols-3 sm:items-center sm:gap-x-2 sm:gap-y-0">
             <div className="hidden min-w-0 sm:block" aria-hidden />
-            <CardTitle className="min-w-0 max-w-full px-1 text-center leading-snug sm:px-0 sm:leading-none">
+            <CardTitle className="w-full min-w-0 max-w-full px-1 text-center leading-snug break-words sm:px-0 sm:leading-none">
               {formMode === "forgot"
                 ? t("login.forgotPassword")
                 : formMode === "signin"
                   ? t("login.signIn")
                   : t("login.createAccount")}
             </CardTitle>
-            <div className="flex w-full min-w-0 shrink-0 items-center justify-center gap-0.5 sm:w-auto sm:justify-end">
+            <div className="flex w-full min-w-0 shrink-0 items-center justify-center gap-0.5 sm:w-full sm:justify-self-end sm:justify-end">
               <ThemeToggle className="size-8 shrink-0" />
               <div
                 className="flex shrink-0 items-center justify-end gap-1.5"

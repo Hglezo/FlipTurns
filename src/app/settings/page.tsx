@@ -26,6 +26,7 @@ import type { SwimmerGroup } from "@/lib/types";
 import { ArrowLeft, Waves, Trash2, KeyRound, LogOut, Pencil, Smartphone, Monitor } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -53,6 +54,13 @@ const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
   { value: "Distance", label: "Distance" },
 ];
 
+function prefsSegmentButtonClass(selected: boolean) {
+  return cn(
+    "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+    selected ? "border-primary bg-primary/10 hover:bg-primary/20" : "border-input bg-background hover:bg-accent",
+  );
+}
+
 function ViewportPreviewButtons() {
   const { t } = useTranslations();
   const viewport = useViewportPreview();
@@ -60,32 +68,29 @@ function ViewportPreviewButtons() {
   const { previewViewport, setPreviewViewport } = viewport;
   return (
     <>
-      <Button
-        variant={previewViewport === null ? "default" : "outline"}
-        size="sm"
+      <button
+        type="button"
         onClick={() => setPreviewViewport(null)}
-        className="gap-1.5"
+        className={prefsSegmentButtonClass(previewViewport === null)}
       >
         {t("settings.viewportAuto")}
-      </Button>
-      <Button
-        variant={previewViewport === "mobile" ? "default" : "outline"}
-        size="sm"
+      </button>
+      <button
+        type="button"
         onClick={() => setPreviewViewport("mobile")}
-        className="gap-1.5"
+        className={prefsSegmentButtonClass(previewViewport === "mobile")}
       >
         <Smartphone className="size-3.5" />
         {t("settings.viewportMobile")}
-      </Button>
-      <Button
-        variant={previewViewport === "desktop" ? "default" : "outline"}
-        size="sm"
+      </button>
+      <button
+        type="button"
         onClick={() => setPreviewViewport("desktop")}
-        className="gap-1.5"
+        className={prefsSegmentButtonClass(previewViewport === "desktop")}
       >
         <Monitor className="size-3.5" />
         {t("settings.viewportDesktop")}
-      </Button>
+      </button>
     </>
   );
 }
@@ -414,32 +419,12 @@ export default function SettingsPage() {
                 <div className="space-y-2">
                   <Label>{t("settings.group")}</Label>
                   <div className="flex gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!user) return;
-                        setGroupSaving(true);
-                        setGroupError("");
-                        const { error } = await supabase
-                          .from("profiles")
-                          .update({ swimmer_group: null })
-                          .eq("id", user.id);
-                        if (!error) {
-                          await refreshProfile();
-                        } else {
-                          setGroupError(error.message);
-                        }
-                        setGroupSaving(false);
-                      }}
-                      className={`rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:pointer-events-none ${!profile?.swimmer_group ? "border-primary bg-primary/10 hover:bg-primary/20" : "border-input bg-background hover:bg-accent"}`}
-                      disabled={groupSaving}
-                    >
-                      {t("group.notSet")}
-                    </button>
                     {SWIMMER_GROUPS.map((g) => (
-                      <button
+                      <Button
                         key={g.value}
                         type="button"
+                        variant={profile?.swimmer_group === g.value ? "default" : "outline"}
+                        size="sm"
                         onClick={async () => {
                           if (!user) return;
                           setGroupSaving(true);
@@ -455,46 +440,42 @@ export default function SettingsPage() {
                           }
                           setGroupSaving(false);
                         }}
-                        className={`rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:pointer-events-none ${profile?.swimmer_group === g.value ? "border-primary bg-primary/10 hover:bg-primary/20" : "border-input bg-background hover:bg-accent"}`}
                         disabled={groupSaving}
                       >
                         {t(GROUP_KEYS[g.value])}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   {groupError && <p className="text-sm text-destructive">{groupError}</p>}
-                  <p className="text-xs text-muted-foreground">
-                    {t("settings.coachesAssignGroup")}
-                  </p>
                 </div>
               )}
               <div className="space-y-2">
                 <Label>{t("settings.firstDayOfWeek")}</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {WEEK_OPTIONS.map((opt) => (
-                    <Button
+                    <button
                       key={opt.value}
-                      variant={prefs?.firstDayOfWeek === opt.value ? "default" : "outline"}
-                      size="sm"
+                      type="button"
+                      className={prefsSegmentButtonClass(prefs?.firstDayOfWeek === opt.value)}
                       onClick={() => handleSavePrefs({ firstDayOfWeek: opt.value })}
                     >
                       {opt.value === 1 ? t("settings.monday") : t("settings.sunday")}
-                    </Button>
+                    </button>
                   ))}
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>{t("settings.poolSize")}</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {POOL_OPTIONS.map((opt) => (
-                    <Button
+                    <button
                       key={opt.value}
-                      variant={prefs?.poolSize === opt.value ? "default" : "outline"}
-                      size="sm"
+                      type="button"
+                      className={prefsSegmentButtonClass(prefs?.poolSize === opt.value)}
                       onClick={() => handleSavePrefs({ poolSize: opt.value })}
                     >
                       {getPoolLabel(opt.value, t)}
-                    </Button>
+                    </button>
                   ))}
                 </div>
               </div>
