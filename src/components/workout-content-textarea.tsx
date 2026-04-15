@@ -8,7 +8,7 @@ import { splitWorkoutSetTitleLine } from "@/lib/workout-analyzer";
 const SET_TITLE_UNDERLINE = "underline underline-offset-[3px] decoration-foreground/75";
 
 const LINE_CLASS =
-  "workout-line min-w-0 break-words px-3 py-0 text-[15px] leading-relaxed text-foreground/90 outline-none [overflow-wrap:anywhere] whitespace-pre-wrap [tab-size:2] pl-[1.75em] -indent-[1.75em]";
+  "workout-line min-w-0 break-words px-3 py-0 text-[15px] leading-relaxed text-foreground/90 outline-none whitespace-pre-wrap [tab-size:2] pl-[1.75em] -indent-[1.75em]";
 
 const ROOT_CLASS =
   "relative z-10 min-w-0 cursor-text px-0 py-2 outline-none focus-visible:outline-none [&:empty]:min-h-[1lh]";

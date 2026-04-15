@@ -279,6 +279,7 @@ const TRANSLATIONS_EN = {
   "set.kickSet": "Kick Set",
   "set.speedSet": "Speed Set",
   "set.activationSet": "Activation Set",
+  "set.superset": "Superset",
 
   // Other
   "common.saved": "Saved",
@@ -601,6 +602,7 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "set.kickSet": "Set de pies",
   "set.speedSet": "Set de velocidad",
   "set.activationSet": "Serie de activación",
+  "set.superset": "Superserie",
 
   // Other
   "common.saved": "Guardado",
@@ -723,6 +725,7 @@ const SET_NAME_KEYS: Record<string, TranslationKey> = {
   "kick set": "set.kickSet",
   "speed set": "set.speedSet",
   "activation set": "set.activationSet",
+  superset: "set.superset",
 };
 
 export function getSetNameLabel(name: string, t: (k: TranslationKey) => string): string {

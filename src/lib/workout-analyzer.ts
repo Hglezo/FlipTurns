@@ -15,6 +15,7 @@ export interface WorkoutAnalysis {
 
 const SET_NAME_PATTERNS = [
   /^(?:set|serie)\s*#\s*\d+\s*:?/i,
+  /^(?:superset)\b(?:\s+[^:\n]+)?\s*:?/i,
   /^(?:warm[- ]?up|warmup|calentamiento)\s*:?/i,
   /^(?:pre[- ]?set\s+activation|pre[- ]?set|pre\s+set|preset)\s*:?/i,
   /^(?:main\s+set|set\s+principal|activation\s+set)\s*:?/i,
@@ -39,13 +40,19 @@ function parseSetHeadLine(trimmed: string): { name: string; titleEnd: number } |
   if (!trimmed) return null;
   const i = trimmed.search(LONE_STAR);
   const head = (i < 0 ? trimmed : trimmed.slice(0, i)).trimEnd();
+  const repeatM = head.match(/^(\d+\s*[x×]\s+)/i);
+  const repeatPrefix = repeatM ? repeatM[1] : "";
+  const headForPattern = repeatPrefix ? head.slice(repeatPrefix.length) : head;
+  if (!headForPattern) return null;
+
   for (const pattern of SET_NAME_PATTERNS) {
-    if (!pattern.test(head)) continue;
-    const colonIdx = head.indexOf(":");
-    const titleEnd = colonIdx >= 0 ? colonIdx : head.length;
-    const raw = (colonIdx >= 0 ? head.slice(0, colonIdx) : head).trim();
-    if (!raw) continue;
-    return { name: raw.replace(/\buw\s+set\b/i, "Underwater Set"), titleEnd };
+    if (!pattern.test(headForPattern)) continue;
+    const colonIdx = headForPattern.indexOf(":");
+    const innerTitleEnd = colonIdx >= 0 ? colonIdx : headForPattern.length;
+    const titleEnd = repeatPrefix.length + innerTitleEnd;
+    const nameRaw = head.slice(0, titleEnd).trim();
+    if (!nameRaw) continue;
+    return { name: nameRaw.replace(/\buw\s+set\b/i, "Underwater Set"), titleEnd };
   }
   return null;
 }

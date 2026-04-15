@@ -111,6 +111,7 @@ function StrengthWorkoutReadOnlyBody({
   offsetWorkoutBodyForCornerAssignee,
   workoutBodyCornerOffsetClassName,
   draftTapeLabel,
+  badgeRowClearanceClassName,
 }: {
   workout: StrengthWorkout;
   assigneeBadgeLabel: string | null | undefined;
@@ -118,6 +119,7 @@ function StrengthWorkoutReadOnlyBody({
   offsetWorkoutBodyForCornerAssignee: boolean;
   workoutBodyCornerOffsetClassName?: string;
   draftTapeLabel?: string | undefined;
+  badgeRowClearanceClassName?: string;
 }) {
   const s = workout.session?.trim();
   const isAm = s === "AM";
@@ -125,7 +127,12 @@ function StrengthWorkoutReadOnlyBody({
   const sessionPillLabel = isAm ? t("session.am") : isPm ? t("session.pm") : t("main.anytime");
   return (
     <div className="w-full min-w-0 space-y-4">
-      <div className="mb-2 flex w-full min-w-0 flex-nowrap items-center gap-1.5 max-md:gap-1">
+      <div
+        className={cn(
+          "mb-2 flex w-full min-w-0 flex-nowrap items-center gap-1.5 max-md:gap-1",
+          badgeRowClearanceClassName,
+        )}
+      >
         {assigneeBadgeLabel ? <span className={STRENGTH_BADGE_CLASS}>{assigneeBadgeLabel}</span> : null}
         <span
           className={cn(
@@ -1161,18 +1168,16 @@ export default function WeightsPage() {
             <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{captionLine}</p>
           </div>
         ) : null}
-        <CardContent
-          className={cn(
-            "relative space-y-4 py-0 pl-4",
-            hasCornerCaption ? (w.content.trim() ? "pr-[4.75rem]" : "pr-20") : "pr-4",
-          )}
-        >
+        <CardContent className="relative space-y-4 py-0 pl-4 pr-4">
           <StrengthWorkoutReadOnlyBody
             workout={w}
             assigneeBadgeLabel={label}
             t={t}
             offsetWorkoutBodyForCornerAssignee={hasCornerCaption}
             draftTapeLabel={!workoutIsPublished(w) ? t("main.draftTape") : undefined}
+            badgeRowClearanceClassName={
+              hasCornerCaption ? (w.content.trim() ? "pr-[4.75rem]" : "pr-20") : undefined
+            }
           />
           {w.id ? (
             <WorkoutAnalysis
@@ -1818,15 +1823,16 @@ export default function WeightsPage() {
                               <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{coachCaptionLine}</p>
                             ) : null}
                           </div>
-                          <CardContent
-                            className={cn("pl-4 py-0", workout.content.trim() ? "pr-[4.75rem]" : "pr-20")}
-                          >
+                          <CardContent className="pl-4 py-0 pr-4">
                             <StrengthWorkoutReadOnlyBody
                               workout={workout}
                               assigneeBadgeLabel={label}
                               t={t}
                               offsetWorkoutBodyForCornerAssignee={Boolean(coachCaptionLine)}
                               draftTapeLabel={!workoutIsPublished(workout) ? t("main.draftTape") : undefined}
+                              badgeRowClearanceClassName={
+                                workout.content.trim() ? "pr-[4.75rem]" : "pr-20"
+                              }
                             />
                           </CardContent>
                         </>
@@ -2078,13 +2084,13 @@ export default function WeightsPage() {
                     swimmerReadNames && !assignedToCaptionRedundantForWorkout(workout as unknown as Workout, swimmers)
                       ? `${t("main.assignedTo")} ${swimmerReadNames}`
                       : null;
-                  const swimmerReadCornerPr = workout.content.trim()
+                  const swimmerBadgeRowClearance = workout.content.trim()
                     ? canSwimmerEdit
                       ? "pr-[4.75rem]"
                       : "pr-12"
                     : canSwimmerEdit
                       ? "pr-20"
-                      : "pr-4";
+                      : undefined;
 
                   return (
                     <Card
@@ -2143,15 +2149,14 @@ export default function WeightsPage() {
                               <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{swimmerCaptionLine}</p>
                             ) : null}
                           </div>
-                          <CardContent
-                            className={cn("pl-4 py-0", swimmerReadCornerPr)}
-                          >
+                          <CardContent className="pl-4 py-0 pr-4">
                             <StrengthWorkoutReadOnlyBody
                               workout={workout}
                               assigneeBadgeLabel={label}
                               t={t}
                               offsetWorkoutBodyForCornerAssignee={Boolean(swimmerCaptionLine)}
                               draftTapeLabel={!workoutIsPublished(workout) ? t("main.draftTape") : undefined}
+                              badgeRowClearanceClassName={swimmerBadgeRowClearance}
                             />
                           </CardContent>
                         </>
