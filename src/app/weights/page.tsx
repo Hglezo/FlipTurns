@@ -10,6 +10,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
 } from "react";
 import {
@@ -97,6 +98,8 @@ import {
 } from "@/lib/strength-workouts";
 import { blobToWorkoutUploadDataUrl, isJpegOrPngBlob, sniffLikelyHeic } from "@/lib/workout-from-image-upload";
 import type { Workout } from "@/lib/types";
+
+const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
 
 const STRENGTH_BADGE_CLASS =
   "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
@@ -344,6 +347,8 @@ export default function WeightsPage() {
   const addStrengthWorkoutForDateRef = useRef<string | null>(null);
 
   const isCoach = role === "coach";
+  const isSwimmerOwnStrengthDay =
+    role === "swimmer" && (selectedViewSwimmerId === null || selectedViewSwimmerId === user?.id);
   const swimmerGroup = profile?.swimmer_group ?? null;
   const swimmersAsProfile = swimmers as SwimmerProfile[];
 
@@ -1365,6 +1370,74 @@ export default function WeightsPage() {
       },
     }) as const;
 
+  const coachStrengthLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const coachStrengthLongPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const coachStrengthLongPressConsumedClickRef = useRef(false);
+
+  const coachStrengthReadonlyCardHandlers = useCallback(
+    (originalIdx: number, expandOnClick: boolean, workoutKey: string) => {
+      const clearLongPressTimer = () => {
+        if (coachStrengthLongPressTimerRef.current) {
+          clearTimeout(coachStrengthLongPressTimerRef.current);
+          coachStrengthLongPressTimerRef.current = null;
+        }
+        coachStrengthLongPressStartRef.current = null;
+      };
+      const releasePressPointer = (e: PointerEvent<HTMLDivElement>) => {
+        clearLongPressTimer();
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+      };
+      return {
+        ...(expandOnClick
+          ? {
+              role: "button" as const,
+              tabIndex: 0 as const,
+              onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
+                e.preventDefault();
+                setExpandedWorkoutKey((prev) => (prev === workoutKey ? null : workoutKey));
+              },
+            }
+          : {}),
+        onPointerDownCapture(e: PointerEvent<HTMLDivElement>) {
+          if (e.button !== 0) return;
+          if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          clearLongPressTimer();
+          coachStrengthLongPressConsumedClickRef.current = false;
+          coachStrengthLongPressStartRef.current = { x: e.clientX, y: e.clientY };
+          coachStrengthLongPressTimerRef.current = setTimeout(() => {
+            coachStrengthLongPressTimerRef.current = null;
+            coachStrengthLongPressStartRef.current = null;
+            coachStrengthLongPressConsumedClickRef.current = true;
+            setEditingWorkoutIndex(originalIdx);
+          }, 1000);
+        },
+        onPointerMoveCapture(e: PointerEvent<HTMLDivElement>) {
+          if (!coachStrengthLongPressTimerRef.current || !coachStrengthLongPressStartRef.current) return;
+          const s = coachStrengthLongPressStartRef.current;
+          const dx = e.clientX - s.x;
+          const dy = e.clientY - s.y;
+          if (dx * dx + dy * dy > 400) clearLongPressTimer();
+        },
+        onPointerUpCapture: releasePressPointer,
+        onPointerCancelCapture: releasePressPointer,
+        onClick(e: MouseEvent<HTMLDivElement>) {
+          if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
+          if (coachStrengthLongPressConsumedClickRef.current) {
+            coachStrengthLongPressConsumedClickRef.current = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (expandOnClick) setExpandedWorkoutKey((prev) => (prev === workoutKey ? null : workoutKey));
+        },
+      };
+    },
+    [],
+  );
+
   if (authLoading || !user || !role) {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-background">
@@ -1692,7 +1765,9 @@ export default function WeightsPage() {
                     <Card
                       key={wkey}
                       className={cn("relative py-4", coachUsesPreviews && !isEditing && collapsed && "cursor-pointer")}
-                      {...(coachUsesPreviews && !isEditing && collapsed ? previewHandlers(wkey) : {})}
+                      {...(showCoachReadOnlyPreview
+                        ? coachStrengthReadonlyCardHandlers(originalIdx, coachUsesPreviews && collapsed, wkey)
+                        : {})}
                     >
                       {showCoachReadOnlyPreview ? (
                         <>
@@ -1990,7 +2065,9 @@ export default function WeightsPage() {
             ) : (
               <>
                 {swimmerWorkouts.map((workout, originalIdx) => {
-                  const isEditing = swimmerEditingIndex === originalIdx;
+                  const canSwimmerEdit =
+                    isSwimmerOwnStrengthDay && (!workout.id || workout.created_by === user?.id);
+                  const isEditing = swimmerEditingIndex === originalIdx && canSwimmerEdit;
                   const wkey = workoutListKey(workout, originalIdx);
                   const collapsed = swimmerUsesPreviews && expandedWorkoutKey !== wkey;
                   const showSwimmerReadOnlyPreview = !isEditing && (!swimmerUsesPreviews || collapsed);
@@ -2001,6 +2078,13 @@ export default function WeightsPage() {
                     swimmerReadNames && !assignedToCaptionRedundantForWorkout(workout as unknown as Workout, swimmers)
                       ? `${t("main.assignedTo")} ${swimmerReadNames}`
                       : null;
+                  const swimmerReadCornerPr = workout.content.trim()
+                    ? canSwimmerEdit
+                      ? "pr-[4.75rem]"
+                      : "pr-12"
+                    : canSwimmerEdit
+                      ? "pr-20"
+                      : "pr-4";
 
                   return (
                     <Card
@@ -2028,7 +2112,7 @@ export default function WeightsPage() {
                                   <Printer className="size-4" />
                                 </Button>
                               )}
-                              {workout.id ? (
+                              {canSwimmerEdit && workout.id ? (
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -2040,25 +2124,27 @@ export default function WeightsPage() {
                                   {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
                                 </Button>
                               ) : null}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-8 shrink-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSwimmerEditingIndex(originalIdx);
-                                }}
-                                aria-label={t("main.editDay")}
-                              >
-                                <Pencil className="size-4" />
-                              </Button>
+                              {canSwimmerEdit ? (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 shrink-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSwimmerEditingIndex(originalIdx);
+                                  }}
+                                  aria-label={t("main.editDay")}
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                              ) : null}
                             </div>
                             {swimmerCaptionLine ? (
                               <p className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">{swimmerCaptionLine}</p>
                             ) : null}
                           </div>
                           <CardContent
-                            className={cn("pl-4 py-0", workout.content.trim() ? "pr-[4.75rem]" : "pr-20")}
+                            className={cn("pl-4 py-0", swimmerReadCornerPr)}
                           >
                             <StrengthWorkoutReadOnlyBody
                               workout={workout}
@@ -2207,22 +2293,24 @@ export default function WeightsPage() {
                     </Card>
                   );
                 })}
-                <div className="flex justify-center pt-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      setSwimmerWorkouts((prev) => {
-                        setSwimmerEditingIndex(prev.length);
-                        return [...prev, emptySwimmerStrengthRow(dateKey, user?.id)];
-                      });
-                    }}
-                    className="size-10"
-                    aria-label={t("main.addWorkout")}
-                  >
-                    <Plus className="size-5" />
-                  </Button>
-                </div>
+                {isSwimmerOwnStrengthDay ? (
+                  <div className="flex justify-center pt-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        setSwimmerWorkouts((prev) => {
+                          setSwimmerEditingIndex(prev.length);
+                          return [...prev, emptySwimmerStrengthRow(dateKey, user?.id)];
+                        });
+                      }}
+                      className="size-10"
+                      aria-label={t("main.addWorkout")}
+                    >
+                      <Plus className="size-5" />
+                    </Button>
+                  </div>
+                ) : null}
                 {swimmerWorkouts.length === 0 && <p className="text-center text-muted-foreground py-4">{t("main.noWorkoutForDay")}</p>}
               </>
             )}

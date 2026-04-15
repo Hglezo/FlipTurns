@@ -474,7 +474,6 @@ function MonthCalendar({
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
 
 function HomePage() {
@@ -509,42 +508,84 @@ function HomePage() {
   const [expandedMonthDayKey, setExpandedMonthDayKey] = useState<string | null>(null);
   const [aggregatedDayExpandedWorkoutKey, setAggregatedDayExpandedWorkoutKey] = useState<string | null>(null);
   const aggregatedPreviewTapRef = useRef<{ key: string; x: number; y: number } | null>(null);
-  const aggregatedPreviewCardHandlers = useCallback((enabled: boolean, collapsed: boolean, key: string) => {
-    if (!enabled) return {};
-    return {
-      tabIndex: 0 as const,
-      onPointerDownCapture(e: PointerEvent<HTMLDivElement>) {
-        if (e.button !== 0) return;
-        if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
-        e.currentTarget.setPointerCapture(e.pointerId);
-        aggregatedPreviewTapRef.current = { key, x: e.clientX, y: e.clientY };
-      },
-      onPointerUpCapture(e: PointerEvent<HTMLDivElement>) {
+  const coachWorkoutLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const coachWorkoutLongPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const coachWorkoutLongPressConsumedClickRef = useRef(false);
+  const aggregatedPreviewCardHandlers = useCallback(
+    (enabled: boolean, collapsed: boolean, key: string, opts?: { onLongPress?: () => void }) => {
+      const onLongPress = opts?.onLongPress;
+      if (!enabled && !onLongPress) return {};
+      const clearLongPressTimer = () => {
+        if (coachWorkoutLongPressTimerRef.current) {
+          clearTimeout(coachWorkoutLongPressTimerRef.current);
+          coachWorkoutLongPressTimerRef.current = null;
+        }
+        coachWorkoutLongPressStartRef.current = null;
+      };
+      const releasePressPointer = (e: PointerEvent<HTMLDivElement>) => {
+        clearLongPressTimer();
         if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-      },
-      onPointerCancelCapture(e: PointerEvent<HTMLDivElement>) {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-        if (aggregatedPreviewTapRef.current?.key === key) aggregatedPreviewTapRef.current = null;
-      },
-      onClick(e: MouseEvent<HTMLDivElement>) {
-        if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
-        const start = aggregatedPreviewTapRef.current;
-        if (start?.key === key) {
-          aggregatedPreviewTapRef.current = null;
-          const dx = e.clientX - start.x;
-          const dy = e.clientY - start.y;
-          if (dx * dx + dy * dy > 100) return;
-        } else if (start) aggregatedPreviewTapRef.current = null;
-        setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
-      },
-      onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-        if (e.key !== "Enter" && e.key !== " ") return;
-        if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
-        e.preventDefault();
-        setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
-      },
-    };
-  }, []);
+      };
+      return {
+        ...(enabled ? { tabIndex: 0 as const } : {}),
+        onPointerDownCapture(e: PointerEvent<HTMLDivElement>) {
+          if (e.button !== 0) return;
+          if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          if (enabled) aggregatedPreviewTapRef.current = { key, x: e.clientX, y: e.clientY };
+          if (onLongPress) {
+            clearLongPressTimer();
+            coachWorkoutLongPressConsumedClickRef.current = false;
+            coachWorkoutLongPressStartRef.current = { x: e.clientX, y: e.clientY };
+            coachWorkoutLongPressTimerRef.current = setTimeout(() => {
+              coachWorkoutLongPressTimerRef.current = null;
+              coachWorkoutLongPressStartRef.current = null;
+              coachWorkoutLongPressConsumedClickRef.current = true;
+              onLongPress();
+            }, 1000);
+          }
+        },
+        onPointerMoveCapture(e: PointerEvent<HTMLDivElement>) {
+          if (!coachWorkoutLongPressTimerRef.current || !coachWorkoutLongPressStartRef.current) return;
+          const s = coachWorkoutLongPressStartRef.current;
+          const dx = e.clientX - s.x;
+          const dy = e.clientY - s.y;
+          if (dx * dx + dy * dy > 400) clearLongPressTimer();
+        },
+        onPointerUpCapture: releasePressPointer,
+        onPointerCancelCapture(e: PointerEvent<HTMLDivElement>) {
+          releasePressPointer(e);
+          if (aggregatedPreviewTapRef.current?.key === key) aggregatedPreviewTapRef.current = null;
+        },
+        onClick(e: MouseEvent<HTMLDivElement>) {
+          if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
+          if (coachWorkoutLongPressConsumedClickRef.current) {
+            coachWorkoutLongPressConsumedClickRef.current = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (!enabled) return;
+          const start = aggregatedPreviewTapRef.current;
+          if (start?.key === key) {
+            aggregatedPreviewTapRef.current = null;
+            const dx = e.clientX - start.x;
+            const dy = e.clientY - start.y;
+            if (dx * dx + dy * dy > 100) return;
+          } else if (start) aggregatedPreviewTapRef.current = null;
+          setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
+        },
+        onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+          if (!enabled) return;
+          if (e.key !== "Enter" && e.key !== " ") return;
+          if ((e.target as HTMLElement).closest(WORKOUT_CARD_TOGGLE_IGNORE)) return;
+          e.preventDefault();
+          setAggregatedDayExpandedWorkoutKey(collapsed ? key : null);
+        },
+      };
+    },
+    [],
+  );
   const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
   const [editingWorkoutIndex, setEditingWorkoutIndex] = useState<number | null>(null);
   const [editingWorkoutSnapshot, setEditingWorkoutSnapshot] = useState<Workout | null>(null);
@@ -2366,7 +2407,12 @@ function HomePage() {
                         key={workout.id || `new-${originalIdx}`}
                         id={workout.id ? `workout-notification-focus-${workout.id}` : undefined}
                         className={cn("relative py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", coachUsesWorkoutPreviews && !isEditing && "cursor-pointer")}
-                        {...aggregatedPreviewCardHandlers(coachUsesWorkoutPreviews && !isEditing, coachCollapsed, workoutKey)}
+                        {...aggregatedPreviewCardHandlers(
+                          coachUsesWorkoutPreviews && !isEditing,
+                          coachCollapsed,
+                          workoutKey,
+                          !isEditing ? { onLongPress: () => startEditingWorkout(originalIdx) } : undefined,
+                        )}
                       >
                         {isEditing ? (
                           <CardContent className="w-full min-w-0 px-4 py-0">
