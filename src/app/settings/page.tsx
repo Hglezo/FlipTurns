@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +26,7 @@ import { ArrowLeft, Trash2, KeyRound, LogOut, Pencil, Smartphone, Monitor } from
 import { format } from "date-fns";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { IN_APP_CLIENT_ROUTE_KEY } from "@/lib/in-app-navigation";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -222,11 +222,18 @@ export default function SettingsPage() {
     <div className="min-h-dvh bg-background pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
       <div className="app-shell mx-auto flex max-w-md flex-col px-5 pb-8 pt-6 lg:max-w-[34rem] lg:px-6">
         <div className="mb-6 flex items-center justify-between gap-4">
-          <Link href="/">
-            <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>
-              <ArrowLeft className="size-5" />
-            </Button>
-          </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-10"
+            aria-label={t("common.back")}
+            onClick={() =>
+              sessionStorage.getItem(IN_APP_CLIENT_ROUTE_KEY) === "1" ? router.back() : router.push("/")
+            }
+          >
+            <ArrowLeft className="size-5" />
+          </Button>
           <h1 className="text-xl font-bold">{t("common.settings")}</h1>
           <div className="flex items-center gap-1">
             <ThemeToggle />
