@@ -45,6 +45,7 @@ import {
 import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i18n";
 import {
   loadAndMergeWorkouts, filterWorkoutsForSwimmer, filterWorkoutsForCoachSwimmerSelection, sortCoachWorkouts,
+  assigneeBadgeTwClasses,
   assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
   assignedToCaptionRedundantForWorkout,
   resolvedGroupAssigneeIdsForSave,
@@ -196,13 +197,16 @@ function weekDayCollapsedPreviewLabel(
 
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
-  assigneeLabel, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
+  assigneeLabel, assigneeBadgeClassName, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
   className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner, onExpandPreview, namesRowClassName, analysisBleedClassName,
   offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName,
   draftTapeLabel,
 }: {
   workout: Workout; dateKey: string; showLabel: boolean; feedbackRefreshKey: number;
-  onFeedbackChange?: () => void; assigneeLabel?: string | null; assigneeNames?: string | null;
+  onFeedbackChange?: () => void; assigneeLabel?: string | null;
+  /** Overrides default blue assignee pill (e.g. group color). */
+  assigneeBadgeClassName?: string;
+  assigneeNames?: string | null;
   teammateNames?: string | null; className?: string; readOnly?: boolean; compact?: boolean;
   draftTapeLabel?: string;
   contentDisplay?: "full" | "preview";
@@ -265,7 +269,7 @@ function WorkoutBlock({
           compact ? "mb-1" : "mb-2",
         )}
       >
-        {assigneeLabel && <span className={badgeClass}>{assigneeLabel}</span>}
+        {assigneeLabel && <span className={assigneeBadgeClassName ?? badgeClass}>{assigneeLabel}</span>}
         <span
           className={cn(
             "inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase max-md:shrink-0 max-md:px-1.5 max-md:text-[10px]",
@@ -1591,6 +1595,7 @@ function HomePage() {
       <WorkoutBlock key={workout.id || dayKey} workout={workout} dateKey={dayKey} showLabel={opts.showLabel ?? true}
         feedbackRefreshKey={feedbackRefreshKey} onFeedbackChange={() => setFeedbackRefreshKey((k) => k + 1)}
         className={opts.compact ? "mt-1" : "mt-4"} compact={opts.compact} readOnly={opts.readOnly} assigneeLabel={label}
+        assigneeBadgeClassName={assigneeBadgeTwClasses(workout)}
         assigneeNames={assigneeNames}
         teammateNames={teammateNamesProp}
         draftTapeLabel={!workoutIsPublished(workout) ? t("main.draftTape") : undefined}
@@ -2329,6 +2334,7 @@ function HomePage() {
                             cardContentClassName={`pl-4 py-0 ${swimmerDayReadPr}`}
                             renderBody={({ offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName }) => (
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={swimmerWorkouts.length > 1} assigneeLabel={label}
+                                assigneeBadgeClassName={assigneeBadgeTwClasses(workout)}
                                 assigneeNames={undefined}
                                 offsetWorkoutBodyForCornerAssignee={offsetWorkoutBodyForCornerAssignee}
                                 workoutBodyCornerOffsetClassName={workoutBodyCornerOffsetClassName}
@@ -2660,6 +2666,7 @@ function HomePage() {
                             cardContentClassName={cn("pl-4 py-0", coachReadPr)}
                             renderBody={({ offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName }) => (
                               <WorkoutBlock workout={workout} dateKey={dateKey} showLabel={coachWorkouts.length > 1} assigneeLabel={label}
+                                assigneeBadgeClassName={assigneeBadgeTwClasses(workout)}
                                 assigneeNames={undefined}
                                 offsetWorkoutBodyForCornerAssignee={offsetWorkoutBodyForCornerAssignee}
                                 workoutBodyCornerOffsetClassName={workoutBodyCornerOffsetClassName}

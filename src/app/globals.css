@@ -139,6 +139,34 @@
   }
 }
 
+/* Mobile main-tab swipe shell. `overflow-x: clip` (not scroll) so the wrapper's
+   off-screen translate doesn't create a scrollbar or a scroll container. */
+.mobile-tab-swipe-clip {
+  overflow-x: clip;
+  width: 100%;
+}
+
+.mobile-tab-swipe-wrapper {
+  width: 100%;
+}
+
+/* Claim horizontal gestures from descendants (e.g. Recharts SVG sets its own
+   touch-action and otherwise swallows the first move sample of our swipe). */
+.mobile-tab-swipe-wrapper * {
+  touch-action: pan-y;
+}
+
+.mobile-tab-swipe-ghost {
+  position: fixed;
+  inset: 0;
+  z-index: 30; /* below tab bar (z-40), above page content */
+  pointer-events: none;
+  visibility: hidden;
+  overflow: hidden;
+  background: var(--background);
+  contain: layout paint;
+}
+
 /* Viewport preview overrides (settings → Default view) */
 body[data-viewport-preview="mobile"] .app-shell {
   max-width: 28rem !important;

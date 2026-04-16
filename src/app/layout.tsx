@@ -7,6 +7,7 @@ import { I18nProvider } from "@/components/i18n-provider";
 import { LangAttribute } from "@/components/lang-attribute";
 import { AuthProvider } from "@/components/auth-provider";
 import { MobileMainTabBar } from "@/components/mobile-main-tab-bar";
+import { MobileMainTabSwipeShell } from "@/components/mobile-main-tab-swipe-shell";
 import { InAppRouteChangeTracker } from "@/components/in-app-route-change-tracker";
 import { getSiteUrl } from "@/lib/site-url";
 
@@ -90,7 +91,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <I18nProvider>
               <LangAttribute />
               <InAppRouteChangeTracker />
-              {children}
+              <MobileMainTabSwipeShell>{children}</MobileMainTabSwipeShell>
               <MobileMainTabBar />
               </I18nProvider>
             </ViewportPreviewProvider>

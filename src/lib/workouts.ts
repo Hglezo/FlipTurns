@@ -181,6 +181,27 @@ export function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): s
   return names.length ? names.join(", ") : null;
 }
 
+const ASSIGNEE_BADGE_BASE =
+  "inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium max-md:text-[10px] max-md:px-1.5";
+
+/** Pill styles for the assignee / group chip (training groups are color-coded; personal and individuals stay accent blue). */
+export function assigneeBadgeTwClasses(workout: Pick<Workout, "assigned_to_group">): string {
+  const g = workout.assigned_to_group;
+  if (!isTrainingSwimmerGroup(g)) {
+    return `${ASSIGNEE_BADGE_BASE} bg-accent-blue/15 text-accent-blue`;
+  }
+  if (g === "Sprint") {
+    return `${ASSIGNEE_BADGE_BASE} bg-purple-500/15 text-purple-700 dark:text-purple-400`;
+  }
+  if (g === "Middle distance") {
+    return `${ASSIGNEE_BADGE_BASE} bg-orange-500/15 text-orange-700 dark:text-orange-400`;
+  }
+  if (g === "Distance") {
+    return `${ASSIGNEE_BADGE_BASE} bg-green-500/15 text-green-700 dark:text-green-400`;
+  }
+  return `${ASSIGNEE_BADGE_BASE} bg-accent-blue/15 text-accent-blue`;
+}
+
 /** Roster user ids for this workout (no UI excludes). */
 export function assigneeUserIdsForWorkout(workout: Workout, swimmers: SwimmerProfile[]): string[] {
   if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {

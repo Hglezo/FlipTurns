@@ -96,13 +96,11 @@ import {
   saveStrengthAssigneesForIndividualWorkout,
   strengthRpcMissingInSchemaCache,
 } from "@/lib/strength-workouts";
+import { assigneeBadgeTwClasses } from "@/lib/workouts";
 import { blobToWorkoutUploadDataUrl, isJpegOrPngBlob, sniffLikelyHeic } from "@/lib/workout-from-image-upload";
 import type { Workout } from "@/lib/types";
 
 const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
-
-const STRENGTH_BADGE_CLASS =
-  "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
 
 function StrengthWorkoutReadOnlyBody({
   workout,
@@ -133,7 +131,7 @@ function StrengthWorkoutReadOnlyBody({
           badgeRowClearanceClassName,
         )}
       >
-        {assigneeBadgeLabel ? <span className={STRENGTH_BADGE_CLASS}>{assigneeBadgeLabel}</span> : null}
+        {assigneeBadgeLabel ? <span className={assigneeBadgeTwClasses(workout)}>{assigneeBadgeLabel}</span> : null}
         <span
           className={cn(
             "inline-flex shrink-0 items-center whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase max-md:shrink-0 max-md:px-1.5 max-md:text-[10px]",
