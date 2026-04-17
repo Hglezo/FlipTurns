@@ -50,6 +50,8 @@ import {
   assignedToCaptionRedundantForWorkout,
   resolvedGroupAssigneeIdsForSave,
   setWorkoutPublished,
+  getSwimWorkoutIncompleteMeta,
+  type SwimWorkoutIncompleteMeta,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { cn } from "@/lib/utils";
@@ -484,7 +486,6 @@ function HomePage() {
   const prefs = usePreferences();
   const { t, formatDate } = useTranslations();
   const weekStartsOn = prefs?.weekStartsOn ?? (1 as 0 | 1);
-  const defaultPoolSize = prefs?.preferences?.poolSize ?? "LCM";
   const { user, profile, role, signOut, loading: authLoading } = useAuth();
   const swimmerGroup = profile?.role === "swimmer" ? profile?.swimmer_group : null;
   const router = useRouter();
@@ -511,6 +512,7 @@ function HomePage() {
   const [expandedDayKey, setExpandedDayKey] = useState<string | null>(null);
   const [expandedMonthDayKey, setExpandedMonthDayKey] = useState<string | null>(null);
   const [aggregatedDayExpandedWorkoutKey, setAggregatedDayExpandedWorkoutKey] = useState<string | null>(null);
+  const [swimSaveIncompleteNudge, setSwimSaveIncompleteNudge] = useState<SwimWorkoutIncompleteMeta | null>(null);
   const aggregatedPreviewTapRef = useRef<{ key: string; x: number; y: number } | null>(null);
   const coachWorkoutLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coachWorkoutLongPressStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -1026,10 +1028,15 @@ function HomePage() {
   async function saveSingleWorkout(index: number) {
     if (!dateKey || index < 0 || index >= coachWorkouts.length) return;
     const workout = coachWorkouts[index];
+    const incomplete = getSwimWorkoutIncompleteMeta(workout, "coach");
+    if (incomplete) {
+      setSwimSaveIncompleteNudge(incomplete);
+      return;
+    }
     setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null);
     setLoading(true); setSaved(false);
     let savedId: string | undefined = workout.id;
-    const poolSizeToSave = workout.pool_size ?? defaultPoolSize ?? null;
+    const poolSizeToSave = workout.pool_size ?? null;
     const updatePayload = {
       content: workout.content, session: workout.session || null,
       workout_category: workout.workout_category, pool_size: poolSizeToSave,
@@ -1276,9 +1283,14 @@ function HomePage() {
   async function saveSingleWorkoutSwimmer(index: number) {
     if (!dateKey || !user || index < 0 || index >= swimmerWorkouts.length) return;
     const workout = swimmerWorkouts[index];
+    const incomplete = getSwimWorkoutIncompleteMeta(workout, "swimmer");
+    if (incomplete) {
+      setSwimSaveIncompleteNudge(incomplete);
+      return;
+    }
     setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null);
     setLoading(true); setSaved(false);
-    const poolSizeToSave = workout.pool_size ?? defaultPoolSize ?? null;
+    const poolSizeToSave = workout.pool_size ?? null;
     const isPersonal = workout.assigned_to_group === PERSONAL_ASSIGNMENT;
     const assigneeIds = isPersonal
       ? resolvedGroupAssigneeIdsForSave(workout, swimmers)
@@ -1725,6 +1737,7 @@ function HomePage() {
   };
 
   return (
+    <>
     <div className="min-h-dvh bg-background pt-[env(safe-area-inset-top)]">
       <div
         ref={setMainMenuShellBoundary}
@@ -2135,7 +2148,7 @@ function HomePage() {
                                   onChange={(e) => updateSwimmerWorkout(originalIdx, { workout_category: e.target.value || null })}>
                                   {WORKOUT_CATEGORIES.map((v) => <option key={v || "empty"} value={v}>{getCategoryLabel(v, t)}</option>)}
                                 </select>
-                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size ?? defaultPoolSize ?? ""}
+                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size ?? ""}
                                   onChange={(e) => updateSwimmerWorkout(originalIdx, { pool_size: (e.target.value || null) as "LCM" | "SCM" | "SCY" | null })}>
                                   <option value="">{t("main.pool")}</option>
                                   {POOL_SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{getPoolLabel(opt.value, t)}</option>)}
@@ -2470,7 +2483,7 @@ function HomePage() {
                                   onChange={(e) => updateCoachWorkout(originalIdx, { workout_category: e.target.value || null })}>
                                   {WORKOUT_CATEGORIES.map((v) => <option key={v || "empty"} value={v}>{getCategoryLabel(v, t)}</option>)}
                                 </select>
-                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size ?? defaultPoolSize ?? ""}
+                                <select className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={workout.pool_size ?? ""}
                                   onChange={(e) => updateCoachWorkout(originalIdx, { pool_size: (e.target.value || null) as "LCM" | "SCM" | "SCY" | null })}>
                                   <option value="">{t("main.pool")}</option>
                                   {POOL_SIZE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{getPoolLabel(opt.value, t)}</option>)}
@@ -2731,6 +2744,36 @@ function HomePage() {
         )}
       </div>
     </div>
+    {swimSaveIncompleteNudge && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="swim-save-incomplete-title"
+      >
+        <div className="w-full max-w-sm rounded-2xl border border-amber-300/80 bg-amber-50/95 px-4 py-3 text-amber-950 shadow-lg dark:border-amber-600/45 dark:bg-amber-950/90 dark:text-amber-50">
+          <p id="swim-save-incomplete-title" className="text-sm font-semibold leading-snug">
+            {t("main.saveIncompleteTitle")}
+          </p>
+          <ul className="mt-2 space-y-0.5 text-sm">
+            {swimSaveIncompleteNudge.missingWho ? <li>- {t("main.saveIncompleteWho")}</li> : null}
+            {swimSaveIncompleteNudge.missingCategory ? <li>- {t("main.saveIncompleteType")}</li> : null}
+            {swimSaveIncompleteNudge.missingPool ? <li>- {t("main.saveIncompletePool")}</li> : null}
+          </ul>
+          <div className="mt-3 flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              className="rounded-full bg-amber-600 px-4 text-amber-50 hover:bg-amber-600/90 dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-400/90"
+              onClick={() => setSwimSaveIncompleteNudge(null)}
+            >
+              {t("main.saveIncompleteDismiss")}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

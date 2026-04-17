@@ -13,10 +13,9 @@ import {
   savePreferences,
   DEFAULT_PREFERENCES,
   type Preferences,
-  type PoolSize,
   type FirstDayOfWeek,
 } from "@/lib/preferences";
-import { LOCALES, GROUP_KEYS, getPoolLabel, type Locale } from "@/lib/i18n";
+import { LOCALES, GROUP_KEYS, type Locale } from "@/lib/i18n";
 import { useTranslations } from "@/components/i18n-provider";
 import { usePreferences } from "@/components/preferences-provider";
 import { useViewportPreview } from "@/components/viewport-preview-provider";
@@ -36,12 +35,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-const POOL_OPTIONS: { value: PoolSize; label: string }[] = [
-  { value: "LCM", label: "LCM" },
-  { value: "SCM", label: "SCM" },
-  { value: "SCY", label: "SCY" },
-];
 
 const WEEK_OPTIONS: { value: FirstDayOfWeek; label: string }[] = [
   { value: 1, label: "Monday" },
@@ -464,21 +457,6 @@ export default function SettingsPage() {
                       onClick={() => handleSavePrefs({ firstDayOfWeek: opt.value })}
                     >
                       {opt.value === 1 ? t("settings.monday") : t("settings.sunday")}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>{t("settings.poolSize")}</Label>
-                <div className="flex gap-2 flex-wrap">
-                  {POOL_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      className={prefsSegmentButtonClass(prefs?.poolSize === opt.value)}
-                      onClick={() => handleSavePrefs({ poolSize: opt.value })}
-                    >
-                      {getPoolLabel(opt.value, t)}
                     </button>
                   ))}
                 </div>

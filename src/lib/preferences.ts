@@ -1,10 +1,8 @@
 import type { Locale } from "./i18n";
 
-export type PoolSize = "LCM" | "SCM" | "SCY";
 export type FirstDayOfWeek = 0 | 1;
 
 export interface Preferences {
-  poolSize: PoolSize;
   firstDayOfWeek: FirstDayOfWeek;
   defaultTheme: "light" | "dark";
   locale: Locale;
@@ -15,7 +13,6 @@ const PREFERENCES_KEY = "swim-preferences";
 export const THEME_STORAGE_KEY = "swim-theme";
 
 export const DEFAULT_PREFERENCES: Preferences = {
-  poolSize: "LCM",
   firstDayOfWeek: 1,
   defaultTheme: "dark",
   locale: "en-US",
@@ -26,8 +23,9 @@ export function getPreferences(): Preferences {
   try {
     const raw = localStorage.getItem(PREFERENCES_KEY);
     if (!raw) return DEFAULT_PREFERENCES;
-    const parsed = JSON.parse(raw) as Partial<Preferences>;
-    return { ...DEFAULT_PREFERENCES, ...parsed };
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    delete parsed.poolSize;
+    return { ...DEFAULT_PREFERENCES, ...(parsed as Partial<Preferences>) };
   } catch {
     return DEFAULT_PREFERENCES;
   }

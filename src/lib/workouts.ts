@@ -184,22 +184,52 @@ export function assignmentLabel(workout: Workout, swimmers: SwimmerProfile[]): s
 const ASSIGNEE_BADGE_BASE =
   "inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium max-md:text-[10px] max-md:px-1.5";
 
-/** Pill styles for the assignee / group chip (training groups are color-coded; personal and individuals stay accent blue). */
+/** Assignee / group pill colors. */
 export function assigneeBadgeTwClasses(workout: Pick<Workout, "assigned_to_group">): string {
   const g = workout.assigned_to_group;
   if (!isTrainingSwimmerGroup(g)) {
-    return `${ASSIGNEE_BADGE_BASE} bg-accent-blue/15 text-accent-blue`;
+    return `${ASSIGNEE_BADGE_BASE} bg-orange-500/15 text-orange-700 dark:text-orange-400`;
   }
   if (g === "Sprint") {
     return `${ASSIGNEE_BADGE_BASE} bg-purple-500/15 text-purple-700 dark:text-purple-400`;
   }
   if (g === "Middle distance") {
-    return `${ASSIGNEE_BADGE_BASE} bg-orange-500/15 text-orange-700 dark:text-orange-400`;
+    return `${ASSIGNEE_BADGE_BASE} bg-accent-blue/15 text-accent-blue`;
   }
   if (g === "Distance") {
     return `${ASSIGNEE_BADGE_BASE} bg-green-500/15 text-green-700 dark:text-green-400`;
   }
   return `${ASSIGNEE_BADGE_BASE} bg-accent-blue/15 text-accent-blue`;
+}
+
+export type SwimWorkoutIncompleteMeta = {
+  missingWho: boolean;
+  missingCategory: boolean;
+  missingPool: boolean;
+};
+
+export function getSwimWorkoutIncompleteMeta(
+  workout: Pick<Workout, "assigned_to" | "assigned_to_group" | "assignee_ids" | "workout_category" | "pool_size">,
+  role: "coach" | "swimmer",
+): SwimWorkoutIncompleteMeta | null {
+  const missingPool = workout.pool_size !== "LCM" && workout.pool_size !== "SCM" && workout.pool_size !== "SCY";
+  const missingCategory = !workout.workout_category?.trim();
+
+  let hasWho = false;
+  if (role === "coach") {
+    if (workout.assigned_to && !workout.assigned_to_group) hasWho = true;
+    else if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) hasWho = (workout.assignee_ids?.length ?? 0) > 0;
+    else if (workout.assigned_to_group && isTrainingSwimmerGroup(workout.assigned_to_group)) hasWho = true;
+  } else if (workout.assigned_to_group === PERSONAL_ASSIGNMENT) {
+    hasWho = (workout.assignee_ids?.length ?? 0) > 0;
+  } else {
+    const ids = workout.assignee_ids?.length ? workout.assignee_ids : workout.assigned_to ? [workout.assigned_to] : [];
+    hasWho = ids.length > 0;
+  }
+
+  const missingWho = !hasWho;
+  if (!missingWho && !missingCategory && !missingPool) return null;
+  return { missingWho, missingCategory, missingPool };
 }
 
 /** Roster user ids for this workout (no UI excludes). */
