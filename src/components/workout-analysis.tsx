@@ -355,7 +355,7 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
                       {!readOnly && (
                         <div className="flex shrink-0 gap-1">
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => startEdit(fb)} aria-label={t("feedback.edit")}>
-                            <Pencil className="size-3.5" />
+                            <Pencil className="size-4" />
                           </Button>
                           <Button
                             variant="ghost"

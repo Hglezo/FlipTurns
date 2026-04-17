@@ -46,7 +46,7 @@ import { getCategoryLabel, getPoolLabel, GROUP_KEYS, type Locale } from "@/lib/i
 import {
   loadAndMergeWorkouts, filterWorkoutsForSwimmer, filterWorkoutsForCoachSwimmerSelection, sortCoachWorkouts,
   assigneeBadgeTwClasses,
-  assignmentLabel, assignedToNames, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
+  assignmentLabel, assignedToNamesForCaption, teammateNames, isViewerInWorkout, dayPreviewLabel, saveAssigneesForGroupWorkout, saveAssigneesForIndividualWorkout,
   assignedToCaptionRedundantForWorkout,
   resolvedGroupAssigneeIdsForSave,
   setWorkoutPublished,
@@ -298,7 +298,7 @@ function WorkoutBlock({
             aria-label={aggregatedPdfBelowBanner.exportAria}
             onClick={aggregatedPdfBelowBanner.onClick}
           >
-            <Printer className="size-4" />
+            <Printer className="size-5" />
           </Button>
         </div>
       )}
@@ -1597,9 +1597,9 @@ function HomePage() {
       opts.namesInHeader && opts.readOnly
         ? undefined
         : opts.readOnly
-          ? assignedToNames(workout, swimmers, opts.excludeIds)
+          ? assignedToNamesForCaption(workout, swimmers, t("main.assigneeNobody"), opts.excludeIds)
           : !showTeammatesForSwimmer
-            ? assignedToNames(workout, swimmers, opts.excludeIds)
+            ? assignedToNamesForCaption(workout, swimmers, t("main.assigneeNobody"), opts.excludeIds)
             : undefined;
     if (assigneeNames && assignedToCaptionRedundantForWorkout(workout, swimmers)) assigneeNames = undefined;
     const teammateNamesProp = showTeammatesForSwimmer ? teammateNames(workout, swimmers, user?.id, opts.excludeIds) : undefined;
@@ -1646,7 +1646,7 @@ function HomePage() {
           }) : <p className="text-xs text-muted-foreground">{t("main.noWorkout")}</p>}
           actions={(isCoach || isSwimmerOwnView) && expandedDayKey === dayKey ? (
             dayWorkouts.length > 0
-              ? <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}><Pencil className="size-4" />{t("main.editDay")}</Button>
+              ? <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}><Pencil className="size-5" />{t("main.editDay")}</Button>
               : <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndAddWorkout(day)}><Plus className="size-4" />{t("main.addWorkout")}</Button>
           ) : undefined}
         />
@@ -1719,7 +1719,7 @@ function HomePage() {
                                 </Card>
                               );
                             })}
-                            {(isCoach || isSwimmerOwnView) && <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}><Pencil className="size-4" />{t("main.editDay")}</Button>}
+                            {(isCoach || isSwimmerOwnView) && <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}><Pencil className="size-5" />{t("main.editDay")}</Button>}
                           </>
                         ) : (isCoach || isSwimmerOwnView) ? (
                           <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndAddWorkout(day)}><Plus className="size-4" />{t("main.addWorkout")}</Button>
@@ -1942,7 +1942,7 @@ function HomePage() {
 
         {/* Date bar */}
         <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
-          <Button variant="ghost" size="icon" className="size-10 shrink-0" onClick={() => changeDate(-1)}><ChevronLeft className="size-5" /><span className="sr-only">Previous</span></Button>
+          <Button variant="ghost" size="icon" className="size-10 shrink-0" onClick={() => changeDate(-1)}><ChevronLeft className="size-6" /><span className="sr-only">Previous</span></Button>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="ghost" className="min-w-0 flex-1 gap-2 font-medium"><CalendarIcon className="size-4 shrink-0" /><span className="truncate">{getDateBarLabel()}</span></Button>
@@ -1951,7 +1951,7 @@ function HomePage() {
               <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && handleMonthCalendarSelect(d)} weekStartsOn={weekStartsOn} />
             </PopoverContent>
           </Popover>
-          <Button variant="ghost" size="icon" className="size-10 shrink-0" onClick={() => changeDate(1)}><ChevronRight className="size-5" /><span className="sr-only">Next</span></Button>
+          <Button variant="ghost" size="icon" className="size-10 shrink-0" onClick={() => changeDate(1)}><ChevronRight className="size-6" /><span className="sr-only">Next</span></Button>
         </div>
 
         {/* View toggle */}
@@ -2002,7 +2002,7 @@ function HomePage() {
                                     downloadWorkoutPdf([workout]);
                                   }}
                                 >
-                                  <Printer className="size-4" />
+                                  <Printer className="size-5" />
                                 </Button>
                               )}
                               <Button
@@ -2024,7 +2024,7 @@ function HomePage() {
                               <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0"
                                 title={t("main.exportPdfTitle")} aria-label={t("main.exportPdf")}
                                 onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
-                                <Printer className="size-4" />
+                                <Printer className="size-5" />
                               </Button>
                             )
                           )}
@@ -2078,7 +2078,9 @@ function HomePage() {
                     const conflictIds = swimmerIdsInTimeframeExcludingSwimmer(originalIdx);
                     const viewerInWorkout = user?.id ? isViewerInWorkout(workout, user.id, swimmers) : false;
                     const teammateLine = teammateNames(workout, swimmers, user?.id, Array.from(conflictIds));
-                    const assignedLine = !viewerInWorkout ? assignedToNames(workout, swimmers, Array.from(conflictIds)) : null;
+                    const assignedLine = !viewerInWorkout
+                      ? assignedToNamesForCaption(workout, swimmers, t("main.assigneeNobody"), Array.from(conflictIds))
+                      : null;
                     const swimmerEditShowsFeedback =
                       assigneeIds.length > 0 && assigneeIds.every((id) => id === user?.id);
                     const workoutKey = workoutListKey(workout, originalIdx);
@@ -2275,13 +2277,13 @@ function HomePage() {
                                         onClick={(e) => void toggleSwimmerWorkoutPublished(originalIdx, e)}
                                         aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
                                       >
-                                        {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                        {workoutIsPublished(workout) ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
                                       </Button>
                                     )}
                                     {!swimmerMyCollapsed && !canSwimmerEdit && workout.content.trim() && (
                                       <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
                                         aria-label={t("main.exportPdf")} onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
-                                        <Printer className="size-4" />
+                                        <Printer className="size-5" />
                                       </Button>
                                     )}
                                     {!swimmerMyCollapsed && canSwimmerEdit && (
@@ -2291,7 +2293,7 @@ function HomePage() {
                                           setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null);
                                           setSwimmerEditingIndex(originalIdx);
                                         }} aria-label="Edit workout">
-                                        <Pencil className="size-4" />
+                                        <Pencil className="size-5" />
                                       </Button>
                                     )}
                                     <Button
@@ -2313,7 +2315,7 @@ function HomePage() {
                                     {workout.content.trim() && (
                                       <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
                                         aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
-                                        <Printer className="size-4" />
+                                        <Printer className="size-5" />
                                       </Button>
                                     )}
                                     {canSwimmerEdit && (
@@ -2327,10 +2329,10 @@ function HomePage() {
                                             onClick={(e) => void toggleSwimmerWorkoutPublished(originalIdx, e)}
                                             aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
                                           >
-                                            {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                            {workoutIsPublished(workout) ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
                                           </Button>
                                         ) : null}
-                                        <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => { setSwimmerEditingSnapshot(workout ? { ...workout, assignee_ids: workout.assignee_ids ? [...workout.assignee_ids] : undefined } : null); setSwimmerEditingIndex(originalIdx); }} aria-label="Edit workout"><Pencil className="size-5" /></Button>
                                       </>
                                     )}
                                   </>
@@ -2420,7 +2422,12 @@ function HomePage() {
                     const coachReadPr = coachUsesWorkoutPreviews
                       ? workout.content.trim() ? "pr-[4.75rem]" : "pr-20"
                       : workout.content.trim() ? "pr-[4.5rem]" : "pr-12";
-                    const coachReadAssigneeNames = assignedToNames(workout, swimmers, Array.from(swimmerIdsInTimeframeExcluding(originalIdx)));
+                    const coachReadAssigneeNames = assignedToNamesForCaption(
+                      workout,
+                      swimmers,
+                      t("main.assigneeNobody"),
+                      Array.from(swimmerIdsInTimeframeExcluding(originalIdx)),
+                    );
                     return (
                       <Card
                         key={workout.id || `new-${originalIdx}`}
@@ -2619,13 +2626,13 @@ function HomePage() {
                                         onClick={(e) => void toggleCoachWorkoutPublished(originalIdx, e)}
                                         aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
                                       >
-                                        {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                        {workoutIsPublished(workout) ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
                                       </Button>
                                     ) : null}
                                     {!coachCollapsed && (
                                       <Button variant="ghost" size="icon" className="size-8 shrink-0"
                                         onClick={(e) => { e.stopPropagation(); startEditingWorkout(originalIdx); }} aria-label="Edit workout">
-                                        <Pencil className="size-4" />
+                                        <Pencil className="size-5" />
                                       </Button>
                                     )}
                                     <Button
@@ -2648,7 +2655,7 @@ function HomePage() {
                                       <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
                                         aria-label={t("main.exportPdf")}
                                         onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
-                                        <Printer className="size-4" />
+                                        <Printer className="size-5" />
                                       </Button>
                                     )}
                                     {workout.id ? (
@@ -2660,12 +2667,12 @@ function HomePage() {
                                         onClick={(e) => void toggleCoachWorkoutPublished(originalIdx, e)}
                                         aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
                                       >
-                                        {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                        {workoutIsPublished(workout) ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
                                       </Button>
                                     ) : null}
                                     <Button variant="ghost" size="icon" className="size-8 shrink-0"
                                       onClick={(e) => { e.stopPropagation(); startEditingWorkout(originalIdx); }} aria-label="Edit workout">
-                                      <Pencil className="size-4" />
+                                      <Pencil className="size-5" />
                                     </Button>
                                   </>
                                 )}

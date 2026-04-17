@@ -225,7 +225,7 @@ export default function SettingsPage() {
               sessionStorage.getItem(IN_APP_CLIENT_ROUTE_KEY) === "1" ? router.back() : router.push("/")
             }
           >
-            <ArrowLeft className="size-5" />
+            <ArrowLeft className="size-6" />
           </Button>
           <h1 className="text-xl font-bold">{t("common.settings")}</h1>
           <div className="flex items-center gap-1">
@@ -257,7 +257,7 @@ export default function SettingsPage() {
                     setProfileError("");
                   }}
                 >
-                  <Pencil className="size-4" />
+                  <Pencil className="size-5" />
                 </Button>
               </CardAction>
             </CardHeader>

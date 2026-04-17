@@ -1,10 +1,10 @@
 import { parseISO } from "date-fns";
 import { jsPDF } from "jspdf";
-import type { StrengthWorkout, Workout, SwimmerProfile, SwimmerGroup } from "./types";
+import { isTrainingSwimmerGroup, type StrengthWorkout, type Workout, type SwimmerProfile, type SwimmerGroup } from "./types";
 import { strengthWorkoutsAsPrintWorkouts } from "./strength-workouts";
 import {
   assignmentLabel,
-  assignedToNames,
+  assignedToNamesForCaption,
   assignedToCaptionRedundantForWorkout,
   workoutAssigneesAllWithoutTrainingGroup,
 } from "./workouts";
@@ -56,6 +56,7 @@ function pdfHeaderBrand(ctx: BuildWorkoutPdfContext, workout: Workout, swimmers:
   if (ctx.viewerRole === "swimmer") {
     return ctx.viewerTrainingGroup != null ? brand : fallback;
   }
+  if (workout.assigned_to_group && isTrainingSwimmerGroup(workout.assigned_to_group)) return brand;
   if (workoutAssigneesAllWithoutTrainingGroup(workout, swimmers)) return fallback;
   return brand;
 }
@@ -93,7 +94,7 @@ export function buildWorkoutPrintSections(
         ? [categoryPart, poolPart].filter(Boolean).join(" ")
         : [poolPart, categoryPart].filter(Boolean).join(" ");
 
-    const assigned = assignedToNames(w, swimmers);
+    const assigned = assignedToNamesForCaption(w, swimmers, t("main.assigneeNobody"));
     const assignedLine =
       assigned && !assignedToCaptionRedundantForWorkout(w, swimmers) ? `${t("main.assignedTo")} ${assigned}` : null;
 
@@ -148,21 +149,21 @@ function sanitizeFilenameBase(s: string): string {
 }
 
 const PDF_SIZES = {
-  line1: 16,
-  line1Leading: 6.8,
-  assignee: 11.5,
-  assigneeLeading: 5.1,
-  meta: 8.5,
-  metaLeading: 3.9,
-  body: 9,
-  bodyLeading: 4.1,
-  analysis: 7,
-  analysisLeading: 3.35,
+  line1: 19,
+  line1Leading: 8,
+  assignee: 14.5,
+  assigneeLeading: 6,
+  meta: 11.5,
+  metaLeading: 4.8,
+  body: 12,
+  bodyLeading: 5.1,
+  analysis: 10,
+  analysisLeading: 3.85,
   analysisPad: 2.8,
   /** Blank band after volume line and before duration */
   analysisSectionGap: 3.6,
-  analysisDuration: 5.5,
-  analysisDurationLeading: 2.65,
+  analysisDuration: 8.5,
+  analysisDurationLeading: 3.1,
   /** Gap after set name before distance (~4–5 character spaces at analysis font size) */
   analysisInlineNumberGapMm: 5,
   /** Hanging indent for soft-wrapped lines in courier body. */
@@ -189,6 +190,7 @@ function computeAnalysisSetLayout(
   }
   const labelMaxW = Math.max(20, innerW - maxNumW - gapMm);
   let maxLastLineW = 0;
+  doc.setFont("helvetica", "bold");
   for (const s of block.sets) {
     const lines = doc.splitTextToSize(s.label, labelMaxW) as string[];
     const last = lines[lines.length - 1] ?? "";
@@ -241,8 +243,8 @@ export function downloadWorkoutsPdf(options: {
   };
 
   const writeBodyParagraph = (para: string) => {
-    const underline = lineIsWorkoutSetHeader(para);
-    doc.setFont("courier", "normal");
+    const setTitle = lineIsWorkoutSetHeader(para);
+    doc.setFont("courier", setTitle ? "bold" : "normal");
     doc.setFontSize(PDF_SIZES.body);
     doc.setTextColor(0, 0, 0);
     /** Hanging indent: first line full width; soft-wrapped continuations indented (see split_text_to_size.js textIndent + lineIndent). */
@@ -257,7 +259,7 @@ export function downloadWorkoutsPdf(options: {
     for (const segment of segments) {
       ensureSpace(PDF_SIZES.bodyLeading);
       doc.text(segment, margin, y, { baseline: "top", align: "left" });
-      if (underline) {
+      if (setTitle) {
         const tw = doc.getTextWidth(segment);
         doc.setDrawColor(55, 55, 55);
         doc.setLineWidth(0.12);
@@ -344,6 +346,7 @@ export function downloadWorkoutsPdf(options: {
     const lay = computeAnalysisSetLayout(doc, block, innerW, leftX, fs, gapMm);
 
     for (const s of block.sets) {
+      doc.setFont("helvetica", "bold");
       const numText = lay.fmtNum(s.meters);
       const labelLines = doc.splitTextToSize(s.label, lay.labelMaxW) as string[];
       for (let li = 0; li < labelLines.length; li++) {
@@ -351,6 +354,7 @@ export function downloadWorkoutsPdf(options: {
         const isLast = li === labelLines.length - 1;
         doc.text(line, leftX, ty, { baseline: "top" });
         if (isLast) {
+          doc.setFont("helvetica", "normal");
           doc.text(numText, lay.numRightX, ty, { baseline: "top", align: "right" });
         }
         ty += lead;

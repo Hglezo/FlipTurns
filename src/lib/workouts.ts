@@ -299,7 +299,22 @@ export function assignedToNames(workout: Workout, swimmers: SwimmerProfile[], ex
     return diff !== 0 ? diff : (a.full_name ?? "").localeCompare(b.full_name ?? "");
   });
   const names = sorted.map((s) => formatSwimmerDisplayName(s.full_name, swimmers) || s.id.slice(0, 8));
-  return names.length ? names.join(", ") : "None";
+  return names.length ? names.join(", ") : null;
+}
+
+/**
+ * Text after "Assigned to …". When there are no resolved swimmer names but the workout targets a group or personal list, returns `nobodyLabel` (localized, e.g. "nobody" / "nadie").
+ */
+export function assignedToNamesForCaption(
+  workout: Workout,
+  swimmers: SwimmerProfile[],
+  nobodyLabel: string,
+  excludeUserIds?: string[],
+): string | null {
+  const n = assignedToNames(workout, swimmers, excludeUserIds);
+  if (n) return n;
+  if (workout.assigned_to_group) return nobodyLabel;
+  return null;
 }
 
 /** True if the viewer is among this workout's assignees (individual, explicit ids, or group roster). */
@@ -332,7 +347,7 @@ export function teammateNames(workout: Workout, swimmers: SwimmerProfile[], curr
   const names = assignees
     .map((s) => formatSwimmerDisplayName(s.full_name, swimmers) || s.id.slice(0, 8))
     .sort((a, b) => a.localeCompare(b));
-  return names.length ? names.join(", ") : "None";
+  return names.length ? names.join(", ") : null;
 }
 
 export function dayPreviewLabel(workout: Workout, swimmers: SwimmerProfile[], defaultAssignee?: string | null): string {

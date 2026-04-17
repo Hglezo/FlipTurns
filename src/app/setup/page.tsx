@@ -339,7 +339,7 @@ export default function SetupPage() {
         <div className="mb-6 flex items-center gap-4">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label="Back">
-              <ArrowLeft className="size-5" />
+              <ArrowLeft className="size-6" />
             </Button>
           </Link>
           <h1 className="text-xl font-bold">Database setup</h1>

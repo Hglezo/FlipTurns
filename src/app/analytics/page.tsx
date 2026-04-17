@@ -720,7 +720,7 @@ export default function AnalyticsPage() {
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <Link href="/">
             <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>
-              <ArrowLeft className="size-5" />
+              <ArrowLeft className="size-6" />
             </Button>
           </Link>
           <h1 className="flex-1 text-center text-lg font-bold truncate min-w-0">{t("settings.volumeAnalytics")}</h1>
@@ -834,13 +834,13 @@ export default function AnalyticsPage() {
             <div className="flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-2">
               <div className="flex min-w-0 max-w-full items-center gap-1 overflow-hidden">
                 <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setVolumeDateOffset((o) => o - 1)} aria-label={t("settings.previousPeriod")}>
-                  <ChevronLeft className="size-4" />
+                  <ChevronLeft className="size-5" />
                 </Button>
                 <span className="min-w-0 flex-1 truncate px-2 text-center text-sm text-chart-axis">
                   {getVolumePeriodLabel(volumeAggregation, volumeDateOffset, weekStartsOn, formatDate, t, locale)}
                 </span>
                 <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setVolumeDateOffset((o) => o + 1)} aria-label={t("settings.nextPeriod")}>
-                  <ChevronRight className="size-4" />
+                  <ChevronRight className="size-5" />
                 </Button>
               </div>
             </div>

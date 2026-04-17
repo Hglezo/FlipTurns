@@ -221,7 +221,7 @@ export default function TeamManagementPage() {
         <div className="mb-5 flex w-full min-w-0 items-center justify-between gap-2">
           <Link href="/" className="shrink-0">
             <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>
-              <ArrowLeft className="size-5" />
+              <ArrowLeft className="size-6" />
             </Button>
           </Link>
           <h1 className="flex-1 text-center text-lg font-bold truncate min-w-0">{t("settings.teamManagement")}</h1>
@@ -288,7 +288,7 @@ export default function TeamManagementPage() {
                         setEditingTeamName(true);
                       }}
                     >
-                      <Pencil className="size-4" />
+                      <Pencil className="size-5" />
                     </Button>
                   </>
                 )}

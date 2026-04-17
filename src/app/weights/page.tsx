@@ -77,7 +77,7 @@ import {
 import { getCategoryLabel, GROUP_KEYS, type TranslationKey } from "@/lib/i18n";
 import {
   assignmentLabel,
-  assignedToNames,
+  assignedToNamesForCaption,
   assignedToCaptionRedundantForWorkout,
   dayPreviewLabel,
   filterWorkoutsForCoachSwimmerSelection,
@@ -1152,7 +1152,7 @@ export default function WeightsPage() {
           ),
         ]
       : undefined;
-    const readNames = assignedToNames(w as unknown as Workout, swimmers, excludeIds);
+    const readNames = assignedToNamesForCaption(w as unknown as Workout, swimmers, t("main.assigneeNobody"), excludeIds);
     const captionLine =
       readNames && !assignedToCaptionRedundantForWorkout(w as unknown as Workout, swimmers)
         ? `${t("main.assignedTo")} ${readNames}`
@@ -1235,7 +1235,7 @@ export default function WeightsPage() {
             expandedDayKey === dayKeyStr ? (
               dayWorkouts.length > 0 ? (
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}>
-                  <Pencil className="size-4" />
+                  <Pencil className="size-5" />
                   {t("main.editDay")}
                 </Button>
               ) : (
@@ -1336,7 +1336,7 @@ export default function WeightsPage() {
                           <>
                             {dayWorkouts.map((w, wi) => renderStrengthCompactCard(w, dayKeyStr, dayWorkouts, wi))}
                             <Button variant="outline" size="sm" className="gap-2" onClick={() => goToDayAndEdit(day)}>
-                              <Pencil className="size-4" />
+                              <Pencil className="size-5" />
                               {t("main.editDay")}
                             </Button>
                           </>
@@ -1471,7 +1471,7 @@ export default function WeightsPage() {
           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
             <Link href="/" className="shrink-0">
               <Button variant="ghost" size="icon" className="size-10" aria-label={t("common.back")}>
-                <ArrowLeft className="size-5" />
+                <ArrowLeft className="size-6" />
               </Button>
             </Link>
             <h1 className="min-w-0 shrink-0 truncate text-lg font-bold">{t("weights.title")}</h1>
@@ -1690,7 +1690,7 @@ export default function WeightsPage() {
 
         <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
           <Button variant="ghost" size="icon" className="size-10 shrink-0" onClick={() => changeDate(-1)}>
-            <ChevronLeft className="size-5" />
+            <ChevronLeft className="size-6" />
             <span className="sr-only">{t("main.previous")}</span>
           </Button>
           <Popover>
@@ -1710,7 +1710,7 @@ export default function WeightsPage() {
             </PopoverContent>
           </Popover>
           <Button variant="ghost" size="icon" className="size-10 shrink-0" onClick={() => changeDate(1)}>
-            <ChevronRight className="size-5" />
+            <ChevronRight className="size-6" />
             <span className="sr-only">{t("main.next")}</span>
           </Button>
         </div>
@@ -1758,7 +1758,12 @@ export default function WeightsPage() {
                   const collapsed = coachUsesPreviews && expandedWorkoutKey !== wkey;
                   const showCoachReadOnlyPreview = !isEditing && (!coachUsesPreviews || collapsed);
                   const conflictIds = swimmerIdsInTimeframeExcluding(coachWorkouts, originalIdx);
-                  const readNames = assignedToNames(workout as unknown as Workout, swimmers, Array.from(conflictIds));
+                  const readNames = assignedToNamesForCaption(
+                    workout as unknown as Workout,
+                    swimmers,
+                    t("main.assigneeNobody"),
+                    Array.from(conflictIds),
+                  );
                   const coachCaptionLine =
                     readNames && !assignedToCaptionRedundantForWorkout(workout as unknown as Workout, swimmers)
                       ? `${t("main.assignedTo")} ${readNames}`
@@ -1789,7 +1794,7 @@ export default function WeightsPage() {
                                     downloadStrengthListPdf([workout]);
                                   }}
                                 >
-                                  <Printer className="size-4" />
+                                  <Printer className="size-5" />
                                 </Button>
                               )}
                               {workout.id ? (
@@ -1801,7 +1806,7 @@ export default function WeightsPage() {
                                   onClick={(e) => void toggleCoachPublished(originalIdx, e)}
                                   aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
                                 >
-                                  {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                  {workoutIsPublished(workout) ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
                                 </Button>
                               ) : null}
                               <Button
@@ -1814,7 +1819,7 @@ export default function WeightsPage() {
                                 }}
                                 aria-label={t("main.editDay")}
                               >
-                                <Pencil className="size-4" />
+                                <Pencil className="size-5" />
                               </Button>
                             </div>
                             {coachCaptionLine ? (
@@ -2077,7 +2082,11 @@ export default function WeightsPage() {
                   const showSwimmerReadOnlyPreview = !isEditing && (!swimmerUsesPreviews || collapsed);
                   const rawLabel = assignmentLabel(workout as unknown as Workout, swimmers);
                   const label = rawLabel && rawLabel in GROUP_KEYS ? t(GROUP_KEYS[rawLabel as keyof typeof GROUP_KEYS]) : rawLabel;
-                  const swimmerReadNames = assignedToNames(workout as unknown as Workout, swimmers);
+                  const swimmerReadNames = assignedToNamesForCaption(
+                    workout as unknown as Workout,
+                    swimmers,
+                    t("main.assigneeNobody"),
+                  );
                   const swimmerCaptionLine =
                     swimmerReadNames && !assignedToCaptionRedundantForWorkout(workout as unknown as Workout, swimmers)
                       ? `${t("main.assignedTo")} ${swimmerReadNames}`
@@ -2113,7 +2122,7 @@ export default function WeightsPage() {
                                     downloadStrengthListPdf([workout]);
                                   }}
                                 >
-                                  <Printer className="size-4" />
+                                  <Printer className="size-5" />
                                 </Button>
                               )}
                               {canSwimmerEdit && workout.id ? (
@@ -2125,7 +2134,7 @@ export default function WeightsPage() {
                                   onClick={(e) => void toggleSwimmerPublished(originalIdx, e)}
                                   aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
                                 >
-                                  {workoutIsPublished(workout) ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                                  {workoutIsPublished(workout) ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
                                 </Button>
                               ) : null}
                               {canSwimmerEdit ? (
@@ -2139,7 +2148,7 @@ export default function WeightsPage() {
                                   }}
                                   aria-label={t("main.editDay")}
                                 >
-                                  <Pencil className="size-4" />
+                                  <Pencil className="size-5" />
                                 </Button>
                               ) : null}
                             </div>
