@@ -202,7 +202,7 @@ function weekDayCollapsedPreviewLabel(
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
   assigneeLabel, assigneeBadgeClassName, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
-  className = "mt-4", readOnly, compact, t, contentDisplay = "full", pdfBelowTags, onExpandPreview, namesRowClassName, analysisBleedClassName,
+  className = "mt-4", readOnly, compact, t, contentDisplay = "full", pdfBelowTags, pdfRowEnd, onExpandPreview, namesRowClassName, analysisBleedClassName,
   offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName,
   draftTapeLabel,
 }: {
@@ -219,6 +219,7 @@ function WorkoutBlock({
     exportTitle: string;
     exportAria: string;
   };
+  pdfRowEnd?: ReactNode;
   /** Day view collapsed preview: tap to expand like the chevron */
   onExpandPreview?: () => void;
   /** Extra classes on the Assigned to / Teammates row (e.g. offset when card has wider right padding for header icons). */
@@ -288,7 +289,7 @@ function WorkoutBlock({
         )}
       </div>
       {pdfBelowTags && (
-        <div className="-mt-1 mb-2 flex justify-start">
+        <div className="-mt-1 mb-2 flex flex-wrap items-center gap-1">
           <Button
             type="button"
             variant="ghost"
@@ -300,6 +301,7 @@ function WorkoutBlock({
           >
             <Printer className="size-5" />
           </Button>
+          {pdfRowEnd}
         </div>
       )}
       {namesLine && (
@@ -318,7 +320,7 @@ function WorkoutBlock({
             ref={previewBodyRef}
             className={cn(
               "relative w-full overflow-hidden font-sans leading-relaxed text-foreground/90",
-              compact ? "max-h-[4.27rem] text-[14px]" : "max-h-[4.57rem] text-[15px]",
+              compact ? "max-h-[5.2rem] text-[14px]" : "max-h-[5.5rem] text-[15px]",
               offsetWorkoutBodyForCornerAssignee && (workoutBodyCornerOffsetClassName ?? "mt-12"),
               analysisBleedClassName,
             )}
@@ -1197,6 +1199,27 @@ function HomePage() {
       alertFromCaught(err, "Could not update visibility");
     });
   }
+
+  const publishEyePdfRowEnd = (
+    pdfTags: ReturnType<typeof workoutPdfBelowTags>,
+    workout: Workout,
+    originalIdx: number,
+    role: "coach" | "swimmer",
+    canSwimmerEdit?: boolean,
+  ): ReactNode | undefined => {
+    if (!pdfTags || !workout.id) return undefined;
+    if (role === "swimmer" && !canSwimmerEdit) return undefined;
+    const onClick =
+      role === "coach"
+        ? (e: React.MouseEvent<HTMLButtonElement>) => void toggleCoachWorkoutPublished(originalIdx, e)
+        : (e: React.MouseEvent<HTMLButtonElement>) => void toggleSwimmerWorkoutPublished(originalIdx, e);
+    return (
+      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" onClick={onClick}
+        aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}>
+        {workoutIsPublished(workout) ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
+      </Button>
+    );
+  };
 
   function startEditingWorkout(index: number) {
     const w = coachWorkouts[index];
@@ -2117,6 +2140,7 @@ function HomePage() {
                         : workout.content.trim() || canSwimmerEdit
                           ? "pr-12"
                           : "pr-4";
+                    const pdfTags = workoutPdfBelowTags(workout);
                     return (
                       <Card
                         key={workout.id || `new-${originalIdx}`}
@@ -2285,7 +2309,7 @@ function HomePage() {
                               >
                                 {swimmerMyUsesWorkoutPreviews ? (
                                   <>
-                                    {canSwimmerEdit && workout.id && (
+                                    {canSwimmerEdit && workout.id && !pdfTags && (
                                       <Button
                                         type="button"
                                         variant="ghost"
@@ -2325,7 +2349,7 @@ function HomePage() {
                                   <>
                                     {canSwimmerEdit && (
                                       <>
-                                        {workout.id ? (
+                                        {workout.id && !pdfTags ? (
                                           <Button
                                             type="button"
                                             variant="ghost"
@@ -2366,7 +2390,8 @@ function HomePage() {
                                     ? () => setAggregatedDayExpandedWorkoutKey(workoutKey)
                                     : undefined
                                 }
-                                pdfBelowTags={workoutPdfBelowTags(workout)}
+                                pdfBelowTags={pdfTags}
+                                pdfRowEnd={publishEyePdfRowEnd(pdfTags, workout, originalIdx, "swimmer", canSwimmerEdit)}
                                 analysisBleedClassName={coachAnalysisBleedClass(swimmerDayReadPr)}
                                 t={t} />
                             )}
@@ -2418,6 +2443,7 @@ function HomePage() {
                       t("main.assigneeNobody"),
                       Array.from(swimmerIdsInTimeframeExcluding(originalIdx)),
                     );
+                    const pdfTags = workoutPdfBelowTags(workout);
                     return (
                       <Card
                         key={workout.id || `new-${originalIdx}`}
@@ -2607,7 +2633,7 @@ function HomePage() {
                               <div className="flex shrink-0 justify-end gap-2">
                                 {coachUsesWorkoutPreviews ? (
                                   <>
-                                    {workout.id ? (
+                                    {workout.id && !pdfTags ? (
                                       <Button
                                         type="button"
                                         variant="ghost"
@@ -2641,7 +2667,7 @@ function HomePage() {
                                   </>
                                 ) : (
                                   <>
-                                    {workout.id ? (
+                                    {workout.id && !pdfTags ? (
                                       <Button
                                         type="button"
                                         variant="ghost"
@@ -2681,7 +2707,8 @@ function HomePage() {
                                     ? () => setAggregatedDayExpandedWorkoutKey(workoutKey)
                                     : undefined
                                 }
-                                pdfBelowTags={workoutPdfBelowTags(workout)}
+                                pdfBelowTags={pdfTags}
+                                pdfRowEnd={publishEyePdfRowEnd(pdfTags, workout, originalIdx, "coach")}
                                 analysisBleedClassName={coachAnalysisBleedClass(coachReadPr)}
                                 t={t} />
                             )}
