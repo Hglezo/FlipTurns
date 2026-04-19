@@ -195,3 +195,15 @@ body[data-viewport-preview="mobile"] .month-view-container .month-view-week-list
   min-width: 0;
   align-self: stretch;
 }
+
+body[data-viewport-preview="mobile"] .app-shell.md\:pb-5 {
+  padding-bottom: calc(3.5rem + env(safe-area-inset-bottom)) !important;
+}
+
+body[data-viewport-preview="mobile"] [data-mobile-tab-dock] {
+  left: 50%;
+  right: auto;
+  width: min(100%, 28rem);
+  max-width: 28rem;
+  transform: translateX(-50%);
+}

@@ -168,7 +168,7 @@ function emptyCoachStrengthRow(dateKey: string, assignToSwimmerId: string | null
     session: "PM",
     assigned_to: assignToSwimmerId,
     assigned_to_group: null,
-    is_published: false,
+    is_published: true,
   };
 }
 
@@ -218,7 +218,7 @@ function emptySwimmerStrengthRow(dateKey: string, userId: string | undefined): S
     session: "PM",
     assigned_to: userId ?? null,
     assigned_to_group: null,
-    is_published: false,
+    is_published: true,
   };
 }
 

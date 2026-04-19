@@ -9,6 +9,7 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
+import { useViewportPreview } from "@/components/viewport-preview-provider";
 import {
   findExactTabIndex,
   getNeighborHref,
@@ -46,6 +47,7 @@ export function MobileMainTabSwipeShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() ?? "/";
   const { user, role, loading } = useAuth();
+  const previewMobile = useViewportPreview()?.previewViewport === "mobile";
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -126,6 +128,13 @@ export function MobileMainTabSwipeShell({ children }: { children: ReactNode }) {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
+    const commitSpanPx = () => {
+      if (!previewMobile) return window.innerWidth;
+      const shell = document.querySelector<HTMLElement>(".app-shell");
+      const w = shell?.getBoundingClientRect().width ?? 0;
+      return w > 0 ? w : window.innerWidth;
+    };
+
     const flushTransform = () => {
       const d = dragRef.current;
       d.rafId = 0;
@@ -135,8 +144,8 @@ export function MobileMainTabSwipeShell({ children }: { children: ReactNode }) {
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      if (window.innerWidth > MOBILE_BREAKPOINT_PX) return;
-      if (e.pointerType === "mouse") return;
+      if (window.innerWidth > MOBILE_BREAKPOINT_PX && !previewMobile) return;
+      if (e.pointerType === "mouse" && !previewMobile) return;
       if (e.isPrimary === false) return;
       if (isInteractiveTarget(e.target)) return;
       const d = dragRef.current;
@@ -213,7 +222,7 @@ export function MobileMainTabSwipeShell({ children }: { children: ReactNode }) {
       }
       if (!wasHorizontal) return;
 
-      const vw = window.innerWidth;
+      const vwCommit = commitSpanPx();
       const direction: "prev" | "next" | null =
         dx > 0 ? "prev" : dx < 0 ? "next" : null;
 
@@ -221,7 +230,7 @@ export function MobileMainTabSwipeShell({ children }: { children: ReactNode }) {
       if (direction) {
         const candidate = getNeighborHref(hrefs, activeIndex, direction);
         if (candidate) {
-          const pastDistance = Math.abs(dx) > vw * COMMIT_DISTANCE_RATIO;
+          const pastDistance = Math.abs(dx) > vwCommit * COMMIT_DISTANCE_RATIO;
           const fastFlick =
             Math.abs(velocity) > COMMIT_VELOCITY_PX_PER_MS &&
             (direction === "prev" ? velocity > 0 : velocity < 0);
@@ -257,7 +266,7 @@ export function MobileMainTabSwipeShell({ children }: { children: ReactNode }) {
         d.rafId = 0;
       }
     };
-  }, [swipeEnabled, activeIndex, hrefs, router]);
+  }, [swipeEnabled, activeIndex, hrefs, router, previewMobile]);
 
   return (
     <>

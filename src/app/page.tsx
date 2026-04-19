@@ -35,6 +35,8 @@ import { WorkoutDraftTape } from "@/components/workout-draft-tape";
 import { SignOutDropdown } from "@/components/sign-out-dropdown";
 import { NotificationBell } from "@/components/notification-bell";
 import { usePreferences } from "@/components/preferences-provider";
+import { useViewportPreview } from "@/components/viewport-preview-provider";
+import { getPreferences, defaultIsPublishedForNewSwimWorkout } from "@/lib/preferences";
 import { useTranslations } from "@/components/i18n-provider";
 import { useAuth } from "@/components/auth-provider";
 import type { Workout, SwimmerProfile, ViewMode, SwimmerGroup } from "@/lib/types";
@@ -484,6 +486,7 @@ const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
 
 function HomePage() {
   const prefs = usePreferences();
+  const previewMobile = useViewportPreview()?.previewViewport === "mobile";
   const { t, formatDate } = useTranslations();
   const weekStartsOn = prefs?.weekStartsOn ?? (1 as 0 | 1);
   const { user, profile, role, signOut, loading: authLoading } = useAuth();
@@ -792,7 +795,7 @@ function HomePage() {
         const sorted = sortCoachWorkouts(rows, swimmers);
         if (isAddingWorkout) {
           addWorkoutForDateRef.current = null;
-          const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: userId, assigned_to_group: null, is_published: false };
+          const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: userId, assigned_to_group: null, is_published: defaultIsPublishedForNewSwimWorkout("swimmer", getPreferences()) };
           setSwimmerWorkouts([...sorted, newWorkout]);
           setSwimmerEditingIndex(sorted.length);
         } else {
@@ -915,7 +918,7 @@ function HomePage() {
       if (cancelled) return;
       if (isAddingWorkout) {
         addWorkoutForDateRef.current = null;
-        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: false };
+        const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: defaultIsPublishedForNewSwimWorkout("coach", getPreferences()) };
         setCoachWorkouts([...sortedRows, newWorkout]);
         setEditingWorkoutIndex(sortedRows.length);
       } else {
@@ -1913,7 +1916,11 @@ function HomePage() {
 
         {/* Main menu: Weights, then Team (coach) / Volume (desktop; mobile uses bottom tab bar) */}
         <nav
-          className={`mb-3 hidden gap-2 md:grid ${isCoach ? "grid-cols-3" : "grid-cols-2"}`}
+          className={cn(
+            "mb-3 gap-2",
+            previewMobile ? "hidden" : "hidden md:grid",
+            isCoach ? "grid-cols-3" : "grid-cols-2",
+          )}
         >
           <Link
             href="/weights"
@@ -2387,7 +2394,7 @@ function HomePage() {
                   })}
                   <div className="flex justify-center pt-2">
                     <Button variant="outline" size="icon" onClick={() => {
-                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: user?.id ?? null, assigned_to_group: null, is_published: false };
+                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: user?.id ?? null, assigned_to_group: null, is_published: defaultIsPublishedForNewSwimWorkout("swimmer", getPreferences()) };
                       setSwimmerEditingSnapshot(null);
                       setSwimmerWorkouts((prev) => {
                         setSwimmerEditingIndex(prev.length);
@@ -2722,7 +2729,7 @@ function HomePage() {
                   <div className="flex justify-center pt-2">
                     <Button variant="outline" size="icon" onClick={() => {
                       const assigneeForNew = (selectedCoachSwimmerId && selectedCoachSwimmerId !== ALL_ID && selectedCoachSwimmerId !== ONLY_GROUPS_ID) ? selectedCoachSwimmerId : null;
-                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: false };
+                      const newWorkout = { id: "", date: dateKey, content: "", session: null, workout_category: null, pool_size: null, assigned_to: assigneeForNew, assigned_to_group: null, is_published: defaultIsPublishedForNewSwimWorkout("coach", getPreferences()) };
                       setEditingWorkoutSnapshot(null);
                       setCoachWorkouts((prev) => {
                         setEditingWorkoutIndex(prev.length);

@@ -461,6 +461,27 @@ export default function SettingsPage() {
                   ))}
                 </div>
               </div>
+              {profile?.role === "coach" && (
+                <div className="space-y-2">
+                  <Label>{t("settings.coachNewSwimDefault")}</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      className={prefsSegmentButtonClass(prefs?.coachSwimWorkoutPublishByDefault !== true)}
+                      onClick={() => handleSavePrefs({ coachSwimWorkoutPublishByDefault: false })}
+                    >
+                      {t("settings.coachNewSwimDefaultDraft")}
+                    </button>
+                    <button
+                      type="button"
+                      className={prefsSegmentButtonClass(prefs?.coachSwimWorkoutPublishByDefault === true)}
+                      onClick={() => handleSavePrefs({ coachSwimWorkoutPublishByDefault: true })}
+                    >
+                      {t("settings.coachNewSwimDefaultPublished")}
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>{t("settings.viewportPreview")}</Label>
                 <div className="flex gap-2 flex-wrap">

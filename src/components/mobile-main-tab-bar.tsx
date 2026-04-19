@@ -6,6 +6,7 @@ import { useLayoutEffect, useRef, type MouseEvent, type PointerEvent as ReactPoi
 import { BarChart3, Dumbbell, Home, Users } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { useTranslations } from "@/components/i18n-provider";
+import { useViewportPreview } from "@/components/viewport-preview-provider";
 import type { TranslationKey } from "@/lib/i18n";
 import {
   isSlideInFlight,
@@ -81,6 +82,7 @@ export function MobileMainTabBar() {
   const { user, role, loading } = useAuth();
   const { t } = useTranslations();
   const router = useRouter();
+  const previewMobile = useViewportPreview()?.previewViewport === "mobile";
 
   if (loading || !user || (role !== "coach" && role !== "swimmer")) {
     return null;
@@ -222,8 +224,10 @@ export function MobileMainTabBar() {
 
   return (
     <nav
+      data-mobile-tab-dock
       className={cn(
-        "fixed inset-x-0 bottom-0 z-40 flex md:hidden",
+        "fixed inset-x-0 bottom-0 z-40 flex",
+        !previewMobile && "md:hidden",
         "border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
         "pb-[env(safe-area-inset-bottom)]",
       )}

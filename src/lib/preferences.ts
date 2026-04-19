@@ -6,6 +6,7 @@ export interface Preferences {
   firstDayOfWeek: FirstDayOfWeek;
   defaultTheme: "light" | "dark";
   locale: Locale;
+  coachSwimWorkoutPublishByDefault?: boolean;
 }
 
 const PREFERENCES_KEY = "swim-preferences";
@@ -16,7 +17,17 @@ export const DEFAULT_PREFERENCES: Preferences = {
   firstDayOfWeek: 1,
   defaultTheme: "dark",
   locale: "en-US",
+  coachSwimWorkoutPublishByDefault: false,
 };
+
+export function defaultIsPublishedForNewSwimWorkout(
+  role: "coach" | "swimmer" | null | undefined,
+  prefs: Preferences,
+): boolean {
+  if (role === "swimmer") return true;
+  if (role === "coach") return prefs.coachSwimWorkoutPublishByDefault === true;
+  return false;
+}
 
 export function getPreferences(): Preferences {
   if (typeof window === "undefined") return DEFAULT_PREFERENCES;
