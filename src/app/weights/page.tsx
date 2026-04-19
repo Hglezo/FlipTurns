@@ -1780,7 +1780,7 @@ export default function WeightsPage() {
                       {showCoachReadOnlyPreview ? (
                         <>
                           <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
-                            <div className="flex shrink-0 items-center gap-0.5">
+                            <div className="flex shrink-0 items-center gap-2">
                               {workout.content.trim() && (
                                 <Button
                                   type="button"
@@ -2108,7 +2108,7 @@ export default function WeightsPage() {
                       {showSwimmerReadOnlyPreview ? (
                         <>
                           <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
-                            <div className="flex shrink-0 items-center gap-0.5">
+                            <div className="flex shrink-0 items-center gap-2">
                               {workout.content.trim() && (
                                 <Button
                                   type="button"

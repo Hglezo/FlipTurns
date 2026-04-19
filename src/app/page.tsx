@@ -202,7 +202,7 @@ function weekDayCollapsedPreviewLabel(
 function WorkoutBlock({
   workout, dateKey, showLabel, feedbackRefreshKey, onFeedbackChange,
   assigneeLabel, assigneeBadgeClassName, assigneeNames: assigneeNamesStr, teammateNames: teammateNamesStr,
-  className = "mt-4", readOnly, compact, t, contentDisplay = "full", aggregatedPdfBelowBanner, onExpandPreview, namesRowClassName, analysisBleedClassName,
+  className = "mt-4", readOnly, compact, t, contentDisplay = "full", pdfBelowTags, onExpandPreview, namesRowClassName, analysisBleedClassName,
   offsetWorkoutBodyForCornerAssignee, workoutBodyCornerOffsetClassName,
   draftTapeLabel,
 }: {
@@ -214,9 +214,7 @@ function WorkoutBlock({
   teammateNames?: string | null; className?: string; readOnly?: boolean; compact?: boolean;
   draftTapeLabel?: string;
   contentDisplay?: "full" | "preview";
-  /** PDF below chip row (after swap with collapse); collapse lives in card header */
-  aggregatedPdfBelowBanner?: {
-    show: boolean;
+  pdfBelowTags?: {
     onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
     exportTitle: string;
     exportAria: string;
@@ -289,16 +287,16 @@ function WorkoutBlock({
           <span className={badgeClassMuted}>{getCategoryLabel(workout.workout_category.trim(), t)}</span>
         )}
       </div>
-      {aggregatedPdfBelowBanner?.show && (
+      {pdfBelowTags && (
         <div className="-mt-1 mb-2 flex justify-start">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="size-8 shrink-0 -ml-2"
-            title={aggregatedPdfBelowBanner.exportTitle}
-            aria-label={aggregatedPdfBelowBanner.exportAria}
-            onClick={aggregatedPdfBelowBanner.onClick}
+            className="size-8 shrink-0 ml-0.5"
+            title={pdfBelowTags.exportTitle}
+            aria-label={pdfBelowTags.exportAria}
+            onClick={pdfBelowTags.onClick}
           >
             <Printer className="size-5" />
           </Button>
@@ -659,6 +657,18 @@ function HomePage() {
     },
     [swimmers, t, dateKey, profile?.role, profile?.team_name, profile?.swimmer_group, prefs?.preferences?.locale],
   );
+
+  const workoutPdfBelowTags = (workout: Workout) =>
+    workout.content.trim()
+      ? {
+          onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
+            e.stopPropagation();
+            downloadWorkoutPdf([workout]);
+          },
+          exportTitle: t("main.exportPdfTitle"),
+          exportAria: t("main.exportPdf"),
+        }
+      : undefined;
 
   useEffect(() => { if (!authLoading && !user) router.push("/login"); }, [authLoading, user, router]);
 
@@ -1590,7 +1600,7 @@ function HomePage() {
     </span>
   ) : null;
 
-  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; onExpandPreview?: () => void; namesRowClassName?: string; analysisBleedClassName?: string; aggregatedPdfBelowBanner?: { show: boolean; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
+  const renderWorkoutBlock = (workout: Workout, dayKey: string, opts: { readOnly?: boolean; compact?: boolean; showLabel?: boolean; excludeIds?: string[]; namesInHeader?: boolean; contentDisplay?: "full" | "preview"; onExpandPreview?: () => void; namesRowClassName?: string; analysisBleedClassName?: string; pdfBelowTags?: { onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; exportTitle: string; exportAria: string } }) => {
     const rawLabel = assignmentLabel(workout, swimmers);
     const label = rawLabel && GROUP_KEYS[rawLabel] ? t(GROUP_KEYS[rawLabel]) : rawLabel;
     const viewerInWorkout = user?.id ? isViewerInWorkout(workout, user.id, swimmers) : false;
@@ -1614,7 +1624,7 @@ function HomePage() {
         assigneeNames={assigneeNames}
         teammateNames={teammateNamesProp}
         draftTapeLabel={!workoutIsPublished(workout) ? t("main.draftTape") : undefined}
-        contentDisplay={opts.contentDisplay ?? "full"} aggregatedPdfBelowBanner={opts.aggregatedPdfBelowBanner}
+        contentDisplay={opts.contentDisplay ?? "full"} pdfBelowTags={opts.pdfBelowTags}
         onExpandPreview={opts.onExpandPreview} namesRowClassName={opts.namesRowClassName} analysisBleedClassName={opts.analysisBleedClassName} t={t} />
     );
   };
@@ -2267,7 +2277,7 @@ function HomePage() {
                             iconsRow={(
                               <div
                                 className={cn(
-                                  "flex shrink-0 items-center gap-0.5",
+                                  "flex shrink-0 items-center gap-2",
                                   swimmerMyUsesWorkoutPreviews && !swimmerMyCollapsed && !canSwimmerEdit && workout.content.trim()
                                     ? "w-[4.75rem] justify-between"
                                     : "justify-end",
@@ -2285,12 +2295,6 @@ function HomePage() {
                                         aria-label={workoutIsPublished(workout) ? t("main.unpublishWorkoutAria") : t("main.publishWorkoutAria")}
                                       >
                                         {workoutIsPublished(workout) ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
-                                      </Button>
-                                    )}
-                                    {!swimmerMyCollapsed && !canSwimmerEdit && workout.content.trim() && (
-                                      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
-                                        aria-label={t("main.exportPdf")} onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
-                                        <Printer className="size-5" />
                                       </Button>
                                     )}
                                     {!swimmerMyCollapsed && canSwimmerEdit && (
@@ -2319,12 +2323,6 @@ function HomePage() {
                                   </>
                                 ) : (
                                   <>
-                                    {workout.content.trim() && (
-                                      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
-                                        aria-label={t("main.exportPdf")} onClick={() => downloadWorkoutPdf([workout])}>
-                                        <Printer className="size-5" />
-                                      </Button>
-                                    )}
                                     {canSwimmerEdit && (
                                       <>
                                         {workout.id ? (
@@ -2368,22 +2366,7 @@ function HomePage() {
                                     ? () => setAggregatedDayExpandedWorkoutKey(workoutKey)
                                     : undefined
                                 }
-                                aggregatedPdfBelowBanner={
-                                  swimmerMyUsesWorkoutPreviews &&
-                                  canSwimmerEdit &&
-                                  workout.content.trim() &&
-                                  !swimmerMyCollapsed
-                                    ? {
-                                        show: true,
-                                        onClick: (e) => {
-                                          e.stopPropagation();
-                                          downloadWorkoutPdf([workout]);
-                                        },
-                                        exportTitle: t("main.exportPdfTitle"),
-                                        exportAria: t("main.exportPdf"),
-                                      }
-                                    : undefined
-                                }
+                                pdfBelowTags={workoutPdfBelowTags(workout)}
                                 analysisBleedClassName={coachAnalysisBleedClass(swimmerDayReadPr)}
                                 t={t} />
                             )}
@@ -2621,7 +2604,7 @@ function HomePage() {
                         ) : (
                           <DayCardCornerAssigneeStack
                             iconsRow={(
-                              <div className="flex shrink-0 justify-end gap-0.5">
+                              <div className="flex shrink-0 justify-end gap-2">
                                 {coachUsesWorkoutPreviews ? (
                                   <>
                                     {workout.id ? (
@@ -2658,13 +2641,6 @@ function HomePage() {
                                   </>
                                 ) : (
                                   <>
-                                    {workout.content.trim() && (
-                                      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" title={t("main.exportPdfTitle")}
-                                        aria-label={t("main.exportPdf")}
-                                        onClick={(e) => { e.stopPropagation(); downloadWorkoutPdf([workout]); }}>
-                                        <Printer className="size-5" />
-                                      </Button>
-                                    )}
                                     {workout.id ? (
                                       <Button
                                         type="button"
@@ -2705,19 +2681,7 @@ function HomePage() {
                                     ? () => setAggregatedDayExpandedWorkoutKey(workoutKey)
                                     : undefined
                                 }
-                                aggregatedPdfBelowBanner={
-                                  coachUsesWorkoutPreviews && workout.content.trim() && !coachCollapsed
-                                    ? {
-                                        show: true,
-                                        onClick: (e) => {
-                                          e.stopPropagation();
-                                          downloadWorkoutPdf([workout]);
-                                        },
-                                        exportTitle: t("main.exportPdfTitle"),
-                                        exportAria: t("main.exportPdf"),
-                                      }
-                                    : undefined
-                                }
+                                pdfBelowTags={workoutPdfBelowTags(workout)}
                                 analysisBleedClassName={coachAnalysisBleedClass(coachReadPr)}
                                 t={t} />
                             )}
