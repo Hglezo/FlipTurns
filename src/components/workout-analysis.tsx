@@ -5,7 +5,7 @@ import { analyzeWorkout } from "@/lib/workout-analyzer";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
 import { useTranslations } from "@/components/i18n-provider";
-import { getSetNameLabel, formatAnalysisDurationMinutes } from "@/lib/i18n";
+import { getSetNameLabel, formatAnalysisDurationMinutes, formatVolumeAnalysisInteger } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -77,7 +77,7 @@ interface WorkoutAnalysisProps {
 
 export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, poolSize, refreshKey, className = "", viewerRole = "swimmer", onFeedbackChange, hideFeedback = false }: WorkoutAnalysisProps) {
   const { user } = useAuth();
-  const { t } = useTranslations();
+  const { t, locale } = useTranslations();
   const formatFeedbackSaveError = (message: string | undefined, fallback: string) => {
     const base = message || fallback;
     if (base.includes("feedback_cardio_intensity_check") || base.includes("feedback_muscle_intensity_check")) {
@@ -269,7 +269,7 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
       {hasAnalysis && (
         <div className="w-full min-w-0 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
           <p className="mb-2 font-medium text-foreground">
-            {t("feedback.total")}: {analysis.totalMeters.toLocaleString()} {unit}
+            {t("feedback.total")}: {formatVolumeAnalysisInteger(analysis.totalMeters, locale)} {unit}
           </p>
           {analysis.sets.length > 0 && (
             <div className="space-y-1">
@@ -279,7 +279,7 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
                   className="flex justify-between text-muted-foreground"
                 >
                   <span className="capitalize">{getSetNameLabel(set.name, t)}</span>
-                  <span>{set.meters.toLocaleString()} {unit}</span>
+                  <span>{formatVolumeAnalysisInteger(set.meters, locale)} {unit}</span>
                 </div>
               ))}
             </div>

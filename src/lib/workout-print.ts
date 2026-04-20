@@ -17,6 +17,7 @@ import {
   getSetNameLabel,
   formatPdfWorkoutHeaderDate,
   formatAnalysisDurationMinutes,
+  formatVolumeAnalysisInteger,
   type Locale,
   type TranslationKey,
 } from "./i18n";
@@ -27,7 +28,7 @@ export type PdfWorkoutAnalysisBlock = {
   sets: { label: string; meters: number }[];
   unit: string;
   durationText: string | null;
-  numberLocale: string;
+  locale: Locale;
 };
 
 export type WorkoutPrintSection = {
@@ -129,9 +130,8 @@ function buildPdfAnalysisBlock(
   const analysis = analyzeWorkout(content);
   if (analysis.totalMeters <= 0) return null;
   const unit = poolSize === "SCY" ? "yd" : "m";
-  const numberLocale = locale === "es-ES" ? "es-ES" : "en-US";
   const volWord = t("feedback.volume").toUpperCase();
-  const volumeLine = `${volWord}: ${analysis.totalMeters.toLocaleString(numberLocale)} ${unit}`;
+  const volumeLine = `${volWord}: ${formatVolumeAnalysisInteger(analysis.totalMeters, locale)} ${unit}`;
   const sets = analysis.sets.map((s) => ({
     label: getSetNameLabel(s.name, t),
     meters: s.meters,
@@ -140,7 +140,7 @@ function buildPdfAnalysisBlock(
   if (analysis.estimatedDurationMinutes > 0) {
     durationText = `${t("feedback.duration")}: ${formatAnalysisDurationMinutes(analysis.estimatedDurationMinutes, t)}`;
   }
-  return { volumeLine, sets, unit, durationText, numberLocale };
+  return { volumeLine, sets, unit, durationText, locale };
 }
 
 function sanitizeFilenameBase(s: string): string {
@@ -183,14 +183,14 @@ function computeAnalysisSetLayout(
 ) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(fs);
-  const fmtNum = (m: number) => `${m.toLocaleString(block.numberLocale)}${block.unit}`;
+  const fmtNum = (m: number) => `${formatVolumeAnalysisInteger(m, block.locale)}${block.unit}`;
   let maxNumW = 10;
   for (const s of block.sets) {
     maxNumW = Math.max(maxNumW, doc.getTextWidth(fmtNum(s.meters)));
   }
   const labelMaxW = Math.max(20, innerW - maxNumW - gapMm);
   let maxLastLineW = 0;
-  doc.setFont("helvetica", "bold");
+  doc.setFont("helvetica", "normal");
   for (const s of block.sets) {
     const lines = doc.splitTextToSize(s.label, labelMaxW) as string[];
     const last = lines[lines.length - 1] ?? "";
@@ -346,7 +346,7 @@ export function downloadWorkoutsPdf(options: {
     const lay = computeAnalysisSetLayout(doc, block, innerW, leftX, fs, gapMm);
 
     for (const s of block.sets) {
-      doc.setFont("helvetica", "bold");
+      doc.setFont("helvetica", "normal");
       const numText = lay.fmtNum(s.meters);
       const labelLines = doc.splitTextToSize(s.label, lay.labelMaxW) as string[];
       for (let li = 0; li < labelLines.length; li++) {
@@ -354,7 +354,6 @@ export function downloadWorkoutsPdf(options: {
         const isLast = li === labelLines.length - 1;
         doc.text(line, leftX, ty, { baseline: "top" });
         if (isLast) {
-          doc.setFont("helvetica", "normal");
           doc.text(numText, lay.numRightX, ty, { baseline: "top", align: "right" });
         }
         ty += lead;

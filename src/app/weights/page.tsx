@@ -107,7 +107,6 @@ function StrengthWorkoutReadOnlyBody({
   assigneeBadgeLabel,
   t,
   offsetWorkoutBodyForCornerAssignee,
-  workoutBodyCornerOffsetClassName,
   draftTapeLabel,
   badgeRowClearanceClassName,
 }: {
@@ -115,7 +114,6 @@ function StrengthWorkoutReadOnlyBody({
   assigneeBadgeLabel: string | null | undefined;
   t: (key: TranslationKey) => string;
   offsetWorkoutBodyForCornerAssignee: boolean;
-  workoutBodyCornerOffsetClassName?: string;
   draftTapeLabel?: string | undefined;
   badgeRowClearanceClassName?: string;
 }) {
@@ -146,7 +144,7 @@ function StrengthWorkoutReadOnlyBody({
       <div
         className={cn(
           "relative w-full min-w-0 font-sans leading-relaxed text-foreground/90 text-[15px]",
-          offsetWorkoutBodyForCornerAssignee && (workoutBodyCornerOffsetClassName ?? "mt-12"),
+          offsetWorkoutBodyForCornerAssignee && "mt-16",
         )}
       >
         {draftTapeLabel ? <WorkoutDraftTape label={draftTapeLabel} /> : null}

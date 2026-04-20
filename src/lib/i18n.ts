@@ -751,6 +751,10 @@ export function getSetNameLabel(name: string, t: (k: TranslationKey) => string):
   return key ? t(key) + suffix : name;
 }
 
+export function formatVolumeAnalysisInteger(n: number, locale: Locale): string {
+  return Math.round(n).toLocaleString(locale, { useGrouping: true, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 /** Human-readable duration for workout analysis (PDF + UI). */
 export function formatAnalysisDurationMinutes(minutes: number, t: (k: TranslationKey) => string): string {
   if (minutes < 60) return `${minutes} ${t("feedback.min")}`;
