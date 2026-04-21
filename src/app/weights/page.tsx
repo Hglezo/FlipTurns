@@ -88,6 +88,7 @@ import {
 import { buildStrengthWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { cn } from "@/lib/utils";
 import { fetchCoachTeamSwimmers, readCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
+import { useResolvedPdfTeamBrand } from "@/lib/pdf-team-brand";
 import {
   STRENGTH_WORKOUT_SELECT,
   loadAndMergeStrengthWorkouts,
@@ -353,6 +354,7 @@ export default function WeightsPage() {
   const isSwimmerOwnStrengthDay =
     role === "swimmer" && (selectedViewSwimmerId === null || selectedViewSwimmerId === user?.id);
   const swimmerGroup = profile?.swimmer_group ?? null;
+  const pdfTeamBrand = useResolvedPdfTeamBrand(profile?.team_name, role, user?.id, authLoading);
   const swimmersAsProfile = swimmers as SwimmerProfile[];
 
   const handleWeightsPersonalWorkoutsGroupMouseLeave = useCallback((e: MouseEvent<HTMLDivElement>) => {
@@ -1079,7 +1081,7 @@ export default function WeightsPage() {
     const sections = buildStrengthWorkoutPrintSections(list, swimmers, t, {
       locale,
       appTitle: t("weights.title"),
-      brandName: profile?.team_name,
+      brandName: pdfTeamBrand,
       viewerRole: isCoach ? "coach" : "swimmer",
       viewerTrainingGroup: swimmerGroup,
     });

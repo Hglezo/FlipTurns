@@ -58,6 +58,7 @@ import {
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { cn } from "@/lib/utils";
 import { fetchCoachTeamSwimmers, readCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
+import { useResolvedPdfTeamBrand } from "@/lib/pdf-team-brand";
 import { blobToWorkoutUploadDataUrl, isJpegOrPngBlob, sniffLikelyHeic } from "@/lib/workout-from-image-upload";
 
 const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
@@ -366,11 +367,13 @@ function WorkoutBlock({
 function DayCardCornerAssigneeStack({
   iconsRow,
   captionLine,
+  captionClassName,
   cardContentClassName,
   renderBody,
 }: {
   iconsRow: ReactNode;
   captionLine: string | null;
+  captionClassName?: string;
   cardContentClassName: string;
   renderBody: (args: { offsetWorkoutBodyForCornerAssignee: boolean; workoutBodyCornerOffsetClassName?: string }) => ReactNode;
 }) {
@@ -402,7 +405,10 @@ function DayCardCornerAssigneeStack({
       <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
         {iconsRow}
         {hasCaption && (
-          <p ref={capRef} className="max-w-[11rem] break-words text-right text-xs text-muted-foreground">
+          <p
+            ref={capRef}
+            className={cn("max-w-[11rem] break-words text-right text-xs text-muted-foreground", captionClassName)}
+          >
             {captionLine}
           </p>
         )}
@@ -630,6 +636,7 @@ function HomePage() {
 
   const dateKey = format(selectedDate, "yyyy-MM-dd");
   const isCoach = role === "coach";
+  const pdfTeamBrand = useResolvedPdfTeamBrand(profile?.team_name, role, user?.id, authLoading);
 
   const coachScopedWeekWorkouts = useMemo(
     () => (isCoach ? filterWorkoutsForCoachSwimmerSelection(weekWorkouts, selectedCoachSwimmerId, swimmers) : weekWorkouts),
@@ -646,7 +653,7 @@ function HomePage() {
       const sections = buildWorkoutPrintSections(workouts, swimmers, t, {
         locale,
         appTitle: t("app.title"),
-        brandName: profile?.team_name,
+        brandName: pdfTeamBrand,
         viewerRole: profile?.role === "coach" ? "coach" : "swimmer",
         viewerTrainingGroup: profile?.role === "swimmer" ? (profile?.swimmer_group ?? null) : null,
       });
@@ -657,7 +664,7 @@ function HomePage() {
         filenameBase: `FlipTurns_workout_${dateSlug}`,
       });
     },
-    [swimmers, t, dateKey, profile?.role, profile?.team_name, profile?.swimmer_group, prefs?.preferences?.locale],
+    [swimmers, t, dateKey, profile?.role, profile?.swimmer_group, prefs?.preferences?.locale, pdfTeamBrand],
   );
 
   const workoutPdfBelowTags = (workout: Workout) =>
@@ -2298,6 +2305,7 @@ function HomePage() {
                           </CardContent>
                         ) : (
                           <DayCardCornerAssigneeStack
+                            captionClassName={teammateLine != null ? "mt-9" : undefined}
                             iconsRow={(
                               <div
                                 className={cn(

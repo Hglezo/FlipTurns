@@ -1,12 +1,11 @@
 import { parseISO } from "date-fns";
 import { jsPDF } from "jspdf";
-import { isTrainingSwimmerGroup, type StrengthWorkout, type Workout, type SwimmerProfile, type SwimmerGroup } from "./types";
+import { type StrengthWorkout, type Workout, type SwimmerProfile, type SwimmerGroup } from "./types";
 import { strengthWorkoutsAsPrintWorkouts } from "./strength-workouts";
 import {
   assignmentLabel,
   assignedToNamesForCaption,
   assignedToCaptionRedundantForWorkout,
-  workoutAssigneesAllWithoutTrainingGroup,
 } from "./workouts";
 import { analyzeWorkout, lineIsWorkoutSetHeader } from "./workout-analyzer";
 import { stripWorkoutInlineMarkers } from "./workout-inline-format";
@@ -50,16 +49,11 @@ export type BuildWorkoutPdfContext = {
   viewerTrainingGroup: SwimmerGroup | null;
 };
 
-function pdfHeaderBrand(ctx: BuildWorkoutPdfContext, workout: Workout, swimmers: SwimmerProfile[]): string {
+function pdfHeaderBrand(ctx: BuildWorkoutPdfContext): string {
   const fallback = ctx.appTitle;
   const brand = ctx.brandName?.trim();
-  if (!brand) return fallback;
-  if (ctx.viewerRole === "swimmer") {
-    return ctx.viewerTrainingGroup != null ? brand : fallback;
-  }
-  if (workout.assigned_to_group && isTrainingSwimmerGroup(workout.assigned_to_group)) return brand;
-  if (workoutAssigneesAllWithoutTrainingGroup(workout, swimmers)) return fallback;
-  return brand;
+  if (ctx.viewerRole === "swimmer" && ctx.viewerTrainingGroup == null) return fallback;
+  return brand || fallback;
 }
 
 function workoutDate(w: Workout): Date {
@@ -86,7 +80,7 @@ export function buildWorkoutPrintSections(
       (multi ? t("main.workoutN", { n: String(i + 1) }) : "");
 
     const when = formatPdfWorkoutHeaderDate(workoutDate(w), w.session, ctx.locale, t);
-    const headerLine1 = `${pdfHeaderBrand(ctx, w, swimmers)} — ${when}`;
+    const headerLine1 = `${pdfHeaderBrand(ctx)} — ${when}`;
 
     const poolPart = w.pool_size ? getPoolLabel(w.pool_size, t) : "";
     const categoryPart = w.workout_category?.trim() ? getCategoryLabel(w.workout_category.trim(), t) : "";
