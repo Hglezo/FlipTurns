@@ -14,8 +14,10 @@ import {
   DEFAULT_PREFERENCES,
   type Preferences,
   type FirstDayOfWeek,
+  WORKOUT_DISPLAY_FONTS,
+  type WorkoutDisplayFont,
 } from "@/lib/preferences";
-import { LOCALES, GROUP_KEYS, type Locale } from "@/lib/i18n";
+import { LOCALES, GROUP_KEYS, type Locale, type TranslationKey } from "@/lib/i18n";
 import { useTranslations } from "@/components/i18n-provider";
 import { usePreferences } from "@/components/preferences-provider";
 import { useViewportPreview } from "@/components/viewport-preview-provider";
@@ -46,6 +48,14 @@ const SWIMMER_GROUPS: { value: SwimmerGroup; label: string }[] = [
   { value: "Middle distance", label: "Middle distance" },
   { value: "Distance", label: "Distance" },
 ];
+
+const WORKOUT_FONT_LABEL: Record<WorkoutDisplayFont, TranslationKey> = {
+  sans: "settings.workoutFontSans",
+  serif: "settings.workoutFontSerif",
+  mono: "settings.workoutFontMono",
+  pacifico: "settings.workoutFontPacifico",
+  atkinson: "settings.workoutFontAtkinson",
+};
 
 function prefsSegmentButtonClass(selected: boolean) {
   return cn(
@@ -482,6 +492,24 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+              <div className="space-y-2">
+                <Label>{t("settings.workoutDisplayFont")}</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {WORKOUT_DISPLAY_FONTS.map((value) => {
+                    const cur = prefs.workoutDisplayFont ?? "sans";
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        className={prefsSegmentButtonClass(cur === value)}
+                        onClick={() => handleSavePrefs({ workoutDisplayFont: value })}
+                      >
+                        {t(WORKOUT_FONT_LABEL[value])}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label>{t("settings.viewportPreview")}</Label>
                 <div className="flex gap-2 flex-wrap">

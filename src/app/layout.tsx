@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Atkinson_Hyperlegible, Geist, Geist_Mono, Pacifico } from "next/font/google";
 import "./globals.css";
 import { PreferencesProvider } from "@/components/preferences-provider";
 import { ViewportPreviewProvider } from "@/components/viewport-preview-provider";
@@ -13,6 +13,8 @@ import { getSiteUrl } from "@/lib/site-url";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const pacifico = Pacifico({ variable: "--font-pacifico", weight: "400", subsets: ["latin"] });
+const atkinson = Atkinson_Hyperlegible({ variable: "--font-atkinson", subsets: ["latin"], weight: ["400", "700"] });
 
 const metadataBaseUrl = getSiteUrl();
 
@@ -83,7 +85,7 @@ const themeScript = `
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${pacifico.variable} ${atkinson.variable} antialiased`}>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <AuthProvider>
           <PreferencesProvider>
