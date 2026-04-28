@@ -160,8 +160,8 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
     setError(null);
     setEditingId(fb.id);
     setEditText(fb.feedback_text ?? "");
-    setEditMuscle(normalizeFeedbackIntensity(fb.muscle_intensity));
-    setEditCardio(normalizeFeedbackIntensity(fb.cardio_intensity));
+    setEditMuscle(normalizeFeedbackIntensity(isStrength ? (fb.muscle_intensity ?? fb.cardio_intensity) : fb.muscle_intensity));
+    setEditCardio(isStrength ? null : normalizeFeedbackIntensity(fb.cardio_intensity));
     setEditAnonymous(!!fb.anonymous);
   };
 
@@ -177,7 +177,7 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
     if (!editingId) return;
     setSaving(true);
     const muscle = normalizeFeedbackIntensity(editMuscle);
-    const cardio = normalizeFeedbackIntensity(editCardio);
+    const cardio = isStrength ? null : normalizeFeedbackIntensity(editCardio);
     const { error } = await supabase.from("feedback").update({
       feedback_text: editText || null,
       muscle_intensity: muscle,
@@ -227,7 +227,7 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
       user_id: user.id,
       feedback_text: addText || null,
       muscle_intensity: normalizeFeedbackIntensity(addMuscle),
-      cardio_intensity: normalizeFeedbackIntensity(addCardio),
+      cardio_intensity: isStrength ? null : normalizeFeedbackIntensity(addCardio),
     };
     const { error } = await supabase.from("feedback").insert(addAnonymous ? { ...payload, anonymous: true } : payload);
     setAddSaving(false);
@@ -297,7 +297,9 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
         <div className="w-full min-w-0 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm space-y-3">
           {hasFeedback && <p className="text-xs font-semibold uppercase tracking-wide text-accent-blue">{t(viewerRole === "coach" ? "feedback.feedback" : "feedback.yourFeedback")}</p>}
           {hasFeedback ? (
-            feedback!.map((fb) => (
+            feedback!.map((fb) => {
+              const strengthInt = isStrength ? normalizeFeedbackIntensity(fb.muscle_intensity ?? fb.cardio_intensity) : null;
+              return (
               <div key={fb.id} className="space-y-2 rounded-md border border-border/50 p-3">
                 {readOnly && (fb.anonymous ? (
                   <p className="text-xs font-medium text-muted-foreground">{t("feedback.anonymous")}</p>
@@ -315,8 +317,14 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
                       onChange={(e) => setEditText(e.target.value)}
                       className="min-h-[80px] resize-none text-sm"
                     />
-                    <IntensityScale label={t("feedback.muscleIntensityOptional")} value={editMuscle} onChange={setEditMuscle} />
-                    <IntensityScale label={t("feedback.cardioIntensityOptional")} value={editCardio} onChange={setEditCardio} />
+                    <IntensityScale
+                      label={isStrength ? t("feedback.intensityOptional") : t("feedback.muscleIntensityOptional")}
+                      value={editMuscle}
+                      onChange={setEditMuscle}
+                    />
+                    {!isStrength && (
+                      <IntensityScale label={t("feedback.cardioIntensityOptional")} value={editCardio} onChange={setEditCardio} />
+                    )}
                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                       <input type="checkbox" checked={editAnonymous} onChange={(e) => setEditAnonymous(e.target.checked)} className="rounded border-input" />
                       <span className="text-muted-foreground">{t("feedback.showAnonymous")}</span>
@@ -337,20 +345,28 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
                         {fb.feedback_text && (
                           <p className="text-muted-foreground whitespace-pre-wrap">{fb.feedback_text}</p>
                         )}
-                        {(fb.muscle_intensity != null || fb.cardio_intensity != null) && (
-                          <div className="mt-1 flex gap-4 text-muted-foreground text-xs">
-                            {fb.muscle_intensity != null && (
-                              <span>
-                                {t("feedback.muscleIntensity")}: {fb.muscle_intensity}/{FEEDBACK_INTENSITY_MAX}
-                              </span>
+                        {isStrength
+                          ? strengthInt != null && (
+                              <div className="mt-1 text-muted-foreground text-xs">
+                                <span>
+                                  {t("feedback.intensity")}: {strengthInt}/{FEEDBACK_INTENSITY_MAX}
+                                </span>
+                              </div>
+                            )
+                          : (fb.muscle_intensity != null || fb.cardio_intensity != null) && (
+                              <div className="mt-1 flex gap-4 text-muted-foreground text-xs">
+                                {fb.muscle_intensity != null && (
+                                  <span>
+                                    {t("feedback.muscleIntensity")}: {fb.muscle_intensity}/{FEEDBACK_INTENSITY_MAX}
+                                  </span>
+                                )}
+                                {fb.cardio_intensity != null && (
+                                  <span>
+                                    {t("feedback.cardioIntensity")}: {fb.cardio_intensity}/{FEEDBACK_INTENSITY_MAX}
+                                  </span>
+                                )}
+                              </div>
                             )}
-                            {fb.cardio_intensity != null && (
-                              <span>
-                                {t("feedback.cardioIntensity")}: {fb.cardio_intensity}/{FEEDBACK_INTENSITY_MAX}
-                              </span>
-                            )}
-                          </div>
-                        )}
                       </div>
                       {!readOnly && (
                         <div className="flex shrink-0 gap-1">
@@ -373,7 +389,8 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
                   </>
                 )}
               </div>
-            ))
+            );
+            })
           ) : !hasLoadedFeedback ? (
             <p className="text-muted-foreground text-sm">{t("feedback.loadingFeedback")}</p>
           ) : readOnly ? (
@@ -401,8 +418,14 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
               onChange={(e) => setAddText(e.target.value)}
               className="min-h-[80px] resize-none text-sm"
             />
-            <IntensityScale label={t("feedback.muscleIntensityOptional")} value={addMuscle} onChange={setAddMuscle} />
-            <IntensityScale label={t("feedback.cardioIntensityOptional")} value={addCardio} onChange={setAddCardio} />
+            <IntensityScale
+              label={isStrength ? t("feedback.intensityOptional") : t("feedback.muscleIntensityOptional")}
+              value={addMuscle}
+              onChange={setAddMuscle}
+            />
+            {!isStrength && (
+              <IntensityScale label={t("feedback.cardioIntensityOptional")} value={addCardio} onChange={setAddCardio} />
+            )}
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" checked={addAnonymous} onChange={(e) => setAddAnonymous(e.target.checked)} className="rounded border-input" />
               <span className="text-muted-foreground">{t("feedback.submitAnonymous")}</span>

@@ -1819,6 +1819,15 @@ export default function WeightsPage() {
                                 workout.content.trim() ? "pr-[4.75rem]" : "pr-20"
                               }
                             />
+                            {workout.id ? (
+                              <WorkoutAnalysis
+                                content={workout.content}
+                                date={dateKey}
+                                strengthWorkoutId={workout.id}
+                                viewerRole="coach"
+                                className="mt-4 w-full min-w-0"
+                              />
+                            ) : null}
                           </CardContent>
                         </>
                       ) : (
@@ -2147,6 +2156,15 @@ export default function WeightsPage() {
                               draftTapeLabel={!workoutIsPublished(workout) ? t("main.draftTape") : undefined}
                               badgeRowClearanceClassName={swimmerBadgeRowClearance}
                             />
+                            {workout.id ? (
+                              <WorkoutAnalysis
+                                content={workout.content}
+                                date={dateKey}
+                                strengthWorkoutId={workout.id}
+                                viewerRole="swimmer"
+                                className="mt-4 w-full min-w-0"
+                              />
+                            ) : null}
                           </CardContent>
                         </>
                       ) : (
