@@ -25,6 +25,7 @@ import {
   ChevronDown, ChevronUp, Settings, Plus, Pencil, LogOut, RotateCcw, AlertCircle,
   Camera, ImageUp, Loader2, Users, BarChart3, Dumbbell, Printer, Eye, EyeOff,
 } from "lucide-react";
+import { FridgeMonthCalendar } from "@/components/fridge-month-calendar";
 import { FlipTurnsLogo } from "@/components/flipturns-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
@@ -53,6 +54,9 @@ import {
   resolvedGroupAssigneeIdsForSave,
   setWorkoutPublished,
   getSwimWorkoutIncompleteMeta,
+  monthCalendarAssigneeChip,
+  workoutsByNormDate,
+  type MonthCalendarAssigneeChip,
   type SwimWorkoutIncompleteMeta,
 } from "@/lib/workouts";
 import { buildWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
@@ -454,39 +458,6 @@ function ExpandableDay({
   );
 }
 
-function MonthCalendar({
-  selectedDate, weekStartsOn, monthWorkouts, onSelect, onMonthChange,
-}: {
-  selectedDate: Date; weekStartsOn: 0 | 1; monthWorkouts: Workout[];
-  onSelect: (d: Date) => void; onMonthChange: (d: Date) => void;
-}) {
-  const countByDate: Record<string, number> = {};
-  for (const w of monthWorkouts) {
-    const d = normDate(w.date);
-    if (d) countByDate[d] = (countByDate[d] || 0) + 1;
-  }
-  return (
-    <Card className="min-h-[28rem] shrink-0 w-full overflow-hidden">
-      <CardContent className="p-0 w-full">
-        <Calendar
-          className="w-full min-w-0 p-1.5 [--cell-size:1.25rem]"
-          classNames={{ week: "mt-0 flex w-full h-14", month: "flex w-full flex-col gap-2" }}
-          mode="single" selected={selectedDate} onSelect={(d) => d && onSelect(d)} month={selectedDate}
-          weekStartsOn={weekStartsOn} onMonthChange={onMonthChange}
-          modifiers={{
-            workoutDots1: Object.entries(countByDate).filter(([, c]) => c === 1).map(([d]) => new Date(d + "T12:00:00")),
-            workoutDots2: Object.entries(countByDate).filter(([, c]) => c >= 2).map(([d]) => new Date(d + "T12:00:00")),
-          }}
-          modifiersClassNames={{
-            workoutDots1: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:size-1.5 after:rounded-full after:bg-primary",
-            workoutDots2: "relative before:content-[''] before:absolute before:bottom-0.5 before:left-[calc(50%-6px)] before:size-1.5 before:rounded-full before:bg-primary after:content-[''] after:absolute after:bottom-0.5 after:left-[calc(50%+2px)] after:size-1.5 after:rounded-full after:bg-primary",
-          }}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
 
@@ -646,6 +617,28 @@ function HomePage() {
     () => (isCoach ? filterWorkoutsForCoachSwimmerSelection(monthWorkouts, selectedCoachSwimmerId, swimmers) : monthWorkouts),
     [isCoach, monthWorkouts, selectedCoachSwimmerId, swimmers],
   );
+
+  const getPreviewDefault = () => {
+    if (isCoach) {
+      if (selectedCoachSwimmerId === ALL_ID) return t("main.allWorkouts");
+      if (selectedCoachSwimmerId === ONLY_GROUPS_ID) return t("main.groupWorkouts");
+      return selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined;
+    }
+    if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) return t("main.groupWorkouts");
+    if (!selectedViewSwimmerId || selectedViewSwimmerId === ALL_ID) {
+      return profile?.full_name ?? swimmers.find((s) => s.id === user?.id)?.full_name ?? undefined;
+    }
+    return swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? undefined;
+  };
+
+  const monthCalendarChipsByDateKey = useMemo(() => {
+    const map: Record<string, MonthCalendarAssigneeChip[]> = {};
+    for (const [k, dayWs] of workoutsByNormDate(coachScopedMonthWorkouts)) {
+      const sorted = isCoach ? sortCoachWorkouts(dayWs, swimmers) : dayWs;
+      map[k] = sorted.map((w) => monthCalendarAssigneeChip(w, swimmers));
+    }
+    return map;
+  }, [coachScopedMonthWorkouts, isCoach, swimmers]);
 
   const downloadWorkoutPdf = useCallback(
     (workouts: Workout[]) => {
@@ -1589,19 +1582,6 @@ function HomePage() {
       }
     });
     return out;
-  };
-
-  const getPreviewDefault = () => {
-    if (isCoach) {
-      if (selectedCoachSwimmerId === ALL_ID) return t("main.allWorkouts");
-      if (selectedCoachSwimmerId === ONLY_GROUPS_ID) return t("main.groupWorkouts");
-      return selectedCoachSwimmerId ? swimmers.find((s) => s.id === selectedCoachSwimmerId)?.full_name : undefined;
-    }
-    if (selectedViewSwimmerId === ONLY_GROUPS_ID || selectedViewSwimmerId === ALL_GROUPS_ID) return t("main.groupWorkouts");
-    if (!selectedViewSwimmerId || selectedViewSwimmerId === ALL_ID) {
-      return profile?.full_name ?? swimmers.find((s) => s.id === user?.id)?.full_name ?? undefined;
-    }
-    return swimmers.find((s) => s.id === selectedViewSwimmerId)?.full_name ?? undefined;
   };
 
   if (authLoading) return <div className="min-h-dvh flex items-center justify-center bg-background"><p className="text-muted-foreground">{t("common.loading")}</p></div>;
@@ -2749,8 +2729,17 @@ function HomePage() {
         {viewMode === "month" && (
           <div className="month-view-container flex w-full min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
             <div className="month-view-calendar w-full shrink-0">
-              <MonthCalendar selectedDate={selectedDate} weekStartsOn={weekStartsOn} monthWorkouts={coachScopedMonthWorkouts}
-                onSelect={handleMonthCalendarSelect} onMonthChange={(d) => { setSelectedDate(d); setExpandedWeekKey(null); setExpandedMonthDayKey(null); }} />
+              <FridgeMonthCalendar
+                selectedDate={selectedDate}
+                weekStartsOn={weekStartsOn}
+                chipsByDateKey={monthCalendarChipsByDateKey}
+                onSelect={handleMonthCalendarSelect}
+                onMonthChange={(d) => {
+                  setSelectedDate(d);
+                  setExpandedWeekKey(null);
+                  setExpandedMonthDayKey(null);
+                }}
+              />
             </div>
             <div className="month-view-week-list flex w-full min-w-0 flex-1 flex-col gap-2">{renderMonthView()}</div>
           </div>

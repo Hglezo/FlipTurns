@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import type { Workout, SwimmerProfile, SwimmerGroup } from "./types";
 import { SWIMMER_GROUPS, ALL_ID, ONLY_GROUPS_ID, PERSONAL_ASSIGNMENT, isTrainingSwimmerGroup, normDate, getTimeframe } from "./types";
+import { cn } from "@/lib/utils";
 
 export async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
@@ -200,6 +201,48 @@ export function assigneeBadgeTwClasses(workout: Pick<Workout, "assigned_to_group
     return `${ASSIGNEE_BADGE_BASE} bg-green-500/15 text-green-700 dark:text-green-400`;
   }
   return `${ASSIGNEE_BADGE_BASE} bg-accent-blue/15 text-accent-blue`;
+}
+
+export type MonthCalendarAssigneeChip = { initials: string; className: string };
+
+type MonthCalendarAssigneeFields = Pick<Workout, "assigned_to" | "assigned_to_group" | "assignee_ids">;
+
+export function workoutsByNormDate<T extends { date: string }>(rows: T[]): Map<string, T[]> {
+  const byDay = new Map<string, T[]>();
+  for (const w of rows) {
+    const k = normDate(w.date);
+    if (!k) continue;
+    const cur = byDay.get(k);
+    if (cur) cur.push(w);
+    else byDay.set(k, [w]);
+  }
+  return byDay;
+}
+
+export function monthCalendarAssigneeChip(workout: MonthCalendarAssigneeFields, swimmers: SwimmerProfile[]): MonthCalendarAssigneeChip {
+  const tone = assigneeBadgeTwClasses(workout);
+  const chipFrame =
+    "inline-flex min-h-[13px] min-w-[13px] max-w-[22px] shrink-0 items-center justify-center px-[2px] py-px text-[8px] font-bold leading-none tracking-tight !rounded-[3px]";
+  const g = workout.assigned_to_group;
+
+  let initials: string;
+  if (g === "Sprint") initials = "S";
+  else if (g === "Middle distance") initials = "MD";
+  else if (g === "Distance") initials = "D";
+  else if (g === PERSONAL_ASSIGNMENT) initials = "P";
+  else if (workout.assigned_to) {
+    const a = swimmers.find((s) => s.id === workout.assigned_to);
+    initials = (a?.full_name?.trim()?.[0] ?? "?").toUpperCase();
+  } else {
+    const ids = workout.assignee_ids;
+    if (ids?.length === 1) {
+      const a = swimmers.find((s) => s.id === ids[0]);
+      initials = (a?.full_name?.trim()?.[0] ?? "?").toUpperCase();
+    } else if (ids && ids.length > 1) initials = "+";
+    else initials = "?";
+  }
+
+  return { initials, className: cn(tone, chipFrame) };
 }
 
 export type SwimWorkoutIncompleteMeta = {

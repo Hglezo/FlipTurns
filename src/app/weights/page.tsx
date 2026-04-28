@@ -51,6 +51,7 @@ import {
   Camera,
   ImageUp,
 } from "lucide-react";
+import { FridgeMonthCalendar } from "@/components/fridge-month-calendar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkoutAnalysis } from "@/components/workout-analysis";
 import { WorkoutContentTextarea } from "@/components/workout-content-textarea";
@@ -77,6 +78,7 @@ import {
 import { getCategoryLabel, GROUP_KEYS, type TranslationKey } from "@/lib/i18n";
 import {
   assignmentLabel,
+  assigneeBadgeTwClasses,
   assignedToNamesForCaption,
   assignedToCaptionRedundantForWorkout,
   dayPreviewLabel,
@@ -84,6 +86,9 @@ import {
   filterWorkoutsForSwimmer,
   sortCoachWorkouts,
   resolvedGroupAssigneeIdsForSave,
+  monthCalendarAssigneeChip,
+  workoutsByNormDate,
+  type MonthCalendarAssigneeChip,
 } from "@/lib/workouts";
 import { buildStrengthWorkoutPrintSections, downloadWorkoutsPdf } from "@/lib/workout-print";
 import { cn } from "@/lib/utils";
@@ -97,7 +102,6 @@ import {
   saveStrengthAssigneesForIndividualWorkout,
   strengthRpcMissingInSchemaCache,
 } from "@/lib/strength-workouts";
-import { assigneeBadgeTwClasses } from "@/lib/workouts";
 import { blobToWorkoutUploadDataUrl, isJpegOrPngBlob, sniffLikelyHeic } from "@/lib/workout-from-image-upload";
 import type { Workout } from "@/lib/types";
 
@@ -267,39 +271,6 @@ function StrengthExpandableDay({
           {actions}
         </div>
       )}
-    </Card>
-  );
-}
-
-function StrengthMonthCalendar({
-  selectedDate, weekStartsOn, monthWorkouts, onSelect, onMonthChange,
-}: {
-  selectedDate: Date; weekStartsOn: 0 | 1; monthWorkouts: StrengthWorkout[];
-  onSelect: (d: Date) => void; onMonthChange: (d: Date) => void;
-}) {
-  const countByDate: Record<string, number> = {};
-  for (const w of monthWorkouts) {
-    const d = normDate(w.date);
-    if (d) countByDate[d] = (countByDate[d] || 0) + 1;
-  }
-  return (
-    <Card className="min-h-[28rem] shrink-0 w-full overflow-hidden">
-      <CardContent className="p-0 w-full">
-        <Calendar
-          className="w-full min-w-0 p-1.5 [--cell-size:1.25rem]"
-          classNames={{ week: "mt-0 flex w-full h-14", month: "flex w-full flex-col gap-2" }}
-          mode="single" selected={selectedDate} onSelect={(d) => d && onSelect(d)} month={selectedDate}
-          weekStartsOn={weekStartsOn} onMonthChange={onMonthChange}
-          modifiers={{
-            workoutDots1: Object.entries(countByDate).filter(([, c]) => c === 1).map(([d]) => new Date(d + "T12:00:00")),
-            workoutDots2: Object.entries(countByDate).filter(([, c]) => c >= 2).map(([d]) => new Date(d + "T12:00:00")),
-          }}
-          modifiersClassNames={{
-            workoutDots1: "relative after:absolute after:bottom-0.5 after:left-1/2 after:-translate-x-1/2 after:size-1.5 after:rounded-full after:bg-primary",
-            workoutDots2: "relative before:content-[''] before:absolute before:bottom-0.5 before:left-[calc(50%-6px)] before:size-1.5 before:rounded-full before:bg-primary after:content-[''] after:absolute after:bottom-0.5 after:left-[calc(50%+2px)] after:size-1.5 after:rounded-full after:bg-primary",
-          }}
-        />
-      </CardContent>
     </Card>
   );
 }
@@ -1135,6 +1106,17 @@ export default function WeightsPage() {
     setExpandedWeekKey(null);
     setExpandedMonthDayKey(null);
   };
+
+  const strengthMonthChipsByDateKey = useMemo(() => {
+    const map: Record<string, MonthCalendarAssigneeChip[]> = {};
+    for (const [k, dayWs] of workoutsByNormDate(scopedMonthStrengthWorkouts)) {
+      const sorted = isCoach
+        ? (sortCoachWorkouts(dayWs as unknown as Workout[], swimmersAsProfile) as unknown as StrengthWorkout[])
+        : dayWs;
+      map[k] = sorted.map((w) => monthCalendarAssigneeChip(w, swimmersAsProfile));
+    }
+    return map;
+  }, [scopedMonthStrengthWorkouts, isCoach, swimmersAsProfile]);
 
   const previewDefault = isCoach
     ? undefined
@@ -2334,10 +2316,10 @@ export default function WeightsPage() {
         {viewMode === "month" && (
           <div className="month-view-container flex w-full min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
             <div className="month-view-calendar w-full shrink-0">
-              <StrengthMonthCalendar
+              <FridgeMonthCalendar
                 selectedDate={selectedDate}
                 weekStartsOn={weekStartsOnPref}
-                monthWorkouts={scopedMonthStrengthWorkouts}
+                chipsByDateKey={strengthMonthChipsByDateKey}
                 onSelect={handleMonthCalendarSelect}
                 onMonthChange={(d) => {
                   setSelectedDate(d);

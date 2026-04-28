@@ -222,8 +222,101 @@ export function MobileMainTabBar() {
     triggerTabSlide({ direction, targetHref: tabs[targetIndex].href, startOffsetPx: 0, router });
   };
 
+  const navRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    const MD_UP = "(min-width: 768px)";
+    const isNarrowViewport = () => !window.matchMedia(MD_UP).matches;
+
+    let innerAtEditableFocus: number | null = null;
+
+    function isEditableTarget(t: EventTarget | null): boolean {
+      if (!t || !(t instanceof HTMLElement)) return false;
+      if (t.closest("[data-mobile-tab-dock]")) return false;
+      if (t.isContentEditable) return true;
+      const tag = t.tagName;
+      if (tag === "TEXTAREA") return true;
+      if (tag === "SELECT") return true;
+      if (tag === "INPUT") {
+        const type = (t as HTMLInputElement).type;
+        if (
+          type === "button" ||
+          type === "checkbox" ||
+          type === "radio" ||
+          type === "submit" ||
+          type === "reset" ||
+          type === "file" ||
+          type === "image" ||
+          type === "hidden"
+        ) {
+          return false;
+        }
+        return true;
+      }
+      return false;
+    }
+
+    function updateDock() {
+      const nav = navRef.current;
+      if (!nav) return;
+      if (!isNarrowViewport()) {
+        nav.style.transform = "";
+        innerAtEditableFocus = null;
+        return;
+      }
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !isEditableTarget(active)) {
+        innerAtEditableFocus = null;
+        nav.style.transform = "";
+        return;
+      }
+      if (innerAtEditableFocus === null) {
+        innerAtEditableFocus = window.innerHeight;
+      }
+      const delta = innerAtEditableFocus - window.innerHeight;
+      nav.style.transform = delta > 48 ? `translate3d(0, ${delta}px, 0)` : "";
+    }
+
+    function onFocusIn(e: FocusEvent) {
+      if (!isEditableTarget(e.target)) return;
+      innerAtEditableFocus = window.innerHeight;
+      requestAnimationFrame(updateDock);
+    }
+
+    function onFocusOut() {
+      innerAtEditableFocus = null;
+      requestAnimationFrame(updateDock);
+    }
+
+    function onOrientationChange() {
+      innerAtEditableFocus = null;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && isEditableTarget(active)) {
+        innerAtEditableFocus = window.innerHeight;
+      }
+      updateDock();
+    }
+
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    window.addEventListener("resize", updateDock);
+    window.addEventListener("orientationchange", onOrientationChange);
+    window.visualViewport?.addEventListener("resize", updateDock);
+
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+      window.removeEventListener("resize", updateDock);
+      window.removeEventListener("orientationchange", onOrientationChange);
+      window.visualViewport?.removeEventListener("resize", updateDock);
+      const n = navRef.current;
+      if (n) n.style.transform = "";
+    };
+  }, []);
+
   return (
     <nav
+      ref={navRef}
       data-mobile-tab-dock
       className={cn(
         "fixed inset-x-0 bottom-0 z-40 flex",

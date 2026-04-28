@@ -1,15 +1,12 @@
 import type { Locale } from "./i18n";
 
 export type FirstDayOfWeek = 0 | 1;
-export const WORKOUT_DISPLAY_FONTS = ["sans", "serif", "mono", "pacifico", "atkinson"] as const;
-export type WorkoutDisplayFont = (typeof WORKOUT_DISPLAY_FONTS)[number];
 
 export interface Preferences {
   firstDayOfWeek: FirstDayOfWeek;
   defaultTheme: "light" | "dark";
   locale: Locale;
   coachSwimWorkoutPublishByDefault?: boolean;
-  workoutDisplayFont?: WorkoutDisplayFont;
 }
 
 const PREFERENCES_KEY = "swim-preferences";
@@ -21,7 +18,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   defaultTheme: "dark",
   locale: "en-US",
   coachSwimWorkoutPublishByDefault: false,
-  workoutDisplayFont: "sans",
 };
 
 export function defaultIsPublishedForNewSwimWorkout(
@@ -40,7 +36,7 @@ export function getPreferences(): Preferences {
     if (!raw) return DEFAULT_PREFERENCES;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     delete parsed.poolSize;
-    if (parsed.workoutDisplayFont === "inter") parsed.workoutDisplayFont = "pacifico";
+    delete parsed.workoutDisplayFont;
     return { ...DEFAULT_PREFERENCES, ...(parsed as Partial<Preferences>) };
   } catch {
     return DEFAULT_PREFERENCES;
