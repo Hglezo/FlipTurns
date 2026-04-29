@@ -635,10 +635,10 @@ function HomePage() {
     const map: Record<string, MonthCalendarAssigneeChip[]> = {};
     for (const [k, dayWs] of workoutsByNormDate(coachScopedMonthWorkouts)) {
       const sorted = isCoach ? sortCoachWorkouts(dayWs, swimmers) : dayWs;
-      map[k] = sorted.map((w) => monthCalendarAssigneeChip(w, swimmers));
+      map[k] = sorted.map((w) => monthCalendarAssigneeChip(w, swimmers, t));
     }
     return map;
-  }, [coachScopedMonthWorkouts, isCoach, swimmers]);
+  }, [coachScopedMonthWorkouts, isCoach, swimmers, t]);
 
   const downloadWorkoutPdf = useCallback(
     (workouts: Workout[]) => {

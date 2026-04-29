@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import type { Workout, SwimmerProfile, SwimmerGroup } from "./types";
 import { SWIMMER_GROUPS, ALL_ID, ONLY_GROUPS_ID, PERSONAL_ASSIGNMENT, isTrainingSwimmerGroup, normDate, getTimeframe } from "./types";
 import { cn } from "@/lib/utils";
+import type { TranslationKey } from "@/lib/i18n";
 
 export async function fetchAssigneesForWorkouts(workoutIds: string[]): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
@@ -203,9 +204,13 @@ export function assigneeBadgeTwClasses(workout: Pick<Workout, "assigned_to_group
   return `${ASSIGNEE_BADGE_BASE} bg-accent-blue/15 text-accent-blue`;
 }
 
-export type MonthCalendarAssigneeChip = { initials: string; className: string };
+export type MonthCalendarAssigneeChip = {
+  initials: string;
+  className: string;
+  column: "am" | "pm";
+};
 
-type MonthCalendarAssigneeFields = Pick<Workout, "assigned_to" | "assigned_to_group" | "assignee_ids">;
+type MonthCalendarAssigneeFields = Pick<Workout, "assigned_to" | "assigned_to_group" | "assignee_ids" | "session">;
 
 export function workoutsByNormDate<T extends { date: string }>(rows: T[]): Map<string, T[]> {
   const byDay = new Map<string, T[]>();
@@ -219,17 +224,21 @@ export function workoutsByNormDate<T extends { date: string }>(rows: T[]): Map<s
   return byDay;
 }
 
-export function monthCalendarAssigneeChip(workout: MonthCalendarAssigneeFields, swimmers: SwimmerProfile[]): MonthCalendarAssigneeChip {
+export function monthCalendarAssigneeChip(
+  workout: MonthCalendarAssigneeFields,
+  swimmers: SwimmerProfile[],
+  t: (key: TranslationKey) => string,
+): MonthCalendarAssigneeChip {
   const tone = assigneeBadgeTwClasses(workout);
   const chipFrame =
-    "inline-flex min-h-[13px] min-w-[13px] max-w-[22px] shrink-0 items-center justify-center px-[2px] py-px text-[8px] font-bold leading-none tracking-tight !rounded-[3px]";
+    "inline-flex min-h-[15px] min-w-[15px] max-w-[26px] shrink-0 items-center justify-center px-[3px] py-px text-[9px] font-bold leading-none tracking-tight !rounded-[3px]";
   const g = workout.assigned_to_group;
 
   let initials: string;
-  if (g === "Sprint") initials = "S";
-  else if (g === "Middle distance") initials = "MD";
-  else if (g === "Distance") initials = "D";
-  else if (g === PERSONAL_ASSIGNMENT) initials = "P";
+  if (g === "Sprint") initials = t("monthCalendarChip.sprint");
+  else if (g === "Middle distance") initials = t("monthCalendarChip.middleDistance");
+  else if (g === "Distance") initials = t("monthCalendarChip.distance");
+  else if (g === PERSONAL_ASSIGNMENT) initials = t("monthCalendarChip.personal");
   else if (workout.assigned_to) {
     const a = swimmers.find((s) => s.id === workout.assigned_to);
     initials = (a?.full_name?.trim()?.[0] ?? "?").toUpperCase();
@@ -242,7 +251,11 @@ export function monthCalendarAssigneeChip(workout: MonthCalendarAssigneeFields, 
     else initials = "?";
   }
 
-  return { initials, className: cn(tone, chipFrame) };
+  return {
+    initials,
+    className: cn(tone, chipFrame),
+    column: workout.session?.trim().toUpperCase() === "PM" ? "pm" : "am",
+  };
 }
 
 export type SwimWorkoutIncompleteMeta = {

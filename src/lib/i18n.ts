@@ -265,6 +265,12 @@ const TRANSLATIONS_EN = {
   "group.distance": "Distance",
   "group.personal": "Personal",
 
+  // Month calendar assignee chips (short abbreviations)
+  "monthCalendarChip.sprint": "S",
+  "monthCalendarChip.middleDistance": "MD",
+  "monthCalendarChip.distance": "D",
+  "monthCalendarChip.personal": "P",
+
   // Workout categories (display labels)
   "category.recovery": "Recovery",
   "category.aerobic": "Aerobic",
@@ -596,6 +602,12 @@ const TRANSLATIONS_ES: Record<TranslationKey, string> = {
   "group.middleDistance": "Medio Fondo",
   "group.distance": "Fondistas",
   "group.personal": "Personal",
+
+  // Month calendar assignee chips (short abbreviations)
+  "monthCalendarChip.sprint": "V",
+  "monthCalendarChip.middleDistance": "MF",
+  "monthCalendarChip.distance": "F",
+  "monthCalendarChip.personal": "P",
 
   // Workout categories
   "category.recovery": "Recuperación",

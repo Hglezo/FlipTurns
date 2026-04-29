@@ -1113,10 +1113,10 @@ export default function WeightsPage() {
       const sorted = isCoach
         ? (sortCoachWorkouts(dayWs as unknown as Workout[], swimmersAsProfile) as unknown as StrengthWorkout[])
         : dayWs;
-      map[k] = sorted.map((w) => monthCalendarAssigneeChip(w, swimmersAsProfile));
+      map[k] = sorted.map((w) => monthCalendarAssigneeChip(w, swimmersAsProfile, t));
     }
     return map;
-  }, [scopedMonthStrengthWorkouts, isCoach, swimmersAsProfile]);
+  }, [scopedMonthStrengthWorkouts, isCoach, swimmersAsProfile, t]);
 
   const previewDefault = isCoach
     ? undefined
