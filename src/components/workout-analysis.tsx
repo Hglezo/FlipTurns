@@ -121,7 +121,7 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
         }
         query = query.eq("user_id", user.id).is("workout_id", null).is("strength_workout_id", null);
       } else {
-        query = query.or(`workout_id.eq.${workoutId},workout_id.is.null`);
+        query = query.or(`workout_id.eq.${workoutId},and(workout_id.is.null,strength_workout_id.is.null)`);
         if (!readOnly && user?.id) query = query.eq("user_id", user.id);
       }
       const { data: initialData, error: fetchError } = await query.order("created_at", { ascending: false });
@@ -135,7 +135,7 @@ export function WorkoutAnalysis({ content, date, workoutId, strengthWorkoutId, p
         } else if (!workoutId) {
           if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id).is("workout_id", null).is("strength_workout_id", null);
         } else {
-          fallbackQuery = fallbackQuery.or(`workout_id.eq.${workoutId},workout_id.is.null`);
+          fallbackQuery = fallbackQuery.or(`workout_id.eq.${workoutId},and(workout_id.is.null,strength_workout_id.is.null)`);
           if (!readOnly && user?.id) fallbackQuery = fallbackQuery.eq("user_id", user.id);
         }
         const { data: fallback } = await fallbackQuery.order("created_at", { ascending: false });
