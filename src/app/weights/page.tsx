@@ -103,6 +103,7 @@ import {
   strengthRpcMissingInSchemaCache,
 } from "@/lib/strength-workouts";
 import { blobToWorkoutUploadDataUrl, isJpegOrPngBlob, sniffLikelyHeic } from "@/lib/workout-from-image-upload";
+import { mergeWorkoutListPreserveEditingRow } from "@/lib/merge-workout-list-preserve-editing";
 import type { Workout } from "@/lib/types";
 
 const WORKOUT_CARD_TOGGLE_IGNORE = "button, a, input, textarea, select, label";
@@ -320,6 +321,10 @@ export default function WeightsPage() {
 
   const rangeDataKeyRef = useRef("");
   const addStrengthWorkoutForDateRef = useRef<string | null>(null);
+  const editingCoachStrengthIndexRef = useRef<number | null>(null);
+  editingCoachStrengthIndexRef.current = editingWorkoutIndex;
+  const swimmerStrengthEditingIndexRef = useRef<number | null>(null);
+  swimmerStrengthEditingIndexRef.current = swimmerEditingIndex;
 
   const isCoach = role === "coach";
   const isSwimmerOwnStrengthDay =
@@ -469,7 +474,7 @@ export default function WeightsPage() {
   useEffect(() => {
     if (!dateKey || role !== "coach" || viewMode !== "day" || !user) return;
     const isAdding = addStrengthWorkoutForDateRef.current === dateKey;
-    if (!isAdding) setEditingWorkoutIndex(null);
+    if (!isAdding && editingCoachStrengthIndexRef.current === null) setEditingWorkoutIndex(null);
     let cancelled = false;
     (async () => {
       setCoachLoading(true);
@@ -484,7 +489,9 @@ export default function WeightsPage() {
           setCoachWorkouts([...filtered, emptyCoachStrengthRow(dateKey, assignPref)]);
           setEditingWorkoutIndex(filtered.length);
         } else {
-          setCoachWorkouts(filtered);
+          setCoachWorkouts((prev) =>
+            mergeWorkoutListPreserveEditingRow(filtered, prev, editingCoachStrengthIndexRef.current),
+          );
         }
       } catch (e) {
         if (!cancelled) {
@@ -504,7 +511,7 @@ export default function WeightsPage() {
   useEffect(() => {
     if (!dateKey || role !== "swimmer" || !user?.id || viewMode !== "day") return;
     const isAdding = addStrengthWorkoutForDateRef.current === dateKey;
-    if (!isAdding) setSwimmerEditingIndex(null);
+    if (!isAdding && swimmerStrengthEditingIndexRef.current === null) setSwimmerEditingIndex(null);
     let cancelled = false;
     (async () => {
       setSwimmerLoading(true);
@@ -517,7 +524,9 @@ export default function WeightsPage() {
           setSwimmerWorkouts([...merged, emptySwimmerStrengthRow(dateKey, user.id)]);
           setSwimmerEditingIndex(merged.length);
         } else {
-          setSwimmerWorkouts(merged);
+          setSwimmerWorkouts((prev) =>
+            mergeWorkoutListPreserveEditingRow(merged, prev, swimmerStrengthEditingIndexRef.current),
+          );
         }
       } catch (e) {
         if (!cancelled) {

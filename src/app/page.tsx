@@ -64,6 +64,8 @@ import { cn } from "@/lib/utils";
 import { fetchCoachTeamSwimmers, readCoachTeamSwimmersCache } from "@/lib/coach-team-swimmers-cache";
 import { useResolvedPdfTeamBrand } from "@/lib/pdf-team-brand";
 import { blobToWorkoutUploadDataUrl, isJpegOrPngBlob, sniffLikelyHeic } from "@/lib/workout-from-image-upload";
+import { mergeWorkoutListPreserveEditingRow } from "@/lib/merge-workout-list-preserve-editing";
+import { clearWorkoutEditDraft, loadWorkoutEditDraft, saveWorkoutEditDraft, type WorkoutEditScope } from "@/lib/workout-edit-drafts";
 
 const badgeClass = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-accent-blue/15 px-2.5 py-0.5 text-xs font-medium text-accent-blue max-md:text-[10px] max-md:px-1.5";
 const badgeClassMuted = "inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground max-md:text-[10px] max-md:px-1.5";
@@ -774,6 +776,8 @@ function HomePage() {
   swimmersForCoachRef.current = swimmers;
   const editingCoachWorkoutIndexRef = useRef(editingWorkoutIndex);
   editingCoachWorkoutIndexRef.current = editingWorkoutIndex;
+  const swimmerEditingIndexRef = useRef(swimmerEditingIndex);
+  swimmerEditingIndexRef.current = swimmerEditingIndex;
 
   async function refreshCoachWorkouts() {
     const merged = await fetchCoachMergedForDate(dateKey);
@@ -803,7 +807,10 @@ function HomePage() {
       setViewWorkouts(rows);
       if (isMyView) {
         const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
-        if (!isAddingWorkout) { setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null); }
+        if (!isAddingWorkout && swimmerEditingIndexRef.current === null) {
+          setSwimmerEditingIndex(null);
+          setSwimmerEditingSnapshot(null);
+        }
         const sorted = sortCoachWorkouts(rows, swimmers);
         if (isAddingWorkout) {
           addWorkoutForDateRef.current = null;
@@ -811,7 +818,9 @@ function HomePage() {
           setSwimmerWorkouts([...sorted, newWorkout]);
           setSwimmerEditingIndex(sorted.length);
         } else {
-          setSwimmerWorkouts(sorted);
+          setSwimmerWorkouts((prev) =>
+            mergeWorkoutListPreserveEditingRow(sorted, prev, swimmerEditingIndexRef.current),
+          );
         }
       }
     };
@@ -902,14 +911,21 @@ function HomePage() {
     const isAddingWorkout = addWorkoutForDateRef.current === dateKey;
     coachDayListReadyForKeyRef.current = null;
     if (!isAddingWorkout) {
-      setEditingWorkoutIndex(null);
-      setEditingWorkoutSnapshot(null);
+      if (editingCoachWorkoutIndexRef.current === null) {
+        setEditingWorkoutIndex(null);
+        setEditingWorkoutSnapshot(null);
+      }
       const mergedCached = coachDayMergedCacheRef.current.get(dateKey);
       if (mergedCached) {
-        setCoachWorkouts(sortCoachDayFiltered(mergedCached, selectedCoachSwimmerId, swimmers));
+        const filtered = sortCoachDayFiltered(mergedCached, selectedCoachSwimmerId, swimmers);
+        if (editingCoachWorkoutIndexRef.current !== null) {
+          setCoachWorkouts((prev) => mergeWorkoutListPreserveEditingRow(filtered, prev, editingCoachWorkoutIndexRef.current));
+        } else {
+          setCoachWorkouts(filtered);
+        }
         coachDayListReadyForKeyRef.current = dateKey;
         setCoachLoading(false);
-      } else {
+      } else if (editingCoachWorkoutIndexRef.current === null) {
         setCoachWorkouts([]);
       }
     }
@@ -934,7 +950,7 @@ function HomePage() {
         setCoachWorkouts([...sortedRows, newWorkout]);
         setEditingWorkoutIndex(sortedRows.length);
       } else {
-        setCoachWorkouts(sortedRows);
+        setCoachWorkouts((prev) => mergeWorkoutListPreserveEditingRow(sortedRows, prev, editingCoachWorkoutIndexRef.current));
       }
       if (!cancelled) {
         coachDayListReadyForKeyRef.current = dateKey;
@@ -962,6 +978,79 @@ function HomePage() {
       cancelled = true;
     };
   }, [dateKey, isCoach, viewMode, user, fetchCoachMergedForDate]);
+
+  const restoredWorkoutDraftKeyRef = useRef<Partial<Record<WorkoutEditScope, string | null>>>({});
+  useLayoutEffect(() => {
+    restoredWorkoutDraftKeyRef.current = {};
+  }, [dateKey]);
+
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid || viewMode !== "day") return;
+    const idx = isCoach ? editingWorkoutIndex : swimmerEditingIndex;
+    const list = isCoach ? coachWorkouts : swimmerWorkouts;
+    if (idx == null) return;
+    const w = list[idx];
+    if (!w) return;
+    saveWorkoutEditDraft({
+      userId: uid,
+      scope: isCoach ? "coach" : "swimmer",
+      dateKey,
+      workoutId: w.id || null,
+      workout: w,
+    });
+  }, [editingWorkoutIndex, swimmerEditingIndex, coachWorkouts, swimmerWorkouts, isCoach, viewMode, dateKey, user?.id]);
+
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid || viewMode !== "day") return;
+    const scope: WorkoutEditScope = isCoach ? "coach" : "swimmer";
+    const loading = isCoach ? coachLoading : swimmerLoading;
+    const editingIdx = isCoach ? editingWorkoutIndex : swimmerEditingIndex;
+    const rows = isCoach ? coachWorkouts : swimmerWorkouts;
+    if (loading || editingIdx !== null) return;
+
+    const draft = loadWorkoutEditDraft(uid, scope);
+    if (!draft || draft.dateKey !== dateKey) return;
+    const restoreKey = `${uid}|${dateKey}|${draft.workoutId ?? "new"}|${draft.updatedAt}`;
+    if (restoredWorkoutDraftKeyRef.current[scope] === restoreKey) return;
+    restoredWorkoutDraftKeyRef.current[scope] = restoreKey;
+
+    const snap = (w: Workout) => ({ ...w, assignee_ids: w.assignee_ids ? [...w.assignee_ids] : undefined });
+
+    if (draft.workoutId) {
+      const idx = rows.findIndex((w) => w.id === draft.workoutId);
+      if (idx < 0) {
+        clearWorkoutEditDraft(uid, scope);
+        return;
+      }
+      const original = rows[idx]!;
+      if (isCoach) {
+        setEditingWorkoutSnapshot(snap(original));
+        setCoachWorkouts((prev) => prev.map((w, i) => (i === idx ? draft.workout : w)));
+        setEditingWorkoutIndex(idx);
+      } else {
+        setSwimmerEditingSnapshot(snap(original));
+        setSwimmerWorkouts((prev) => prev.map((w, i) => (i === idx ? draft.workout : w)));
+        setSwimmerEditingIndex(idx);
+      }
+    } else if (isCoach) {
+      setEditingWorkoutSnapshot(null);
+      setCoachWorkouts((prev) => {
+        setEditingWorkoutIndex(prev.length);
+        return [...prev, draft.workout];
+      });
+    } else {
+      setSwimmerEditingSnapshot(null);
+      setSwimmerWorkouts((prev) => {
+        setSwimmerEditingIndex(prev.length);
+        return [...prev, draft.workout];
+      });
+    }
+  }, [
+    user?.id, isCoach, viewMode, coachLoading, swimmerLoading, dateKey,
+    coachWorkouts, swimmerWorkouts, editingWorkoutIndex, swimmerEditingIndex,
+  ]);
 
   // Week/month range fetch (shared for swimmer and coach)
   useEffect(() => {
@@ -1049,6 +1138,7 @@ function HomePage() {
       return;
     }
     setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null);
+    if (user?.id) clearWorkoutEditDraft(user.id, "coach");
     setLoading(true); setSaved(false);
     let savedId: string | undefined = workout.id;
     const poolSizeToSave = workout.pool_size ?? null;
@@ -1131,6 +1221,7 @@ function HomePage() {
     coachDayMergedCacheRef.current.delete(dateKey);
     setCoachWorkouts((prev) => prev.filter((_, i) => i !== index));
     setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null); setLoading(false);
+    if (user?.id) clearWorkoutEditDraft(user.id, "coach");
   }
 
   function updateCoachWorkout(index: number, updates: Partial<Workout>) {
@@ -1231,6 +1322,7 @@ function HomePage() {
     const idx = editingWorkoutIndex;
     const snap = editingWorkoutSnapshot;
     setEditingWorkoutIndex(null); setEditingWorkoutSnapshot(null);
+    if (user?.id) clearWorkoutEditDraft(user.id, "coach");
     if (idx !== null && snap != null) setCoachWorkouts((prev) => prev.map((w, i) => i === idx ? snap : w));
     else if (idx !== null && coachWorkouts[idx] && !coachWorkouts[idx].id) setCoachWorkouts((prev) => prev.filter((_, i) => i !== idx));
   }
@@ -1325,6 +1417,7 @@ function HomePage() {
       return;
     }
     setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null);
+    if (user?.id) clearWorkoutEditDraft(user.id, "swimmer");
     setLoading(true); setSaved(false);
     const poolSizeToSave = workout.pool_size ?? null;
     const isPersonal = workout.assigned_to_group === PERSONAL_ASSIGNMENT;
@@ -1447,6 +1540,7 @@ function HomePage() {
     }
     setSwimmerWorkouts((prev) => prev.filter((_, i) => i !== index));
     setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null); setLoading(false);
+    if (user?.id) clearWorkoutEditDraft(user.id, "swimmer");
   }
 
   function updateSwimmerWorkout(index: number, updates: Partial<Workout>) {
@@ -2275,6 +2369,7 @@ function HomePage() {
                                 <button type="button" onClick={() => {
                                   const idx = swimmerEditingIndex; const snap = swimmerEditingSnapshot;
                                   setSwimmerEditingIndex(null); setSwimmerEditingSnapshot(null);
+                                  if (user?.id) clearWorkoutEditDraft(user.id, "swimmer");
                                   if (idx !== null && snap != null) setSwimmerWorkouts((prev) => prev.map((w, i) => i === idx ? snap : w));
                                   else if (idx !== null && swimmerWorkouts[idx] && !swimmerWorkouts[idx].id) setSwimmerWorkouts((prev) => prev.filter((_, i) => i !== idx));
                                 }} disabled={loading}

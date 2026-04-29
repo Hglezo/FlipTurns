@@ -107,19 +107,66 @@ function stripLineBracketNotes(line: string): string {
   return line.replace(/\[[^\]\n]*\]/g, " ");
 }
 
+function isWorkoutStarCommentLine(line: string): boolean {
+  return /^\s*\*/.test(line);
+}
+
+function isQuotedCommentLine(line: string): boolean {
+  const t = line.trim();
+  return t.length >= 2 && ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("\u201c") && t.endsWith("\u201d")));
+}
+
+function isBlankWorkoutLine(line: string): boolean {
+  return line.trim() === "";
+}
+
+function isStructuralCommentOrBlankLine(line: string): boolean {
+  return isBlankWorkoutLine(line) || isWorkoutStarCommentLine(line) || isQuotedCommentLine(line);
+}
+
+// Blank lines end unbracketed N× blocks; drop blank+* / blank+full-line-"…" runs between two work lines so refetches do not split the block.
+function collapseCommentGapsBetweenContent(rawLines: string[]): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < rawLines.length) {
+    const line = rawLines[i];
+    if (isStructuralCommentOrBlankLine(line)) {
+      const start = i;
+      while (i < rawLines.length && isStructuralCommentOrBlankLine(rawLines[i])) {
+        i++;
+      }
+      const hasFollowingContent = i < rawLines.length && !isStructuralCommentOrBlankLine(rawLines[i]);
+      const hasPrecedingContent = out.length > 0;
+      const gapHadComment =
+        rawLines.slice(start, i).some((ln) => isWorkoutStarCommentLine(ln) || isQuotedCommentLine(ln));
+      if (hasPrecedingContent && hasFollowingContent && gapHadComment) {
+        continue;
+      }
+      for (let k = start; k < i; k++) {
+        if (!isWorkoutStarCommentLine(rawLines[k]) && !isQuotedCommentLine(rawLines[k])) {
+          out.push(rawLines[k]);
+        }
+      }
+    } else {
+      out.push(line);
+      i++;
+    }
+  }
+  return out;
+}
+
 function parseMetersInText(text: string): number {
   let total = 0;
   const cleanedText = removeParentheticalContent(text);
-  const textWithAsteriskStripped = cleanedText
-    .split(/\r?\n/)
-    .map((line) => {
-      if (/^\s*\*/.test(line)) return "";
-      let s = line;
-      if (s.includes("*") && s.includes("+")) s = s.slice(0, s.indexOf("+"));
-      return s.replace(/\*[^*]*/g, " ").trim();
-    })
-    .join("\n");
-  const lines = textWithAsteriskStripped.split(/\r?\n/);
+  const rawLines = collapseCommentGapsBetweenContent(cleanedText.split(/\r?\n/));
+  const lines: string[] = [];
+  for (const line of rawLines) {
+    if (isWorkoutStarCommentLine(line)) continue;
+    if (isQuotedCommentLine(line)) continue;
+    let s = line;
+    if (s.includes("*") && s.includes("+")) s = s.slice(0, s.indexOf("+"));
+    lines.push(s.replace(/\*[^*]*/g, " ").trim());
+  }
 
   // First: handle "Nx" block multipliers (e.g. "2x" followed by block of content)
   const processedLines: string[] = [];
